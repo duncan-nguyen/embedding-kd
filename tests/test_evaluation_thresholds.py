@@ -121,3 +121,91 @@ def test_cli_selects_the_threshold_source(monkeypatch):
 
     assert config.pair_threshold_source == "test"
     assert BaseConfig().pair_threshold_source == "validation"
+
+
+def test_per_epoch_test_evaluation_requires_test_thresholds():
+    """The contradiction has to surface before the models load, not after epoch 1."""
+    config = BaseConfig()
+    config.evaluate_test_each_epoch = True
+    config.pair_threshold_source = "validation"
+
+    with pytest.raises(ValueError, match="pair_threshold_source='test'"):
+        KnowledgeDistiller._validate_eval_config(config)
+
+
+def test_per_epoch_test_evaluation_accepts_test_thresholds():
+    config = BaseConfig()
+    config.evaluate_test_each_epoch = True
+    config.pair_threshold_source = "test"
+
+    KnowledgeDistiller._validate_eval_config(config)  # must not raise
+
+
+def test_default_eval_config_is_validation_only():
+    config = BaseConfig()
+
+    assert config.evaluate_test_each_epoch is False
+    assert config.pair_threshold_source == "validation"
+    KnowledgeDistiller._validate_eval_config(config)
+
+
+def test_bad_threshold_source_is_rejected_before_training():
+    config = BaseConfig()
+    config.pair_threshold_source = "train"
+
+    with pytest.raises(ValueError, match="pair_threshold_source"):
+        KnowledgeDistiller._validate_eval_config(config)
+
+
+def test_test_evaluation_is_titled_by_epoch_until_the_final_one(evaluator, capsys):
+    instance, _ = evaluator
+    instance.config.pair_threshold_source = "test"
+    instance.current_epoch = 2
+
+    instance.evaluate("test")
+    assert "TEST - EPOCH 3" in capsys.readouterr().out
+
+    instance.evaluate("test", final=True)
+    assert "FINAL TEST" in capsys.readouterr().out
+
+
+def test_cli_flag_carries_the_threshold_source(monkeypatch):
+    import sys
+
+    from main import get_config, parse_args
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["main.py", "--method", "geoode", "--evaluate_test_each_epoch"],
+    )
+    config = get_config("geoode", parse_args())
+
+    assert config.evaluate_test_each_epoch is True
+    # Implied, because the flag exists precisely to run without a validation pass.
+    assert config.pair_threshold_source == "test"
+    KnowledgeDistiller._validate_eval_config(config)
+
+
+def test_explicit_threshold_source_still_wins_and_is_rejected_if_contradictory(monkeypatch):
+    import sys
+
+    from main import get_config, parse_args
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "main.py",
+            "--method",
+            "geoode",
+            "--evaluate_test_each_epoch",
+            "--pair_threshold_source",
+            "validation",
+        ],
+    )
+    config = get_config("geoode", parse_args())
+
+    assert config.pair_threshold_source == "validation"
+    with pytest.raises(ValueError, match="pair_threshold_source='test'"):
+        KnowledgeDistiller._validate_eval_config(config)

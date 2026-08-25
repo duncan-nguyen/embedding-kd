@@ -150,6 +150,15 @@ def parse_args():
         help='GeoODE-KD: pooling applied to every student layer'
     )
     parser.add_argument(
+        '--evaluate_test_each_epoch',
+        action='store_true',
+        help=(
+            'Evaluate the test split after every eval_every epochs instead of the '
+            'validation split, and skip validation entirely. Requires '
+            '--pair_threshold_source test; no reported number is held out'
+        )
+    )
+    parser.add_argument(
         '--pair_threshold_source',
         choices=['validation', 'test'],
         default=None,
@@ -285,6 +294,12 @@ def get_config(method: str, args):
         config.task_type = args.task_type
     if args.pair_threshold_source is not None:
         config.pair_threshold_source = args.pair_threshold_source
+    if args.evaluate_test_each_epoch:
+        config.evaluate_test_each_epoch = True
+        # The flag's whole point is to run without a validation pass, so it carries
+        # the threshold source with it unless one was named explicitly.
+        if args.pair_threshold_source is None:
+            config.pair_threshold_source = 'test'
     if args.depth_log_every is not None:
         if args.depth_log_every < 0:
             raise ValueError("--depth_log_every must be zero or positive")

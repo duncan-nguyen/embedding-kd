@@ -182,7 +182,7 @@ printed once after training. The Colab notebook exports the two splits
 separately:
 
 ```text
-models/talas/qwen3_4b_to_bert_base/validation_by_epoch.csv
+models/talas/qwen3_4b_to_bert_base/eval_by_epoch.csv
 models/talas/qwen3_4b_to_bert_base/final_test_results.csv
 ```
 
@@ -216,6 +216,16 @@ calibration differently:
 | STS | SICK, STS12, STS-B | cosine similarity against gold scores, Spearman correlation |
 
 Validation runs after every `--eval_every` epochs; test runs once, after training.
+`--evaluate_test_each_epoch` swaps that around: the test split is evaluated after
+every `--eval_every` epochs and no validation pass runs at all. It implies
+`--pair_threshold_source test` (a run with no validation has nowhere else to get a
+threshold from), and the two are checked for consistency before the models load
+rather than at the end of the first epoch. The end-of-run table then reuses the
+last epoch's evaluation instead of repeating it.
+
+With that flag, every reported number has been seen during model selection: the
+epoch you pick and the threshold you sweep both read the test labels. Keep it off
+for any number you intend to publish.
 
 The pair threshold is the only quantity carried between splits. By default it is
 swept over 200 candidates on the validation split and reused unchanged on test, so
@@ -230,7 +240,8 @@ Then the pair accuracy/F1/precision/recall become an **upper bound** rather than
 held-out estimate, since the threshold is chosen on the labels being scored.
 `average_precision` (the primary pair metric in the summary table) is
 threshold-free and unaffected either way, as are the classification and STS
-families. Runs using it are marked in the printed table and record
+families. The classification probe is always fitted on that benchmark's own
+`train` split, never on validation or test. Runs using it are marked in the printed table and record
 `"pair_threshold_source": "test"` in `metrics.jsonl`. It also removes test's
 dependency on a validation pass, so it can be combined with a large
 `--eval_every` to skip per-epoch validation entirely.

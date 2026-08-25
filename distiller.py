@@ -135,6 +135,7 @@ def grads_are_finite(optim) -> bool:
 class KnowledgeDistiller:
     def __init__(self, config):
         self.config = config
+        self._validate_eval_config(config)
         self.wandb_run = None
         self.global_step = 0
         self.current_epoch = 0
@@ -250,6 +251,33 @@ class KnowledgeDistiller:
         self.step_times = []
         self.ma_window = deque(maxlen=50)
         self.warmup_steps = 10
+
+    @staticmethod
+    def _validate_eval_config(config) -> None:
+        """Reject eval settings that can only fail once training is under way.
+
+        Checked before the models load: a contradiction here otherwise surfaces as a
+        caught exception at the end of epoch 1 and every epoch after it, leaving a run
+        that trains for hours and reports nothing.
+        """
+        source = getattr(config, "pair_threshold_source", "validation")
+        if source not in {"validation", "test"}:
+            raise ValueError(
+                f"Unsupported pair_threshold_source={source!r}; "
+                "expected 'validation' or 'test'"
+            )
+        if getattr(config, "evaluate_test_each_epoch", False):
+            if source != "test":
+                raise ValueError(
+                    "evaluate_test_each_epoch=True skips validation entirely, so the "
+                    "pair threshold has nowhere to come from: set "
+                    "pair_threshold_source='test' (CLI: --pair_threshold_source test)"
+                )
+            print(
+                "Per-epoch evaluation runs on the TEST split and the pair threshold "
+                "is swept on it. No validation pass will run, so no number this run "
+                "reports is held out."
+            )
 
     def setup_seed(self, seed: int):
         random.seed(seed)
@@ -1613,6 +1641,7 @@ class KnowledgeDistiller:
         self,
         split: str,
         results: dict[str, Any],
+        final: bool = False,
     ) -> None:
         primary_metrics = {
             "classification": "f1",
@@ -1653,11 +1682,12 @@ class KnowledgeDistiller:
                 )
             )
 
-        title = (
-            f"VALIDATION - EPOCH {self.current_epoch + 1}"
-            if split == "validation"
-            else "FINAL TEST"
-        )
+        if split == "validation":
+            title = f"VALIDATION - EPOCH {self.current_epoch + 1}"
+        elif final:
+            title = "FINAL TEST"
+        else:
+            title = f"TEST - EPOCH {self.current_epoch + 1}"
         if split == "test" and results.get("pair_threshold_source") == "test":
             title += "  (pair thresholds calibrated on the test split)"
         headers = ("Family", "Benchmark", "Primary metric", "Score", "Details")
@@ -1686,7 +1716,7 @@ class KnowledgeDistiller:
 
         return {key: group["score"] for key, group in averages.items()}
 
-    def evaluate(self, split: str = "validation"):
+    def evaluate(self, split: str = "validation", final: bool = False):
         if split not in {"validation", "test"}:
             raise ValueError("split must be 'validation' or 'test'")
         threshold_source = getattr(self.config, "pair_threshold_source", "validation")
@@ -1739,7 +1769,7 @@ class KnowledgeDistiller:
             # held-out pair score from a self-calibrated one.
             "pair_threshold_source": "test" if thresholds is None else "validation",
         }
-        results["summary"] = self.print_evaluation_table(split, results)
+        results["summary"] = self.print_evaluation_table(split, results, final=final)
         return results
 
     def log_step_records(self, records: list[dict]):
@@ -1965,16 +1995,11 @@ class KnowledgeDistiller:
                 print(f"Evaluation after Stage2 Epoch {epoch + 1}")
                 print("=" * 60)
 
+                stage2_split = (
+                    "test" if cfg.evaluate_test_each_epoch else "validation"
+                )
                 try:
-                    # from src.evaluation.evaluation_model_define import (
-                    #     eval_classification_task,
-                    #     eval_pair_task,
-                    #     eval_sts_task,
-                    #     test_cls_tasks,
-                    #     test_pair_tasks,
-                    #     test_sts_tasks
-                    # )
-                    validation_results = self.evaluate("validation")
+                    validation_results = self.evaluate(stage2_split)
                 except Exception as e:
                     print(f"Warning: Evaluation failed with error: {e}")
                     print("Continuing training...")
@@ -1984,7 +2009,7 @@ class KnowledgeDistiller:
                     {
                         "stage": 2,
                         "train": self.last_epoch_metrics,
-                        "validation": validation_results,
+                        stage2_split: validation_results,
                     }
                 )
 
@@ -1997,7 +2022,7 @@ class KnowledgeDistiller:
 
             self.save_checkpoint(cfg.epochs_stage2 - 1, {"loss": avg_loss})
             try:
-                test_results = self.evaluate("test")
+                test_results = self.evaluate("test", final=True)
                 if (
                     getattr(self, "use_wandb", False)
                     and WANDB_AVAILABLE
@@ -2027,9 +2052,12 @@ class KnowledgeDistiller:
             print(f"Learning rate: {cfg.learning_rate}")
             print("=" * 60 + "\n")
 
+            eval_split = "test" if cfg.evaluate_test_each_epoch else "validation"
+            epoch_results = None
+
             for epoch in range(cfg.epochs):
                 avg_loss = self.train_epoch(epoch)
-                validation_results = None
+                epoch_results = None
 
                 print("\n" + "=" * 60)
                 print(f"Evaluation after Epoch {epoch + 1}")
@@ -2037,25 +2065,27 @@ class KnowledgeDistiller:
 
                 if (epoch + 1) % cfg.eval_every == 0:
                     try:
-                        validation_results = self.evaluate("validation")
+                        epoch_results = self.evaluate(eval_split)
                         if (
                             getattr(self, "use_wandb", False)
                             and WANDB_AVAILABLE
-                            and validation_results is not None
+                            and epoch_results is not None
                         ):
                             wandb.log(
-                                self._flatten_metrics("validation", validation_results),
+                                self._flatten_metrics(eval_split, epoch_results),
                                 step=self.global_step,
                             )
                     except Exception as e:
-                        print(f"Warning: Validation failed with error: {e}")
+                        print(f"Warning: {eval_split} evaluation failed with error: {e}")
                         print("Continuing training...")
 
                 print("=" * 60 + "\n")
+                # Keyed by the split that actually ran, so a reader of metrics.jsonl
+                # never has to guess which data a per-epoch number came from.
                 self.log_experiment_record(
                     {
                         "train": self.last_epoch_metrics,
-                        "validation": validation_results,
+                        eval_split: epoch_results,
                     }
                 )
 
@@ -2077,7 +2107,19 @@ class KnowledgeDistiller:
 
             self.save_checkpoint(cfg.epochs - 1, {"loss": avg_loss})
             try:
-                test_results = self.evaluate("test")
+                # The last epoch already scored the test split under this setting, on
+                # the same weights: re-running it would only burn a second pass.
+                reusable = (
+                    eval_split == "test"
+                    and epoch_results is not None
+                    and cfg.epochs % cfg.eval_every == 0
+                )
+                if reusable:
+                    print("Reusing the final epoch's test evaluation")
+                    test_results = epoch_results
+                    self.print_evaluation_table("test", test_results, final=True)
+                else:
+                    test_results = self.evaluate("test", final=True)
                 if (
                     getattr(self, "use_wandb", False)
                     and WANDB_AVAILABLE
