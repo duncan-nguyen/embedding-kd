@@ -150,6 +150,16 @@ def parse_args():
         help='GeoODE-KD: pooling applied to every student layer'
     )
     parser.add_argument(
+        '--pair_threshold_source',
+        choices=['validation', 'test'],
+        default=None,
+        help=(
+            'Split used to sweep the pair-classification threshold before the final '
+            'test evaluation. "test" calibrates on the test split itself, so its pair '
+            'accuracy/F1 are an upper bound, not a held-out score'
+        )
+    )
+    parser.add_argument(
         '--depth_log_every',
         type=int,
         default=None,
@@ -273,6 +283,8 @@ def get_config(method: str, args):
         config.alpha_dtw = args.alpha_dtw
     if args.task_type is not None:
         config.task_type = args.task_type
+    if args.pair_threshold_source is not None:
+        config.pair_threshold_source = args.pair_threshold_source
     if args.depth_log_every is not None:
         if args.depth_log_every < 0:
             raise ValueError("--depth_log_every must be zero or positive")

@@ -309,9 +309,22 @@ def test_pca_projection_keeps_the_dominant_directions():
     assert float(residual.abs().max()) < 1e-2
 
 
-def test_pca_projection_rejects_an_undersized_corpus():
-    with pytest.raises(ValueError, match="cannot fit"):
-        fit_pca_projection(torch.randn(4, 32), out_dim=8)
+def test_pca_projection_completes_an_undersized_corpus():
+    """A debug-sized corpus spans too few directions; the map must still be valid."""
+    generator = torch.Generator().manual_seed(52)
+    embeddings = torch.randn(4, 32, generator=generator)
+
+    projection, mean = fit_pca_projection(embeddings, out_dim=8)
+    targets = project_teacher_embeddings(embeddings, projection, mean=mean)
+
+    assert projection.shape == (32, 8)
+    assert torch.allclose(projection.T @ projection, torch.eye(8), atol=1e-5)
+    assert torch.allclose(targets.norm(dim=-1), torch.ones(4), atol=1e-5)
+
+
+def test_pca_projection_rejects_a_non_positive_dimension():
+    with pytest.raises(ValueError, match="out_dim must be positive"):
+        fit_pca_projection(torch.randn(16, 32), out_dim=0)
 
 
 def _report(criterion, states, teacher):

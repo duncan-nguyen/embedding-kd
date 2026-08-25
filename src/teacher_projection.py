@@ -31,6 +31,12 @@ def fit_pca_projection(
         ``(P, mean)`` where ``P`` is ``[d_T, out_dim]`` with orthonormal columns and
         ``mean`` is ``[d_T]``. When ``out_dim >= d_T`` the map is the identity, which
         is the equal-dimension case called out in the paper.
+
+    A corpus with fewer rows than ``out_dim`` spans too few directions to fill the
+    map. Rather than refusing (small debug corpora are a normal thing to run), the
+    principal directions it does span are kept and the remaining columns are filled
+    with a deterministic orthonormal complement, so the map stays a well-defined
+    isometry onto the student dimension.
     """
     if embeddings.dim() != 2:
         raise ValueError(
@@ -46,15 +52,22 @@ def fit_pca_projection(
     if out_dim >= teacher_dim:
         return torch.eye(teacher_dim, dtype=torch.float32), mean
 
-    if n_rows < out_dim:
-        raise ValueError(
-            f"cannot fit a {out_dim}-dimensional PCA map from {n_rows} cached embeddings"
-        )
-
     centered = matrix - mean if center else matrix
     # Right singular vectors of the (centered) data are the principal directions.
     _, _, vh = torch.linalg.svd(centered, full_matrices=False)
-    projection = vh[:out_dim].transpose(0, 1).contiguous()  # [d_T, out_dim]
+    principal = vh[:out_dim]  # [min(out_dim, rank), d_T]
+
+    if principal.shape[0] < out_dim:
+        # QR fills the deficit: it orthonormalises left to right, so the principal
+        # directions stay first and the identity columns supply the complement.
+        stacked = torch.cat(
+            [principal.transpose(0, 1), torch.eye(teacher_dim, dtype=matrix.dtype)],
+            dim=1,
+        )
+        completed, _ = torch.linalg.qr(stacked)
+        projection = completed[:, :out_dim].contiguous()
+    else:
+        projection = principal.transpose(0, 1).contiguous()  # [d_T, out_dim]
     return projection, mean
 
 

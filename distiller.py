@@ -490,17 +490,24 @@ class KnowledgeDistiller:
                 teacher_cls_list = self._project_teacher_targets(teacher_cls_list)
             elif self.depth_log_every > 0:
                 # Diagnostics only: the training targets stay in the teacher space,
-                # but the depth profile has to be measured in the student's.
-                self._depth_projection, _ = fit_pca_projection(
-                    teacher_cls_list,
-                    out_dim=self.model_student.config.hidden_size,
-                    center=True,
-                )
-                print(
-                    "Fitted a diagnostics-only PCA teacher projection "
-                    f"{teacher_cls_list.shape[-1]} -> "
-                    f"{self.model_student.config.hidden_size}"
-                )
+                # but the depth profile has to be measured in the student's. A
+                # diagnostic must never take the training run down with it, so a
+                # failure here disables the diagnostic instead of propagating.
+                try:
+                    self._depth_projection, _ = fit_pca_projection(
+                        teacher_cls_list,
+                        out_dim=self.model_student.config.hidden_size,
+                        center=True,
+                    )
+                except Exception as error:  # noqa: BLE001
+                    self.depth_log_every = 0
+                    print(f"Depth diagnostics disabled: {error}")
+                else:
+                    print(
+                        "Fitted a diagnostics-only PCA teacher projection "
+                        f"{teacher_cls_list.shape[-1]} -> "
+                        f"{self.model_student.config.hidden_size}"
+                    )
 
             self.teacher_cls_all = teacher_cls_list
 
@@ -1651,6 +1658,8 @@ class KnowledgeDistiller:
             if split == "validation"
             else "FINAL TEST"
         )
+        if split == "test" and results.get("pair_threshold_source") == "test":
+            title += "  (pair thresholds calibrated on the test split)"
         headers = ("Family", "Benchmark", "Primary metric", "Score", "Details")
         widths = [
             max([len(headers[index]), *(len(row[index]) for row in rows)])
@@ -1680,6 +1689,12 @@ class KnowledgeDistiller:
     def evaluate(self, split: str = "validation"):
         if split not in {"validation", "test"}:
             raise ValueError("split must be 'validation' or 'test'")
+        threshold_source = getattr(self.config, "pair_threshold_source", "validation")
+        if threshold_source not in {"validation", "test"}:
+            raise ValueError(
+                f"Unsupported pair_threshold_source={threshold_source!r}; "
+                "expected 'validation' or 'test'"
+            )
         if split == "validation":
             classification_tasks = eval_cls_tasks
             pair_tasks = eval_pair_tasks
@@ -1689,11 +1704,19 @@ class KnowledgeDistiller:
             classification_tasks = test_cls_tasks
             pair_tasks = test_pair_tasks
             sts_tasks = test_sts_tasks
-            thresholds = getattr(self, "pair_validation_thresholds", None)
-            if thresholds is None:
-                raise RuntimeError(
-                    "Pair test evaluation requires thresholds selected on validation data"
-                )
+            if threshold_source == "test":
+                # Threshold swept on the same split it is scored on. The pair
+                # accuracy/F1/precision/recall then read as an upper bound, not a
+                # held-out estimate; average_precision is unaffected either way.
+                thresholds = None
+            else:
+                thresholds = getattr(self, "pair_validation_thresholds", None)
+                if thresholds is None:
+                    raise RuntimeError(
+                        "Pair test evaluation requires thresholds selected on "
+                        "validation data. Run validation first, or set "
+                        "pair_threshold_source='test' to calibrate on the test split."
+                    )
 
         student_model = self.model_student
         classification = eval_classification_task(
@@ -1712,6 +1735,9 @@ class KnowledgeDistiller:
             "classification": classification,
             "pair": pair,
             "sts": sts,
+            # Recorded per evaluation so a later reader of metrics.jsonl can tell a
+            # held-out pair score from a self-calibrated one.
+            "pair_threshold_source": "test" if thresholds is None else "validation",
         }
         results["summary"] = self.print_evaluation_table(split, results)
         return results

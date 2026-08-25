@@ -36,6 +36,11 @@ class BaseConfig:
     # embedding per example, so the base default is off.
     depth_log_every = 0
 
+    # Where the pair-classification decision threshold is swept. "validation" keeps
+    # the test score held out; "test" sweeps it on the test split itself, which turns
+    # the pair accuracy/F1 into an upper bound rather than an estimate.
+    pair_threshold_source = "validation"
+
     debug_align = False
     evaluate_test_each_epoch = False
     eval_every = 1

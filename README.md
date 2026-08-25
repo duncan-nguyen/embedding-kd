@@ -116,7 +116,7 @@ python3 main.py --method talas \
   --weights_dir "/content/drive/MyDrive/[ICLR] Embedding KD/weights/qwen3_4b_to_bert_base"
 ```
 
-`test_mdd.ipynb` is the Colab/local Jupyter runner for all five methods using
+`test_mdd.ipynb` is the Colab/local Jupyter runner for all six methods using
 `Qwen/Qwen3-Embedding-4B -> google-bert/bert-base-uncased`. It runs each method
 in a separate process and writes per-method logs, checkpoints, comparison tables
 and figures to Google Drive (or `runs/` outside Colab).
@@ -134,7 +134,37 @@ Training and benchmark metrics are written to:
 ```text
 models/talas/qwen3_4b_to_bert_base/metrics.jsonl     # one record per epoch
 models/talas/qwen3_4b_to_bert_base/step_metrics.jsonl # one record per optimizer step
+models/talas/qwen3_4b_to_bert_base/depth_metrics.jsonl # per-layer profile, sampled
 ```
+
+## Depth Diagnostics
+
+`talas` and `geoode` additionally sample a per-layer profile every
+`--depth_log_every` steps (default 50, `0` disables) and append it to
+`depth_metrics.jsonl`. A compact table is printed at the end of every epoch. Both
+methods are measured with the same parameter-free probe, so their profiles are
+directly comparable — which is the point, since GeoODE-KD's central claim is
+about how the depth profile differs from static multi-layer anchoring.
+
+Each record holds, for one batch: teacher cosine, relational (Gram) gap and
+energy at every depth; the ODE consistency residual, the prescribed step size
+`|dt*F|`, the realized step size `|dz|` and their direction alignment at every
+transition; plus counts of depths where a curve moves the wrong way. The last
+group matters most for reading a run: the residual alone is small whenever the
+layers barely move, and only `|dz|` next to `|dt*F|` and the alignment separate
+"follows the teacher's direction" from "ignores a negligible field".
+
+After training, turn the JSONL into figures and a summary table:
+
+```bash
+python3 scripts/plot_depth_diagnostics.py runs/<stamp>/geoode runs/<stamp>/talas
+```
+
+Passing several runs (or one parent directory) overlays their final epochs into
+`comparison_depth_*.png`; each run also gets its own per-epoch curves,
+`*_depth_progress.png` over training steps, `*_loss_components.png`, plus
+`depth_summary.csv` and `depth_curves.csv`. Cell 8 of `test_mdd.ipynb` runs this
+step and displays the figures inline.
 
 Validation is evaluated and printed after every epoch. Test is evaluated and
 printed once after training. The Colab notebook exports the two splits
@@ -162,6 +192,37 @@ rm cache/talas/qwen3_4b_bert_base_teacher_train.pt
 
 Then rerun training. A cache whose row count does not match the corpus is
 rejected at startup rather than silently misaligned.
+
+## Evaluation
+
+All three families score frozen student embeddings (CLS pooling), and each handles
+calibration differently:
+
+| Family | Benchmarks | How a score is produced |
+| --- | --- | --- |
+| Classification | Banking77, Emotion, Tweet | a logistic-regression probe is fitted on that benchmark's *train* split and scored on the eval split (accuracy, macro-F1) |
+| Pair | MRPC, SciTail, WiC | cosine similarity mapped to `[0, 1]`, then a **decision threshold** turns it into a label (accuracy, F1, precision, recall, average precision) |
+| STS | SICK, STS12, STS-B | cosine similarity against gold scores, Spearman correlation |
+
+Validation runs after every `--eval_every` epochs; test runs once, after training.
+
+The pair threshold is the only quantity carried between splits. By default it is
+swept over 200 candidates on the validation split and reused unchanged on test, so
+the test score stays held out; a test evaluation with no preceding validation is
+refused rather than silently calibrated. To sweep it on the test split instead:
+
+```bash
+python3 main.py --method geoode --pair_threshold_source test
+```
+
+Then the pair accuracy/F1/precision/recall become an **upper bound** rather than a
+held-out estimate, since the threshold is chosen on the labels being scored.
+`average_precision` (the primary pair metric in the summary table) is
+threshold-free and unaffected either way, as are the classification and STS
+families. Runs using it are marked in the printed table and record
+`"pair_threshold_source": "test"` in `metrics.jsonl`. It also removes test's
+dependency on a validation pass, so it can be combined with a large
+`--eval_every` to skip per-epoch validation entirely.
 
 ## Benchmarks
 
