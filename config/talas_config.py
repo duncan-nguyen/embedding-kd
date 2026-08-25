@@ -32,6 +32,11 @@ class TALASConfig(BaseConfig):
     normalize_cache = True  
     cache_dtype = "float32"
     
+    # Measured with the same probe as GeoODE-KD so the two depth profiles are
+    # directly comparable; TALAS is the static multi-layer baseline the paper's
+    # first hypothesis is stated against.
+    depth_log_every = 50
+
     save_dir = "checkpoints/talas"
     
     def __init__(self, **kwargs):

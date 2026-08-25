@@ -51,14 +51,26 @@ under `config/`, which supplies the defaults that the CLI flags then override:
 | `--method` | Config | Objective |
 | --- | --- | --- |
 | `talas` | `config/talas_config.py` | Teacher-anchor KD on cached teacher embeddings, with a structural term and SAM |
+| `geoode` | `config/geoode_config.py` | GeoODE-KD: student layers trained as Euler steps of a teacher-guided flow on the hypersphere |
 | `cdm` | `config/cdm_config.py` | Contextual dynamic mapping across the two tokenizers |
 | `dskd` | `config/dskd_config.py` | Dual-space KD with a learned projection |
 | `emo` | `config/emo_config.py` | Optimal-transport embedding distillation |
 | `stella` | `config/stella_config.py` | Stella multi-dimension student heads |
 
-`talas` caches the teacher's sentence embeddings once (`cache_path`) and frees
-the teacher model afterwards; the other methods run the teacher alongside the
-student every step.
+`talas` and `geoode` cache the teacher's sentence embeddings once (`cache_path`)
+and free the teacher model afterwards; the other methods run the teacher
+alongside the student every step.
+
+`geoode` implements `docs/ode_embedding_kd.pdf`. It reduces the cached teacher
+embeddings to the student dimension with a PCA map fitted on the cache itself
+(saved as `teacher_projection.pt` next to the checkpoints), then supervises each
+Transformer layer as one Riemannian Euler step of a teacher-conditioned flow
+instead of pushing every layer at the final teacher embedding. Its own flags are
+`--alpha`/`--beta` (the semantic and relational parts of the energy),
+`--lambda_end`/`--lambda_dyn`/`--lambda_ctr` (the three loss weights),
+`--guidance_schedule`/`--guidance_power` (the depth schedule s(t)) and
+`--student_pooling`. Training adds no parameters and inference is the plain
+student encoder.
 
 Training is single-process. Two visible CUDA devices place the student on
 `cuda:0` and the teacher on `cuda:1`; one device puts both on `cuda:0`.
@@ -73,7 +85,8 @@ bash scripts/train_talas.sh
 ```
 
 One script per method lives in `scripts/` (`train_talas.sh`, `train_cdm.sh`,
-`train_dskd.sh`, `train_emo.sh`, `train_stella.sh`, plus `.ps1` equivalents).
+`train_dskd.sh`, `train_emo.sh`, `train_stella.sh`, `train_geoode.sh`, plus
+`.ps1` equivalents).
 
 Or run the Python entry point directly:
 
@@ -103,8 +116,10 @@ python3 main.py --method talas \
   --weights_dir "/content/drive/MyDrive/[ICLR] Embedding KD/weights/qwen3_4b_to_bert_base"
 ```
 
-`test_mdd.ipynb` is the Colab runner: it trains several teacher/student pairs
-sequentially and writes per-pair logs, tables and figures to Google Drive.
+`test_mdd.ipynb` is the Colab/local Jupyter runner for all five methods using
+`Qwen/Qwen3-Embedding-4B -> google-bert/bert-base-uncased`. It runs each method
+in a separate process and writes per-method logs, checkpoints, comparison tables
+and figures to Google Drive (or `runs/` outside Colab).
 
 ## Outputs
 

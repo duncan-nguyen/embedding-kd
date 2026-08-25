@@ -32,6 +32,10 @@ class BaseConfig:
     save_every = 1
     save_best = True
     
+    # Per-depth diagnostics are only defined for methods with a cached teacher
+    # embedding per example, so the base default is off.
+    depth_log_every = 0
+
     debug_align = False
     evaluate_test_each_epoch = False
     eval_every = 1

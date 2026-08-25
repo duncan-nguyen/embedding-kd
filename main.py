@@ -6,6 +6,7 @@ from config import (
     CDMConfig,
     DSKDConfig,
     EMOConfig,
+    GeoODEConfig,
     StellaConfig,
     TALASConfig,
 )
@@ -21,7 +22,7 @@ def parse_args():
         '--method',
         type=str,
         default='cdm',
-        choices=['cdm', 'dskd', 'emo', 'stella', 'talas'],
+        choices=['cdm', 'dskd', 'emo', 'stella', 'talas', 'geoode'],
         help='Distillation method to use'
     )
     
@@ -99,6 +100,60 @@ def parse_args():
         type=float,
         default=None,
         help='DTW KD loss weight'
+    )
+    parser.add_argument(
+        '--alpha',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the instance-level semantic energy'
+    )
+    parser.add_argument(
+        '--beta',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the relational geometric energy'
+    )
+    parser.add_argument(
+        '--lambda_end',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the endpoint distillation loss'
+    )
+    parser.add_argument(
+        '--lambda_dyn',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the ODE consistency loss'
+    )
+    parser.add_argument(
+        '--lambda_ctr',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the contrastive regularizer'
+    )
+    parser.add_argument(
+        '--guidance_schedule',
+        choices=['linear', 'power', 'constant'],
+        default=None,
+        help='GeoODE-KD: depth-dependent guidance schedule s(t)'
+    )
+    parser.add_argument(
+        '--guidance_power',
+        type=float,
+        default=None,
+        help='GeoODE-KD: exponent p of the power guidance schedule s(t)=t^p'
+    )
+    parser.add_argument(
+        '--student_pooling',
+        choices=['cls', 'mean'],
+        default=None,
+        help='GeoODE-KD: pooling applied to every student layer'
+    )
+    parser.add_argument(
+        '--depth_log_every',
+        type=int,
+        default=None,
+        help='Sample per-depth diagnostics every N steps (0 disables; talas/geoode only)'
     )
     parser.add_argument(
         '--task_type',
@@ -182,6 +237,8 @@ def get_config(method: str, args):
         config = StellaConfig()
     elif method == 'talas':
         config = TALASConfig()
+    elif method == 'geoode':
+        config = GeoODEConfig()
     else:
         config = BaseConfig()
     
@@ -216,6 +273,27 @@ def get_config(method: str, args):
         config.alpha_dtw = args.alpha_dtw
     if args.task_type is not None:
         config.task_type = args.task_type
+    if args.depth_log_every is not None:
+        if args.depth_log_every < 0:
+            raise ValueError("--depth_log_every must be zero or positive")
+        config.depth_log_every = args.depth_log_every
+
+    for name in (
+        'alpha',
+        'beta',
+        'lambda_end',
+        'lambda_dyn',
+        'lambda_ctr',
+        'guidance_schedule',
+        'guidance_power',
+        'student_pooling',
+    ):
+        value = getattr(args, name, None)
+        if value is None:
+            continue
+        if not hasattr(config, name):
+            raise ValueError(f"--{name} is only supported by the geoode method")
+        setattr(config, name, value)
     
     if args.save_dir is not None:
         config.save_dir = args.save_dir

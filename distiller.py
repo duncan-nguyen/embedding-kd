@@ -39,6 +39,7 @@ from src.cache_teacher import cache_teacher_embeddings, load_cached_embeddings
 from src.criterions.contextual_dynamic_mapping import ContextualDynamicMapping
 from src.criterions.dual_space_kd import DualSpaceKD
 from src.criterions.emo_embedding_distillation import EMODistillation
+from src.criterions.geoode_kd import GeoODEKD
 from src.criterions.stella_distillation import (
     StellaModel,
     stella_stage1_loss,
@@ -64,7 +65,8 @@ from src.evaluation.evaluation_automodel import (
     test_sts_tasks,
 )
 from src.loss import info_nce
-from src.pooling import last_token_pool
+from src.pooling import last_token_pool, mean_pooling
+from src.teacher_projection import fit_pca_projection, project_teacher_embeddings
 
 # The distillation corpus (data/train_set/merged_3_data_5k_each.csv) is drawn from
 # EMOTION, WiC and STS-B, so those three benchmarks are in-distribution and the
@@ -138,6 +140,12 @@ class KnowledgeDistiller:
         self.current_epoch = 0
         self.current_step = 0
         self._saved_checkpoint_epochs = set()
+        # Per-depth diagnostics are sampled during the epoch and flushed once at the
+        # end of it, like step_records: one file write per epoch, not one per step.
+        self._depth_records: list[dict] = []
+        self._depth_projection = None
+        self.depth_probe = None
+        self.depth_log_every = max(0, int(getattr(config, "depth_log_every", 0)))
         # Set before setup_training, which fills it in for the methods that need it.
         self.proj_s2t = None
         self.setup_seed(config.seed)
@@ -189,8 +197,54 @@ class KnowledgeDistiller:
             )
             self.scheduler = self._build_scheduler()
             print("EMO criterion initialized and added to optimizer")
+        elif config.distill_method == "geoode":
+            # GeoODE-KD holds no parameters: the vector field is analytic in the
+            # cached teacher targets, so nothing is added to the optimizer and the
+            # deployed student is the unmodified encoder.
+            self.criterion = GeoODEKD(
+                alpha=config.alpha,
+                beta=config.beta,
+                lambda_end=config.lambda_end,
+                lambda_dyn=config.lambda_dyn,
+                lambda_ctr=config.lambda_ctr,
+                contrastive_temperature=config.contrastive_temperature,
+                guidance_schedule=config.guidance_schedule,
+                guidance_power=config.guidance_power,
+                pooling=config.student_pooling,
+                include_embedding_layer=config.include_embedding_layer,
+                stop_grad_target=config.stop_grad_target,
+                eps_norm=config.eps_norm,
+            ).to(self.device_s)
+            self.depth_probe = self.criterion
+            print(
+                "GeoODE-KD criterion initialized: "
+                f"alpha={config.alpha}, beta={config.beta}, "
+                f"lambda_end={config.lambda_end}, lambda_dyn={config.lambda_dyn}, "
+                f"lambda_ctr={config.lambda_ctr}, schedule={config.guidance_schedule}"
+            )
         else:
             self.criterion = None
+
+        # The depth diagnostics are parameter-free geometry, so any method with
+        # per-layer hidden states and a batch teacher embedding can be measured with
+        # the same probe. TALAS is measured too: hypothesis 1 of the paper is a
+        # comparison against exactly that kind of static multi-layer anchoring, and
+        # it cannot be checked from a GeoODE-only run.
+        if self.depth_probe is None and self.depth_log_every > 0:
+            if config.distill_method == "talas":
+                self.depth_probe = GeoODEKD(
+                    alpha=1.0,
+                    beta=1.0,
+                    pooling=getattr(config, "student_pooling", "cls"),
+                    eps_norm=getattr(config, "eps_norm", 1e-12),
+                ).to(self.device_s)
+                print("Depth diagnostics probe enabled (alpha=1, beta=1)")
+            else:
+                # Online-teacher methods have no cached corpus to fit P_T on.
+                print(
+                    f"Depth diagnostics are not available for method "
+                    f"{config.distill_method!r}; skipping"
+                )
 
         # Metrics tracking
         self.step_times = []
@@ -381,8 +435,9 @@ class KnowledgeDistiller:
                     self.device_s
                 )
 
-        # TALAS uses cached teacher embeddings
-        if cfg.distill_method == "talas":
+        # TALAS and GeoODE-KD both train against cached teacher embeddings only:
+        # the teacher is run once, offline, and never during student optimization.
+        if cfg.distill_method in ("talas", "geoode"):
             cache_path = Path(cfg.cache_path)
 
             # Check if cache exists
@@ -431,6 +486,22 @@ class KnowledgeDistiller:
                     f"rows but training data has {len(df)} rows. Remove or regenerate {cache_path}."
                 )
 
+            if cfg.distill_method == "geoode":
+                teacher_cls_list = self._project_teacher_targets(teacher_cls_list)
+            elif self.depth_log_every > 0:
+                # Diagnostics only: the training targets stay in the teacher space,
+                # but the depth profile has to be measured in the student's.
+                self._depth_projection, _ = fit_pca_projection(
+                    teacher_cls_list,
+                    out_dim=self.model_student.config.hidden_size,
+                    center=True,
+                )
+                print(
+                    "Fitted a diagnostics-only PCA teacher projection "
+                    f"{teacher_cls_list.shape[-1]} -> "
+                    f"{self.model_student.config.hidden_size}"
+                )
+
             self.teacher_cls_all = teacher_cls_list
 
             # Free teacher model to save GPU memory (teacher not needed after caching)
@@ -468,6 +539,109 @@ class KnowledgeDistiller:
         print(f"Training samples: {len(self.train_ds)}")
         print(f"Training batches: {len(self.train_loader)}")
         print("Done setup_data")
+
+    def _project_teacher_targets(self, teacher_cls: torch.Tensor) -> torch.Tensor:
+        """Fit and apply P_T (Eq. 8), mapping cached teacher embeddings to d_S.
+
+        Algorithm 1 does this once, before the training loop, so every step reads
+        targets that already live on the student's hypersphere. The map is fitted on
+        the cached training embeddings only and saved for reproducibility; it is not
+        needed at inference time.
+        """
+        cfg = self.config
+        student_dim = self.model_student.config.hidden_size
+        teacher_dim = teacher_cls.shape[-1]
+
+        projection, mean = fit_pca_projection(
+            teacher_cls,
+            out_dim=student_dim,
+            center=cfg.pca_center_fit,
+        )
+        targets = project_teacher_embeddings(
+            teacher_cls,
+            projection,
+            mean=mean,
+            subtract_mean=cfg.pca_subtract_mean,
+            eps=cfg.eps_norm,
+        )
+
+        if teacher_dim <= student_dim:
+            print(
+                f"Teacher dim {teacher_dim} <= student dim {student_dim}: "
+                "P_T is the identity, targets are only re-normalized"
+            )
+        else:
+            cached = teacher_cls.to(torch.float32)
+            explained = float(
+                (cached @ projection).pow(2).sum() / cached.pow(2).sum().clamp(min=1e-12)
+            )
+            print(
+                f"Fitted PCA teacher projection {teacher_dim} -> {student_dim} "
+                f"(retains {explained:.1%} of cached embedding energy)"
+            )
+
+        if cfg.save_dir:
+            os.makedirs(cfg.save_dir, exist_ok=True)
+            projection_path = os.path.join(cfg.save_dir, "teacher_projection.pt")
+            torch.save(
+                {
+                    "projection": projection,
+                    "mean": mean,
+                    "teacher_model_name": cfg.teacher_model_name,
+                    "student_dim": student_dim,
+                    "teacher_dim": teacher_dim,
+                    "pca_center_fit": cfg.pca_center_fit,
+                    "pca_subtract_mean": cfg.pca_subtract_mean,
+                },
+                projection_path,
+            )
+            print(f"Teacher projection saved: {projection_path}")
+
+        return targets
+
+    def _should_log_depth(self, step: int) -> bool:
+        if self.depth_log_every <= 0 or self.depth_probe is None:
+            return False
+        return step == 0 or (step + 1) % self.depth_log_every == 0
+
+    def _depth_teacher_targets(self, teacher_cls: torch.Tensor) -> torch.Tensor:
+        """Teacher targets on the student's hypersphere, for diagnostics."""
+        targets = teacher_cls.float()
+        projection = self._depth_projection
+        if projection is not None:
+            if targets.shape[-1] != projection.shape[0]:
+                raise ValueError(
+                    f"depth projection expects {projection.shape[0]}-dimensional "
+                    f"teacher embeddings but the batch carries {targets.shape[-1]}; "
+                    "the projection is fitted only for methods whose training targets "
+                    "stay in the teacher space"
+                )
+            targets = targets @ projection.to(targets.device, targets.dtype)
+        return F.normalize(targets, p=2, dim=-1, eps=1e-12)
+
+    @torch.no_grad()
+    def _record_depth(
+        self,
+        hidden_states,
+        attention_mask: torch.Tensor | None,
+        teacher_cls: torch.Tensor,
+        batch_size: int,
+    ) -> None:
+        """Sample one per-depth report and buffer it for the end of the epoch."""
+        states = self.depth_probe.layer_states(hidden_states, attention_mask)
+        report = self.depth_probe.depth_report(
+            states, self._depth_teacher_targets(teacher_cls)
+        )
+        self._depth_records.append(
+            {
+                "method": self.config.distill_method,
+                "epoch": self.current_epoch + 1,
+                "global_step": self.global_step,
+                "step": self.current_step,
+                "batch_size": int(batch_size),
+                **report,
+            }
+        )
 
     def _build_scheduler(self):
         cfg = self.config
@@ -775,9 +949,89 @@ class KnowledgeDistiller:
             self.scaler.update()
             self.scheduler.step()
 
+            if self._should_log_depth(self.current_step):
+                self._record_depth(
+                    s_out1_2.hidden_states,
+                    batch_s["attention_mask1_stu"],
+                    teacher_cls,
+                    batch_s["input_ids1_stu"].size(0),
+                )
+
             # Clean up
             del s_out1, s_out2, s_out1_2, s_out2_2
             del student_outputs, student_outputs_2
+
+            return loss, metrics
+
+        if method == "geoode":
+            batch_s = {}
+            for k, v in batch.items():
+                if not torch.is_tensor(v):
+                    continue
+                if k.endswith("_stu") or k in ("labels", "teacher_cls"):
+                    batch_s[k] = v.to(self.device_s, non_blocking=True)
+
+            self.optimizer.zero_grad(set_to_none=True)
+
+            with autocast("cuda", enabled=torch.cuda.is_available()):
+                teacher_cls = batch_s["teacher_cls"]
+                input_ids = batch_s["input_ids1_stu"]
+                attention_mask = batch_s["attention_mask1_stu"]
+
+                s_out = self.model_student(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
+                    return_dict=True,
+                )
+
+                # Eq. (37) needs a second view of the *same* sentence. The default
+                # runs the encoder twice so the two views differ only by dropout;
+                # "pair" instead reuses the paired sentence already in the batch.
+                second_view = None
+                if cfg.lambda_ctr > 0:
+                    if cfg.contrastive_view == "dropout":
+                        view_ids, view_mask = input_ids, attention_mask
+                    elif cfg.contrastive_view == "pair":
+                        view_ids = batch_s["input_ids2_stu"]
+                        view_mask = batch_s["attention_mask2_stu"]
+                    else:
+                        raise ValueError(
+                            f"Unsupported contrastive_view={cfg.contrastive_view!r}; "
+                            "expected 'dropout' or 'pair'"
+                        )
+                    s_out_view = self.model_student(
+                        input_ids=view_ids,
+                        attention_mask=view_mask,
+                        output_hidden_states=False,
+                        return_dict=True,
+                    )
+                    view_last = s_out_view.last_hidden_state
+                    if cfg.student_pooling == "mean":
+                        second_view = mean_pooling(view_last, view_mask)
+                    else:
+                        second_view = view_last[:, 0, :]
+
+                loss, metrics = self.criterion(
+                    hidden_states=s_out.hidden_states,
+                    teacher=teacher_cls,
+                    attention_mask=attention_mask,
+                    second_view=second_view,
+                )
+                loss = loss.float()
+
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.scheduler.step()
+
+            if self._should_log_depth(self.current_step):
+                self._record_depth(
+                    s_out.hidden_states,
+                    attention_mask,
+                    teacher_cls,
+                    input_ids.size(0),
+                )
 
             return loss, metrics
 
@@ -1167,6 +1421,7 @@ class KnowledgeDistiller:
 
         print(f"Done train_epoch {epoch + 1}")
         self.log_step_records(step_records)
+        depth_summary = self.log_depth_records()
         epoch_means = {
             key: value / max(1, n_items) for key, value in metric_totals.items()
         }
@@ -1191,6 +1446,18 @@ class KnowledgeDistiller:
             "peak_memory_mb": peak_memory_mb,
             **epoch_means,
         }
+        if depth_summary is not None:
+            self.last_epoch_metrics["depth"] = depth_summary
+            if getattr(self, "use_wandb", False) and WANDB_AVAILABLE:
+                payload = self._flatten_metrics("depth", depth_summary)
+                payload.update(
+                    {
+                        f"depth/{key}_l{index + 1}": value
+                        for key in ("cos_teacher", "gram_gap", "energy")
+                        for index, value in enumerate(depth_summary[key])
+                    }
+                )
+                wandb.log(payload, step=self.global_step)
         return avg_loss
 
     def save_checkpoint(self, epoch: int, metrics: dict | None = None):
@@ -1465,6 +1732,121 @@ class KnowledgeDistiller:
                 json.dumps(record, default=float, sort_keys=True) + "\n"
                 for record in records
             )
+
+    def log_depth_records(self) -> dict[str, Any] | None:
+        """Flush the epoch's per-depth samples to `depth_metrics.jsonl` and summarise.
+
+        Kept out of step_metrics.jsonl on purpose: these rows are per-layer curves
+        sampled every `depth_log_every` steps, so they have a different shape and a
+        different cadence from the per-step scalars.
+        """
+        records, self._depth_records = self._depth_records, []
+        if not records:
+            return None
+
+        if self.config.save_dir:
+            os.makedirs(self.config.save_dir, exist_ok=True)
+            path = os.path.join(self.config.save_dir, "depth_metrics.jsonl")
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.writelines(
+                    json.dumps(record, default=float, sort_keys=True) + "\n"
+                    for record in records
+                )
+
+        curves = (
+            "cos_teacher",
+            "gram_gap",
+            "energy",
+            "dyn_residual",
+            "field_norm",
+            "step_norm",
+            "direction_alignment",
+        )
+        skip = {"method", "epoch", "global_step", "step", "batch_size", "layers"}
+        summary: dict[str, Any] = {"samples": len(records)}
+        for key in curves:
+            columns = zip(*(record[key] for record in records))
+            summary[key] = [sum(column) / len(records) for column in columns]
+        for key, value in records[0].items():
+            if key in skip or key in curves or not isinstance(value, (int, float)):
+                continue
+            summary[key] = sum(record[key] for record in records) / len(records)
+
+        self.print_depth_profile(summary)
+        return summary
+
+    @staticmethod
+    def print_depth_profile(summary: dict[str, Any]) -> None:
+        """Print the depth profile the paper's hypotheses are stated over."""
+        headers = (
+            "layer",
+            "cos(teacher)",
+            "gram gap",
+            "energy",
+            "dyn resid",
+            "align",
+            "|dz|",
+            "|dt*F|",
+        )
+        cosines = summary["cos_teacher"]
+        rows = []
+        for index, cosine in enumerate(cosines):
+            transition = index if index < len(summary["dyn_residual"]) else None
+            rows.append(
+                (
+                    str(index + 1),
+                    f"{cosine:.4f}",
+                    f"{summary['gram_gap'][index]:.4f}",
+                    f"{summary['energy'][index]:.4f}",
+                    "-"
+                    if transition is None
+                    else f"{summary['dyn_residual'][transition]:.4f}",
+                    "-"
+                    if transition is None
+                    else f"{summary['direction_alignment'][transition]:+.3f}",
+                    "-"
+                    if transition is None
+                    else f"{summary['step_norm'][transition]:.4f}",
+                    "-"
+                    if transition is None
+                    else f"{summary['field_norm'][transition]:.5f}",
+                )
+            )
+
+        widths = [
+            max([len(headers[i]), *(len(row[i]) for row in rows)])
+            for i in range(len(headers))
+        ]
+        separator = "-+-".join("-" * width for width in widths)
+        print(f"\nDepth profile (mean over {summary['samples']} sampled batches)")
+        print(" | ".join(headers[i].ljust(widths[i]) for i in range(len(headers))))
+        print(separator)
+        for row in rows:
+            print(" | ".join(row[i].ljust(widths[i]) for i in range(len(row))))
+        # The rows are the curves; these are the claims the curves are supposed to
+        # support, so they are printed next to them rather than left to the reader.
+        print(
+            f"cos {summary['cos_first']:.4f} -> {summary['cos_final']:.4f} "
+            f"(gain {summary['cos_gain']:+.4f}, non-monotone at "
+            f"{summary['cos_violations']:.1f}/{len(cosines) - 1} depths, "
+            f"curvature {summary['cos_curvature']:.4f})"
+        )
+        print(
+            f"gram gap {summary['gram_gap_first']:.4f} -> "
+            f"{summary['gram_gap_final']:.4f} "
+            f"(contraction {summary['gram_gap_contraction']:+.4f}, non-monotone at "
+            f"{summary['gram_violations']:.1f}/{len(cosines) - 1} depths)"
+        )
+        print(
+            f"energy {summary['energy_first']:.4f} -> {summary['energy_final']:.4f} "
+            f"(rises at {summary['energy_violations']:.1f}/{len(cosines) - 1} depths; "
+            "Prop. 2 forbids this for the ideal flow)"
+        )
+        print(
+            f"mean alignment {summary['mean_alignment']:+.3f}  "
+            f"anisotropy student {summary['student_anisotropy']:.4f} vs teacher "
+            f"{summary['teacher_anisotropy']:.4f}\n"
+        )
 
     def log_experiment_record(self, record: dict[str, Any]):
         if not self.config.save_dir:
