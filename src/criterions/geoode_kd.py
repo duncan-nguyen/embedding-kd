@@ -133,6 +133,10 @@ class GeoODEKD(nn.Module):
         """Teacher-conditioned potential of Eq. (20).
 
         Returns ``(E, E_sem, E_geo)`` with the two components before their weights.
+
+        Reported in the paper's batch-mean form so the numbers stay comparable across
+        batch sizes; :meth:`vector_field` differentiates ``B`` times this, which is
+        the same flow at a batch-size-independent speed.
         """
         batch = Z.shape[0]
         e_sem = (1.0 - (Z * T).sum(dim=-1)).mean()  # Eq. 17
@@ -141,12 +145,29 @@ class GeoODEKD(nn.Module):
         return self.alpha * e_sem + self.beta * e_geo, e_sem, e_geo
 
     def vector_field(self, Z: torch.Tensor, T: torch.Tensor, t: float) -> torch.Tensor:
-        """F(Z, T, t) of Eqs. (25)-(26): the tangent negative gradient of the energy."""
+        """F(Z, T, t) of Eqs. (25)-(26): the tangent negative gradient of the energy.
+
+        Taken from the *per-sample* energy, i.e. ``B`` times Eq. (20), rather than
+        from the batch mean the paper writes. Eqs. (23)-(25) differentiate a mean, so
+        they carry a ``1/B`` that makes the prescribed step shrink with batch size:
+        at B=32, L=12 one Euler step rotates a unit embedding by 0.15 degrees, two to
+        three orders of magnitude less than the layer's own motion. The consistency
+        loss then measures almost nothing but ``|z^(l+1) - z^(l)|`` and degenerates
+        into "keep consecutive layers equal", which is what a run with the literal
+        Eq. (25) does: teacher cosine stays flat through depth and jumps only in the
+        last two layers, and the update direction anti-correlates with the field
+        across the lower half of the network.
+
+        Multiplying by ``B`` removes that dependence — the semantic dynamics should
+        not have a speed set by an arbitrary batch size — and leaves everything else
+        intact: the direction of the field is unchanged, so this is the same flow at
+        a different time scale, and Propositions 1-2 and Corollary 1 (which already
+        discards the positive constant) hold verbatim. The ratio between the two
+        energy terms is also unchanged, so alpha and beta keep their meaning.
+        """
         batch = Z.shape[0]
         gram_gap = Z @ Z.transpose(0, 1) - T @ T.transpose(0, 1)
-        euclidean = (self.alpha / batch) * T - (4.0 * self.beta / (batch * batch)) * (
-            gram_gap @ Z
-        )
+        euclidean = self.alpha * T - (4.0 * self.beta / batch) * (gram_gap @ Z)
         return self.guidance(t) * self.tangent_project(Z, euclidean)
 
     def euler_step(

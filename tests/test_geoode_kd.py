@@ -351,9 +351,9 @@ def test_depth_report_measures_a_flow_following_trajectory():
     # cannot raise the energy.
     assert report["mean_dyn_residual"] == pytest.approx(0.0, abs=1e-12)
     # Not exactly 1: the retraction bends the realized displacement away from the
-    # tangent field by O(step^2), which is precisely the discretisation error the
-    # alignment curve is meant to expose.
-    assert report["mean_alignment"] == pytest.approx(1.0, abs=1e-4)
+    # tangent field, which is the discretisation error the alignment curve exposes.
+    # test_alignment_error_shrinks_quadratically_with_the_step pins its rate.
+    assert report["mean_alignment"] > 0.99
     assert report["energy_violations"] == 0
     assert report["cos_gain"] > 0
 
@@ -384,9 +384,80 @@ def test_depth_report_separates_step_size_from_direction():
         states.append(criterion.retract(states[-1], 20.0 * dt * field))
 
     report = _report(criterion, states, T)
+    unrelated = _report(criterion, [_sphere(8, 16, seed=81 + i) for i in range(4)], T)
 
-    assert report["mean_alignment"] > 0.9
+    # Still unmistakably the teacher's direction, next to a walk that ignores it...
+    assert report["mean_alignment"] > 0.8
+    assert abs(unrelated["mean_alignment"]) < 0.2
+    # ...and only the two norms say the step was five times too long.
     assert report["mean_step_norm"] > 5 * report["mean_field_norm"]
+
+
+def test_alignment_error_shrinks_quadratically_with_the_step():
+    """The retraction is a first-order approximation, so its error is O(step^2).
+
+    This is what separates "the student is off the flow" from "the integrator is
+    coarse" when reading the alignment curve of a real run.
+    """
+    criterion = _criterion(alpha=1.0, beta=1.0)
+    T = _sphere(8, 16, seed=110)
+
+    deviations = []
+    for num_layers in (8, 16, 32):
+        dt = 1.0 / num_layers
+        states = [_sphere(8, 16, seed=111)]
+        for index in range(num_layers - 1):
+            states.append(criterion.euler_step(states[-1], T, (index + 1) / num_layers, dt))
+        deviations.append(1.0 - _report(criterion, states, T)["mean_alignment"])
+
+    for coarse, fine in itertools.pairwise(deviations):
+        assert fine == pytest.approx(coarse / 4.0, rel=0.25)
+
+
+def test_field_magnitude_does_not_depend_on_batch_size():
+    """The paper's Eqs. (23)-(25) differentiate a batch *mean*, so the prescribed
+    step scales like 1/B. The field is taken from the per-sample energy instead, so
+    a larger batch must not slow the dynamics down."""
+    criterion = _criterion(alpha=1.0, beta=1.0)
+
+    norms = []
+    for batch in (8, 32, 128):
+        Z = _sphere(batch, 16, seed=120)
+        T = _sphere(batch, 16, seed=121)
+        norms.append(float(criterion.vector_field(Z, T, t=1.0).norm(dim=-1).mean()))
+
+    for larger in norms[1:]:
+        assert larger == pytest.approx(norms[0], rel=0.35)
+
+
+def test_instance_field_is_exactly_the_teacher_tangent():
+    """With beta = 0 the field is alpha * Pi_z(tau) for every row, with no batch
+    factor left in it at all."""
+    criterion = _criterion(alpha=1.0, beta=0.0, guidance_schedule="constant")
+    Z = _sphere(6, 16, seed=130)
+    T = _sphere(6, 16, seed=131)
+
+    field = criterion.vector_field(Z, T, t=1.0)
+
+    assert torch.allclose(field, GeoODEKD.tangent_project(Z, T), atol=1e-12)
+
+
+def test_prescribed_step_is_not_negligible_at_paper_settings():
+    """Regression guard for the bug this scaling fixes.
+
+    At B=32, L=12 the literal Eq. (25) prescribes a step of ~2e-3 on a unit sphere
+    -- a 0.15 degree rotation, orders of magnitude below a Transformer layer's own
+    motion -- and the consistency loss collapses into "keep consecutive layers
+    equal". The step has to stay within reach of a real layer update.
+    """
+    criterion = _criterion(alpha=1.0, beta=1.0, guidance_schedule="linear")
+    batch, num_layers = 32, 12
+    Z = _sphere(batch, 768, seed=140)
+    T = _sphere(batch, 768, seed=141)
+
+    step = (1.0 / num_layers) * criterion.vector_field(Z, T, t=1.0)
+
+    assert float(step.norm(dim=-1).mean()) > 0.01
 
 
 def test_depth_report_anisotropy_matches_a_collapsed_batch():
