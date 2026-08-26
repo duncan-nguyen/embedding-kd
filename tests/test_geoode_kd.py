@@ -14,7 +14,11 @@ import pytest
 import torch
 
 from src.criterions.geoode_kd import GeoODEKD
-from src.teacher_projection import fit_pca_projection, project_teacher_embeddings
+from src.teacher_projection import (
+    fit_gauge_alignment,
+    fit_pca_projection,
+    project_teacher_embeddings,
+)
 
 
 def _sphere(batch: int, dim: int, seed: int) -> torch.Tensor:
@@ -572,3 +576,38 @@ def test_depth_report_counts_monotonicity_violations_per_curve():
 
     assert report["cos_violations"] == 2
     assert report["cos_gain"] < 0
+
+
+def test_gauge_alignment_recovers_a_hidden_rotation():
+    """If the student is the target seen through an unknown rotation, Procrustes
+    finds that rotation and the aligned targets coincide with the student."""
+    generator = torch.Generator().manual_seed(300)
+    targets = torch.nn.functional.normalize(torch.randn(400, 16, generator=generator), dim=-1)
+    hidden, _ = torch.linalg.qr(torch.randn(16, 16, generator=generator))
+    student = targets @ hidden
+
+    rotation, stats = fit_gauge_alignment(targets, student)
+
+    assert torch.allclose(rotation @ rotation.T, torch.eye(16), atol=1e-5)
+    assert torch.allclose(targets @ rotation, student, atol=1e-5)
+    assert stats["cos_after"] == pytest.approx(1.0, abs=1e-5)
+    assert stats["cos_after"] > stats["cos_before"]
+
+
+def test_gauge_alignment_leaves_the_relational_geometry_unchanged():
+    """R rotates inside the PCA subspace: Gram matrix, and therefore E_geo and the
+    retained variance, are exactly what they were."""
+    generator = torch.Generator().manual_seed(310)
+    targets = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
+    student = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
+
+    rotation, _ = fit_gauge_alignment(targets, student)
+    aligned = targets @ rotation
+
+    assert torch.allclose(aligned @ aligned.T, targets @ targets.T, atol=1e-5)
+    assert torch.allclose(aligned.norm(dim=-1), torch.ones(300), atol=1e-5)
+
+
+def test_gauge_alignment_rejects_mismatched_inputs():
+    with pytest.raises(ValueError):
+        fit_gauge_alignment(torch.randn(10, 4), torch.randn(9, 4))

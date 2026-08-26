@@ -53,6 +53,19 @@ def test_geoode_flags_override_the_config():
     assert config.student_pooling == "mean"
 
 
+def test_pca_subtract_mean_flag_is_tri_state():
+    # Unset leaves the config default alone; the two spellings set it either way.
+    assert _config("--method", "geoode").pca_subtract_mean is GeoODEConfig.pca_subtract_mean
+    assert _config("--method", "geoode", "--pca_subtract_mean").pca_subtract_mean is True
+    assert _config("--method", "geoode", "--no-pca_subtract_mean").pca_subtract_mean is False
+
+
+def test_gauge_align_flag_is_tri_state():
+    assert _config("--method", "geoode").gauge_align is GeoODEConfig.gauge_align
+    assert _config("--method", "geoode", "--no-gauge_align").gauge_align is False
+    assert _config("--method", "geoode", "--gauge_align").gauge_align is True
+
+
 def test_geoode_flags_are_rejected_for_other_methods():
     with pytest.raises(ValueError, match="only supported by the geoode method"):
         _config("--method", "talas", "--beta", "2.0")

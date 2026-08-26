@@ -132,6 +132,20 @@ def parse_args():
         help='GeoODE-KD: weight of the contrastive regularizer'
     )
     parser.add_argument(
+        '--pca_subtract_mean',
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help='GeoODE-KD: subtract the corpus mean before applying P_T (textbook PCA, '
+             'removes the common component of the teacher embeddings)'
+    )
+    parser.add_argument(
+        '--gauge_align',
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help='GeoODE-KD: Procrustes-align the PCA target coordinates to the untrained '
+             'student (P_T = P_PCA R). --no-gauge_align is the ablation'
+    )
+    parser.add_argument(
         '--guidance_schedule',
         choices=['linear', 'power', 'constant'],
         default=None,
@@ -324,6 +338,8 @@ def get_config(method: str, args):
         'guidance_schedule',
         'guidance_power',
         'student_pooling',
+        'pca_subtract_mean',
+        'gauge_align',
     ):
         value = getattr(args, name, None)
         if value is None:

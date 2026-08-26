@@ -376,15 +376,17 @@ sentence representation,
 
 We focus on the common large-teacher-small-student regime where
 $d_T\ge d_S$. Teacher outputs are transformed once into the student
-dimension using a fixed linear dimensionality reduction map
-$P_T\in\mathbb{R}^{d_T\times d_S}$. Our default choice is PCA fitted only
-on the cached training embeddings:
+dimension using a fixed linear map
+$P_T=P_{\mathrm{PCA}}R\in\mathbb{R}^{d_T\times d_S}$, where
+$P_{\mathrm{PCA}}$ is PCA fitted only on the cached training embeddings and
+$R\in O(d_S)$ is a fixed rotation inside the PCA subspace whose role is
+explained below:
 \begin{equation}
     \boldsymbol{\tau}_i
     =
     \operatorname{norm}
     \left(
-        f_T(x_i)P_T
+        f_T(x_i)P_{\mathrm{PCA}}R
     \right),
     \label{eq:teacher_embedding}
 \end{equation}
@@ -402,8 +404,50 @@ of the embedding energy and therefore best preserves the Gram matrix
 $\mathbf{T}\mathbf{T}^{\top}$ on which the relational energy of
 Section~\ref{sec:energy} is defined. In our main setting
 ($d_T=2560\rightarrow d_S=768$) the fitted map retains $93.0\%$ of the
-cached embedding energy. $P_T$ is fitted once and frozen; it never
-interacts with student optimization and is discarded at inference.
+cached embedding energy.
+
+\paragraph{Gauge freedom of the endpoint.}
+Every quantity by which a sentence encoder is evaluated, cosine
+similarity, Spearman correlation, linear probes, is invariant under an
+orthogonal transformation $\mathbf{z}\mapsto\mathbf{z}R$ of the student
+space, and so is the relational energy of Section~\ref{sec:energy}. The
+coordinates that PCA returns are therefore an arbitrary \emph{gauge}: any
+rotation of them inside the retained subspace is an equally valid target,
+but a point-wise objective such as Eq.~\eqref{eq:semantic_energy} pins one
+of them. Left at the PCA gauge, the endpoint condition asks the student to
+rotate its entire pretrained representation space onto the teacher's
+principal axes, a demand unrelated to semantics: in our setting the
+untrained student is nearly orthogonal to such targets (mean cosine
+$\approx0$). We remove the gauge by fixing $R$ once, before training, as
+the orthogonal Procrustes alignment \citep{schonemann1966procrustes} of the
+PCA coordinates to the untrained student,
+\begin{equation}
+    R
+    =
+    \underset{R\in O(d_S)}{\arg\min}
+    \left\|
+        \mathbf{T}_{\mathrm{PCA}}R-\mathbf{Z}^{(L)}_{0}
+    \right\|_F
+    =
+    UV^{\top},
+    \qquad
+    U\Sigma V^{\top}
+    =
+    \operatorname{svd}\!\left(
+        \mathbf{T}_{\mathrm{PCA}}^{\top}\mathbf{Z}^{(L)}_{0}
+    \right),
+    \label{eq:gauge}
+\end{equation}
+where $\mathbf{T}_{\mathrm{PCA}}$ stacks the PCA coordinates of a subset of
+the corpus and $\mathbf{Z}^{(L)}_{0}$ the initial student's output
+embeddings of the same sentences. Since $R$ is orthogonal, the Gram matrix
+$\mathbf{T}\mathbf{T}^{\top}$, the retained variance and the
+Eckart--Young optimality of $P_{\mathrm{PCA}}$ are untouched; only the
+arbitrary part of the endpoint condition is removed. Like
+$P_{\mathrm{PCA}}$, $R$ is a closed-form statistic of the cached targets
+and the initial student, computed once (one SVD of a
+$d_S\times d_S$ matrix), frozen, and discarded at inference. $P_T$ never
+interacts with student optimization.
 
 Student representations are similarly normalized,
 \begin{equation}
@@ -1136,7 +1180,8 @@ $\lambda_{\mathrm{end}},
 \lambda_{\mathrm{ctr}}$
 
 \State{} Run $f_T$ once over $\mathcal{D}$ and cache teacher embeddings
-\State{} Fit fixed PCA map $P_T$ on cached teacher embeddings
+\State{} Fit fixed PCA map $P_{\mathrm{PCA}}$ on cached teacher embeddings
+\State{} Fix the gauge $R$ by Procrustes against the initial student, Eq.~\eqref{eq:gauge}
 \State{} Transform and normalize all cached targets using
 Eq.~\eqref{eq:teacher_embedding}
 
@@ -1223,7 +1268,7 @@ At inference time, all teacher-conditioned components are removed:
     \xrightarrow[]{f_S}
     \mathbf{z}^{(L)}.
 \end{equation}
-No PCA target projection, Gram matrix, semantic energy, vector field,
+No PCA target projection, gauge rotation, Gram matrix, semantic energy, vector field,
 ODE solver, or auxiliary network is evaluated. GeoODE-KD therefore has
 the same inference architecture and asymptotic inference cost as its
 student backbone.

@@ -66,7 +66,11 @@ from src.evaluation.evaluation_automodel import (
 )
 from src.loss import info_nce
 from src.pooling import last_token_pool, mean_pooling
-from src.teacher_projection import fit_pca_projection, project_teacher_embeddings
+from src.teacher_projection import (
+    fit_gauge_alignment,
+    fit_pca_projection,
+    project_teacher_embeddings,
+)
 
 # The distillation corpus (data/train_set/merged_3_data_5k_each.csv) is drawn from
 # EMOTION, WiC and STS-B, so those three benchmarks are in-distribution and the
@@ -515,7 +519,9 @@ class KnowledgeDistiller:
                 )
 
             if cfg.distill_method == "geoode":
-                teacher_cls_list = self._project_teacher_targets(teacher_cls_list)
+                teacher_cls_list = self._project_teacher_targets(
+                    teacher_cls_list, df["premise"].astype(str).tolist()
+                )
             elif self.depth_log_every > 0:
                 # Diagnostics only: the training targets stay in the teacher space,
                 # but the depth profile has to be measured in the student's. A
@@ -575,13 +581,44 @@ class KnowledgeDistiller:
         print(f"Training batches: {len(self.train_loader)}")
         print("Done setup_data")
 
-    def _project_teacher_targets(self, teacher_cls: torch.Tensor) -> torch.Tensor:
-        """Fit and apply P_T (Eq. 8), mapping cached teacher embeddings to d_S.
+    @torch.no_grad()
+    def _student_initial_embeddings(self, texts: list[str]) -> torch.Tensor:
+        """Pooled, normalised final-layer embeddings of the *untrained* student."""
+        cfg = self.config
+        was_training = self.model_student.training
+        self.model_student.eval()
+        chunks = []
+        for start in range(0, len(texts), 128):
+            encoded = self.tok_student(
+                texts[start : start + 128],
+                max_length=cfg.max_length,
+                truncation=True,
+                padding=True,
+                return_tensors="pt",
+            ).to(self.device_s)
+            last = self.model_student(
+                input_ids=encoded["input_ids"],
+                attention_mask=encoded["attention_mask"],
+                return_dict=True,
+            ).last_hidden_state
+            if cfg.student_pooling == "mean":
+                pooled = mean_pooling(last, encoded["attention_mask"])
+            else:
+                pooled = last[:, 0, :]
+            chunks.append(F.normalize(pooled.float(), dim=-1).cpu())
+        self.model_student.train(was_training)
+        return torch.cat(chunks, dim=0)
+
+    def _project_teacher_targets(
+        self, teacher_cls: torch.Tensor, texts: list[str] | None = None
+    ) -> torch.Tensor:
+        """Fit and apply P_T = P_PCA R (Eq. 8), mapping cached teacher embeddings to d_S.
 
         Algorithm 1 does this once, before the training loop, so every step reads
-        targets that already live on the student's hypersphere. The map is fitted on
-        the cached training embeddings only and saved for reproducibility; it is not
-        needed at inference time.
+        targets that already live on the student's hypersphere. P_PCA is fitted on
+        the cached training embeddings; R is the orthogonal Procrustes alignment of
+        those coordinates to the untrained student's embeddings of the same texts.
+        Both are saved for reproducibility and neither is needed at inference.
         """
         cfg = self.config
         student_dim = self.model_student.config.hidden_size
@@ -620,6 +657,31 @@ class KnowledgeDistiller:
                 f"(retains {explained:.1%} of cached embedding energy)"
             )
 
+        rotation = None
+        gauge_stats = None
+        if getattr(cfg, "gauge_align", False):
+            if texts is None:
+                raise ValueError("gauge_align requires the corpus texts")
+            n_fit = min(len(texts), int(getattr(cfg, "gauge_align_samples", 16384)))
+            if n_fit < 2 * student_dim:
+                print(
+                    f"Gauge alignment skipped: {n_fit} sentences is too few for a "
+                    f"{student_dim}-dimensional Procrustes fit"
+                )
+            else:
+                # Evenly spaced rows so every source in a merged corpus is represented.
+                index = torch.linspace(0, len(texts) - 1, n_fit).round().long().unique()
+                student_init = self._student_initial_embeddings(
+                    [texts[i] for i in index.tolist()]
+                )
+                rotation, gauge_stats = fit_gauge_alignment(targets[index], student_init)
+                targets = F.normalize(targets @ rotation, dim=-1, eps=cfg.eps_norm)
+                print(
+                    "Fitted Procrustes gauge alignment R on "
+                    f"{gauge_stats['samples']} sentences: mean student-target cosine "
+                    f"{gauge_stats['cos_before']:+.3f} -> {gauge_stats['cos_after']:+.3f}"
+                )
+
         if cfg.save_dir:
             os.makedirs(cfg.save_dir, exist_ok=True)
             projection_path = os.path.join(cfg.save_dir, "teacher_projection.pt")
@@ -633,6 +695,8 @@ class KnowledgeDistiller:
                     "pca_center_fit": cfg.pca_center_fit,
                     "pca_subtract_mean": cfg.pca_subtract_mean,
                     "explained_energy": explained,
+                    "gauge_rotation": rotation,
+                    "gauge_stats": gauge_stats,
                 },
                 projection_path,
             )

@@ -62,8 +62,13 @@ and free the teacher model afterwards; the other methods run the teacher
 alongside the student every step.
 
 `geoode` implements `docs/ode_embedding_kd.pdf`. It reduces the cached teacher
-embeddings to the student dimension with a PCA map fitted on the cache itself
-(saved as `teacher_projection.pt` next to the checkpoints), then supervises each
+embeddings to the student dimension with a PCA map fitted on the cache itself,
+then rotates those coordinates onto the *untrained* student's own embedding space
+by orthogonal Procrustes (`P_T = P_PCA R`; both saved in `teacher_projection.pt`
+next to the checkpoints). The rotation is a closed-form statistic, not a
+parameter: it removes the arbitrary gauge of the PCA basis from the endpoint loss
+without touching the Gram matrix (`--no-gauge_align` is the ablation). It then
+supervises each
 Transformer layer as one Riemannian Euler step of a teacher-conditioned flow
 instead of pushing every layer at the final teacher embedding. Its own flags are
 `--alpha`/`--beta` (the semantic and relational parts of the energy),

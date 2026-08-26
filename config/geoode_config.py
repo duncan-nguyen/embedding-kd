@@ -46,9 +46,15 @@ class GeoODEConfig(BaseConfig):
 
     eps_norm = 1e-12
 
-    # Fixed teacher dimensionality reduction P_T, Eq. (8).
+    # Fixed teacher dimensionality reduction P_T = P_PCA R, Eq. (8).
     pca_center_fit = True
     pca_subtract_mean = False
+    # R: orthogonal Procrustes alignment of the PCA coordinates to the untrained
+    # student (closed form, fitted once). Removes the arbitrary gauge of the PCA
+    # basis from the endpoint loss; off is the ablation. The alignment is fitted on
+    # up to this many corpus sentences (must be >> d_S).
+    gauge_align = True
+    gauge_align_samples = 16384
 
     batch_size = 32
     epochs = 5
