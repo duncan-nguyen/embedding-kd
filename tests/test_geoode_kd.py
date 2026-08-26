@@ -611,3 +611,26 @@ def test_gauge_alignment_leaves_the_relational_geometry_unchanged():
 def test_gauge_alignment_rejects_mismatched_inputs():
     with pytest.raises(ValueError):
         fit_gauge_alignment(torch.randn(10, 4), torch.randn(9, 4))
+
+
+def test_gauge_refit_never_lowers_the_cosine_of_the_current_student():
+    """Alternating step: for a fixed student, the refit R is the exact minimiser over
+    O(d), so the cosine under the refit gauge is at least the cosine under any
+    earlier gauge (here: the one fitted to a different, earlier student)."""
+    generator = torch.Generator().manual_seed(320)
+    targets = torch.nn.functional.normalize(torch.randn(500, 16, generator=generator), dim=-1)
+    student_initial = torch.nn.functional.normalize(
+        targets + 0.8 * torch.randn(500, 16, generator=generator), dim=-1
+    )
+    rotation_initial, _ = fit_gauge_alignment(targets, student_initial)
+    drift, _ = torch.linalg.qr(torch.randn(16, 16, generator=generator))
+    student_later = torch.nn.functional.normalize(
+        (targets @ rotation_initial @ drift) + 0.3 * torch.randn(500, 16, generator=generator),
+        dim=-1,
+    )
+
+    under_old_gauge = float(((targets @ rotation_initial) * student_later).sum(dim=-1).mean())
+    _, stats = fit_gauge_alignment(targets, student_later)
+
+    assert stats["cos_after"] >= under_old_gauge - 1e-6
+    assert stats["cos_after"] > under_old_gauge + 0.1  # the drift was large, so the refit must matter

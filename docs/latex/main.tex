@@ -447,7 +447,14 @@ arbitrary part of the endpoint condition is removed. Like
 $P_{\mathrm{PCA}}$, $R$ is a closed-form statistic of the cached targets
 and the initial student, computed once (one SVD of a
 $d_S\times d_S$ matrix), frozen, and discarded at inference. $P_T$ never
-interacts with student optimization.
+interacts with student optimization. Because Eq.~\eqref{eq:gauge} is the
+exact minimizer over $O(d_S)$ for a fixed student, $R$ may also be
+re-estimated between epochs against the current student; the resulting
+alternation is a coordinate descent on
+$\min_{\theta,R}\mathcal{E}_{\mathrm{sem}}(\mathbf{Z}_\theta,\mathbf{T}R)$
+that cannot increase the objective and, $R$ being orthogonal, never alters
+the target geometry. We report the fixed initial gauge as the default and
+the re-estimated gauge as an ablation.
 
 Student representations are similarly normalized,
 \begin{equation}

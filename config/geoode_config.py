@@ -55,6 +55,9 @@ class GeoODEConfig(BaseConfig):
     # up to this many corpus sentences (must be >> d_S).
     gauge_align = True
     gauge_align_samples = 16384
+    # Re-estimate R every N epochs against the current student (alternating exact
+    # minimisation over O(d_S)); 0 keeps the initial gauge for the whole run.
+    gauge_refit_every = 0
 
     batch_size = 32
     epochs = 5

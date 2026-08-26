@@ -146,6 +146,13 @@ def parse_args():
              'student (P_T = P_PCA R). --no-gauge_align is the ablation'
     )
     parser.add_argument(
+        '--gauge_refit_every',
+        type=int,
+        default=None,
+        help='GeoODE-KD: re-estimate the gauge R against the current student every N '
+             'epochs (0 = keep the initial gauge)'
+    )
+    parser.add_argument(
         '--guidance_schedule',
         choices=['linear', 'power', 'constant'],
         default=None,
@@ -340,6 +347,7 @@ def get_config(method: str, args):
         'student_pooling',
         'pca_subtract_mean',
         'gauge_align',
+        'gauge_refit_every',
     ):
         value = getattr(args, name, None)
         if value is None:

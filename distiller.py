@@ -543,6 +543,10 @@ class KnowledgeDistiller:
                         f"{self.model_student.config.hidden_size}"
                     )
 
+            if cfg.distill_method == "geoode":
+                # The gauge refit rewrites the targets in place between epochs; the
+                # persistent DataLoader workers only see that through shared memory.
+                teacher_cls_list = teacher_cls_list.contiguous().share_memory_()
             self.teacher_cls_all = teacher_cls_list
 
             # Free teacher model to save GPU memory (teacher not needed after caching)
@@ -675,6 +679,14 @@ class KnowledgeDistiller:
                     [texts[i] for i in index.tolist()]
                 )
                 rotation, gauge_stats = fit_gauge_alignment(targets[index], student_init)
+                # Kept for the optional per-epoch re-estimation of R (alternating
+                # minimisation of the gauge-invariant endpoint discrepancy).
+                self._gauge_state = {
+                    "targets_pca": targets.clone(),
+                    "index": index,
+                    "texts": [texts[i] for i in index.tolist()],
+                    "history": [gauge_stats],
+                }
                 targets = F.normalize(targets @ rotation, dim=-1, eps=cfg.eps_norm)
                 print(
                     "Fitted Procrustes gauge alignment R on "
@@ -703,6 +715,46 @@ class KnowledgeDistiller:
             print(f"Teacher projection saved: {projection_path}")
 
         return targets
+
+    @torch.no_grad()
+    def _refit_gauge(self, epoch: int) -> None:
+        """Re-estimate R against the *current* student (closed-form Procrustes on the
+        same corpus subset) and rewrite the targets in place.
+
+        With the student fixed this is the exact minimiser over O(d_S) of the
+        endpoint discrepancy, and with R fixed the optimiser lowers it in theta, so
+        the alternation descends min_{theta, R} E_sem(Z_theta, T R) monotonically.
+        R is orthogonal, so the targets' Gram matrix is untouched: only the gauge
+        moves, never the geometry.
+        """
+        state = getattr(self, "_gauge_state", None)
+        if state is None:
+            return
+        student_now = self._student_initial_embeddings(state["texts"])
+        subset = state["targets_pca"][state["index"]]
+        rotation, stats = fit_gauge_alignment(subset, student_now)
+        # Cosine the student currently has against the targets it was trained on.
+        stats["cos_previous_gauge"] = float(
+            (self.teacher_cls_all[state["index"]] * student_now).sum(dim=-1).mean()
+        )
+        stats["epoch"] = epoch + 1
+        new_targets = F.normalize(
+            state["targets_pca"] @ rotation, dim=-1, eps=self.config.eps_norm
+        )
+        self.teacher_cls_all.copy_(new_targets.to(self.teacher_cls_all.dtype))
+        state["history"].append(stats)
+        print(
+            f"Gauge refit after epoch {epoch + 1}: student-target cosine under the "
+            f"previous R {stats['cos_previous_gauge']:+.4f} -> under the refit R "
+            f"{stats['cos_after']:+.4f}"
+        )
+        if self.config.save_dir:
+            path = os.path.join(self.config.save_dir, "teacher_projection.pt")
+            if os.path.exists(path):
+                saved = torch.load(path, map_location="cpu")
+                saved["gauge_rotation"] = rotation
+                saved["gauge_history"] = state["history"]
+                torch.save(saved, path)
 
     def _should_log_depth(self, step: int) -> bool:
         if self.depth_log_every <= 0 or self.depth_probe is None:
@@ -2128,6 +2180,14 @@ class KnowledgeDistiller:
             for epoch in range(cfg.epochs):
                 avg_loss = self.train_epoch(epoch)
                 epoch_results = None
+
+                refit_every = int(getattr(cfg, "gauge_refit_every", 0) or 0)
+                if (
+                    refit_every > 0
+                    and (epoch + 1) % refit_every == 0
+                    and epoch + 1 < cfg.epochs
+                ):
+                    self._refit_gauge(epoch)
 
                 print("\n" + "=" * 60)
                 print(f"Evaluation after Epoch {epoch + 1}")

@@ -66,6 +66,11 @@ def test_gauge_align_flag_is_tri_state():
     assert _config("--method", "geoode", "--gauge_align").gauge_align is True
 
 
+def test_gauge_refit_flag_overrides_the_config():
+    assert _config("--method", "geoode").gauge_refit_every == GeoODEConfig.gauge_refit_every
+    assert _config("--method", "geoode", "--gauge_refit_every", "1").gauge_refit_every == 1
+
+
 def test_geoode_flags_are_rejected_for_other_methods():
     with pytest.raises(ValueError, match="only supported by the geoode method"):
         _config("--method", "talas", "--beta", "2.0")
