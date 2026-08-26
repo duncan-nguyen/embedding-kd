@@ -5,10 +5,14 @@ continuous flow on the unit hypersphere. The teacher supplies a potential
 
     E(Z, T) = alpha * E_sem(Z, T) + beta * E_geo(Z, T)                     (Eq. 20)
 
-whose negative Riemannian gradient is a semantic vector field (Eq. 26). One explicit
-Riemannian Euler step from layer ``l`` predicts where layer ``l+1`` should land
-(Eq. 30), and the dynamics loss (Eq. 32) asks the actual next layer to agree with
-that prediction. Only the final layer is anchored on the teacher endpoint (Eq. 36).
+with E_sem the mean *squared geodesic distance* to the teacher and E_geo the batch
+Gram gap. Its negative Riemannian gradient, run in the finite-horizon time warp
+s(t) / R(t) with R(t) = int_t^1 s, is a semantic vector field (Eq. 26) that reaches
+the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from layer
+``l`` predicts where layer ``l+1`` should land (Eq. 30), and the dynamics loss
+(Eq. 32) asks the actual next layer to agree with that prediction. Only the final
+layer is anchored on the teacher endpoint (Eq. 36), which is the boundary condition
+of the same flow.
 
 Nothing here is a module with weights: the criterion is teacher-conditioned geometry
 plus a stop-gradient target, so training adds no parameters and inference is exactly
@@ -18,6 +22,7 @@ the unmodified student encoder.
 from __future__ import annotations
 
 import itertools
+import math
 from collections.abc import Iterable, Sequence
 
 import torch
@@ -59,13 +64,17 @@ class GeoODEKD(nn.Module):
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
             Off by default: the paper's L states are the L Transformer layers.
-        stop_grad_target: apply sg[.] to the Euler prediction (Eq. 32). Turning it off
+        stop_grad_target: apply sg[.] to the flow prediction (Eq. 32). Turning it off
             is the full-gradient-dynamics ablation named in Section 3.5.
 
     Per-layer diagnostics are not part of the returned training metrics; they are
     produced on demand by :meth:`depth_report`, which the distiller samples on its own
     cadence and writes to ``depth_metrics.jsonl``.
     """
+
+    # arccos has an unbounded derivative at +-1; the clamp keeps Log_z well defined
+    # and its gradient finite when a state coincides with (or opposes) its target.
+    _COS_CLAMP = 1.0 - 1e-6
 
     def __init__(
         self,
@@ -90,6 +99,8 @@ class GeoODEKD(nn.Module):
             )
         if alpha < 0 or beta < 0:
             raise ValueError("alpha and beta must be non-negative (Eq. 20)")
+        if guidance_schedule == "power" and guidance_power <= -1.0:
+            raise ValueError("guidance_power must exceed -1 so that int_0^1 s is finite")
 
         self.alpha = float(alpha)
         self.beta = float(beta)
@@ -115,8 +126,42 @@ class GeoODEKD(nn.Module):
         """Pi_Z of Eq. (22), applied row-wise: U - (z^T u) z."""
         return U - (Z * U).sum(dim=-1, keepdim=True) * Z
 
+    @staticmethod
+    def geodesic_distance(Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
+        """d_g(z_i, tau_i) = arccos(z_i^T tau_i), the great-circle distance (Eq. 17)."""
+        return torch.arccos((Z * T).sum(dim=-1).clamp(-1.0, 1.0))
+
+    def log_map(self, Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
+        """Log_Z(T) of Eq. (23), row-wise: the tangent vector at z pointing along the
+        geodesic to tau, with length d_g(z, tau).
+
+        Log_z(tau) = d_g / sin(d_g) * Pi_z(tau). It is the negative Riemannian
+        gradient of the squared geodesic distance 1/2 d_g^2, and d_g / sin(d_g) -> 1
+        as tau -> z.
+        """
+        cosine = (Z * T).sum(dim=-1).clamp(-self._COS_CLAMP, self._COS_CLAMP)
+        theta = torch.arccos(cosine)
+        scale = theta / torch.sin(theta)
+        return scale.unsqueeze(-1) * self.tangent_project(Z, T)
+
+    @staticmethod
+    def exp_map(Z: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
+        """Exp_Z(V) of Eq. (31), row-wise: follow the geodesic from z with initial
+        velocity v for unit time. Closed form on the sphere:
+
+        Exp_z(v) = cos(|v|) z + sin(|v|) v / |v|,
+
+        which is exactly on the sphere for every tangent v (Proposition 1) and
+        satisfies Exp_z(Log_z(tau)) = tau.
+        """
+        norm = V.norm(dim=-1, keepdim=True)
+        # sin(n)/n written through torch.sinc, so n = 0 is handled exactly.
+        return torch.cos(norm) * Z + torch.sinc(norm / math.pi) * V
+
     def retract(self, Z: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
-        """Retr_Z of Eq. (31): row-wise normalisation of Z + V."""
+        """First-order retraction RowNorm(Z + V): the cheap approximation to
+        :meth:`exp_map` that the earlier draft used. Kept for the discretisation
+        ablation; the flow itself uses the exact exponential map."""
         return self.normalize(Z + V)
 
     def guidance(self, t: float) -> float:
@@ -126,6 +171,30 @@ class GeoODEKD(nn.Module):
         if self.guidance_schedule == "linear":
             return float(t)
         return float(t) ** self.guidance_power
+
+    def guidance_mass(self, t: float) -> float:
+        """R(t) = int_t^1 s(u) du of Eq. (27): the guidance still to be spent after
+        depth t. R(1) = 0, and R(0) is the total guidance of the whole trajectory."""
+        if self.guidance_schedule == "constant":
+            return 1.0 - float(t)
+        p = 1.0 if self.guidance_schedule == "linear" else self.guidance_power
+        return (1.0 - float(t) ** (p + 1.0)) / (p + 1.0)
+
+    def step_fraction(self, t: float, t_next: float) -> float:
+        """rho of Eq. (30): the fraction of the remaining geodesic to the target that
+        the flow covers between depths t and t_next,
+
+            rho(t, t_next) = 1 - R(t_next) / R(t),
+
+        i.e. the exact integral of the time warp s / R over [t, t_next]. It equals 1
+        on the last interval (t_next = 1), so the final prediction is the target.
+        """
+        if not 0.0 <= t < t_next <= 1.0:
+            raise ValueError(f"expected 0 <= t < t_next <= 1, got t={t}, t_next={t_next}")
+        remaining = self.guidance_mass(t)
+        if remaining <= 0.0:
+            return 1.0
+        return 1.0 - self.guidance_mass(t_next) / remaining
 
     def energy(
         self, Z: torch.Tensor, T: torch.Tensor
@@ -139,42 +208,39 @@ class GeoODEKD(nn.Module):
         the same flow at a batch-size-independent speed.
         """
         batch = Z.shape[0]
-        e_sem = (1.0 - (Z * T).sum(dim=-1)).mean()  # Eq. 17
+        e_sem = 0.5 * self.geodesic_distance(Z, T).pow(2).mean()  # Eq. 17
         gram_gap = Z @ Z.transpose(0, 1) - T @ T.transpose(0, 1)
         e_geo = gram_gap.pow(2).sum() / (batch * batch)  # Eq. 19
         return self.alpha * e_sem + self.beta * e_geo, e_sem, e_geo
 
-    def vector_field(self, Z: torch.Tensor, T: torch.Tensor, t: float) -> torch.Tensor:
-        """F(Z, T, t) of Eqs. (25)-(26): the tangent negative gradient of the energy.
+    def vector_field(self, Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
+        """V(Z, T) of Eq. (25): the tangent negative gradient of the potential, before
+        the depth-dependent time warp.
 
-        Taken from the *per-sample* energy, i.e. ``B`` times Eq. (20), rather than
-        from the batch mean the paper writes. Eqs. (23)-(25) differentiate a mean, so
-        they carry a ``1/B`` that makes the prescribed step shrink with batch size:
-        at B=32, L=12 one Euler step rotates a unit embedding by 0.15 degrees, two to
-        three orders of magnitude less than the layer's own motion. The consistency
-        loss then measures almost nothing but ``|z^(l+1) - z^(l)|`` and degenerates
-        into "keep consecutive layers equal", which is what a run with the literal
-        Eq. (25) does: teacher cosine stays flat through depth and jumps only in the
-        last two layers, and the update direction anti-correlates with the field
-        across the lower half of the network.
+            V = alpha * Log_Z(T) - (4 beta / B) * Pi_Z[(Z Z^T - T T^T) Z]
 
-        Multiplying by ``B`` removes that dependence — the semantic dynamics should
-        not have a speed set by an arbitrary batch size — and leaves everything else
-        intact: the direction of the field is unchanged, so this is the same flow at
-        a different time scale, and Propositions 1-2 and Corollary 1 (which already
-        discards the positive constant) hold verbatim. The ratio between the two
-        energy terms is also unchanged, so alpha and beta keep their meaning.
+        Taken from the *per-sample* energy, i.e. ``B`` times Eq. (20): the
+        paper's batch-mean energy would give a field that slows down with batch
+        size, while the direction is identical. The full field of Eq. (26) is
+        s(t) / R(t) * V; the warp is integrated exactly by :meth:`step_fraction`
+        rather than evaluated pointwise, so it never appears here.
         """
         batch = Z.shape[0]
         gram_gap = Z @ Z.transpose(0, 1) - T @ T.transpose(0, 1)
-        euclidean = self.alpha * T - (4.0 * self.beta / batch) * (gram_gap @ Z)
-        return self.guidance(t) * self.tangent_project(Z, euclidean)
+        relational = self.tangent_project(Z, gram_gap @ Z)
+        return self.alpha * self.log_map(Z, T) - (4.0 * self.beta / batch) * relational
+
+    def flow_step(self, Z: torch.Tensor, T: torch.Tensor, rho: float) -> torch.Tensor:
+        """Move a fraction ``rho`` of the prescribed tangent displacement along the
+        geodesic: Exp_Z(rho * V(Z, T)). With beta = 0 this is exactly the spherical
+        interpolation slerp(z, tau; rho), so rho = 1 lands on the teacher."""
+        return self.exp_map(Z, rho * self.vector_field(Z, T))
 
     def euler_step(
-        self, Z: torch.Tensor, T: torch.Tensor, t: float, dt: float
+        self, Z: torch.Tensor, T: torch.Tensor, t: float, t_next: float
     ) -> torch.Tensor:
-        """One explicit Riemannian Euler step, Eq. (30)."""
-        return self.retract(Z, dt * self.vector_field(Z, T, t))
+        """One step of the discretised flow from depth t to t_next, Eq. (30)."""
+        return self.flow_step(Z, T, self.step_fraction(t, t_next))
 
     # ------------------------------------------------------------------ losses
 
@@ -193,6 +259,11 @@ class GeoODEKD(nn.Module):
             for state in states
         ]
 
+    @staticmethod
+    def _depth(index: int, num_layers: int) -> float:
+        """t_l = l / L of Eq. (14) for the 0-based state ``index`` (l = index + 1)."""
+        return (index + 1) / num_layers
+
     def dynamics_loss(
         self,
         states: Sequence[torch.Tensor],
@@ -203,19 +274,18 @@ class GeoODEKD(nn.Module):
         if num_layers < 2:
             return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
-        dt = 1.0 / num_layers  # Eq. 29
         terms = []
         for index in range(num_layers - 1):
-            depth = index + 1  # l = 1..L-1
-            t = depth / num_layers  # Eq. 14
+            t = self._depth(index, num_layers)
+            t_next = self._depth(index + 1, num_layers)
             current = states[index]
             if self.stop_grad_target:
                 # sg[.] of Eq. (32): the prediction is a fixed local target read off
                 # the current trajectory, so only the actual next layer is trained.
                 with torch.no_grad():
-                    predicted = self.euler_step(current.detach(), teacher, t, dt)
+                    predicted = self.euler_step(current.detach(), teacher, t, t_next)
             else:
-                predicted = self.euler_step(current, teacher, t, dt)
+                predicted = self.euler_step(current, teacher, t, t_next)
             actual = states[index + 1]
             terms.append((1.0 - (actual * predicted).sum(dim=-1)).mean())  # Eq. 33
 
@@ -263,38 +333,54 @@ class GeoODEKD(nn.Module):
         *across depth*, and whether the student's actual layer transition follows the
         prescribed field. All of it is measured here, on the realized trajectory:
 
-        - ``cos_teacher`` / ``gram_gap`` / ``energy``: the profile of Eqs. (17), (19)
-          and (20) at every depth. Hypotheses 1 and 2 are claims about these curves.
+        - ``cos_teacher`` / ``geodesic_distance`` / ``gram_gap`` / ``energy``: the
+          profile of Eqs. (17), (19) and (20) at every depth. Hypotheses 1 and 2 are
+          claims about these curves.
+        - ``predicted_geodesic_distance``: Corollary 1's closed form
+          d(t_l) = d(t_1) R(t_l) / R(t_1), the profile the instance-only flow would
+          trace from the same first layer. It reaches zero at the last layer, and the
+          gap to ``geodesic_distance`` is how far the student is from the flow.
         - ``energy_violations``: depths where the realized trajectory *raises* the
           energy. Proposition 2 guarantees descent for the ideal continuous flow, so
           this counts how far the discrete student is from realizing it.
         - ``dyn_residual``: the per-transition term of Eq. (32), i.e. where along
           depth the ODE consistency is actually being paid.
-        - ``field_norm`` vs ``step_norm``: how big the teacher's prescribed step is
-          next to the layer's own motion. A tiny ``dyn_residual`` means little if the
-          prescribed step is negligible, and this pair is what separates the two.
-        - ``direction_alignment``: cosine between the actual layer update and the
-          prescribed tangent direction. Scale-free, so unlike the loss it says whether
-          the student moves *where* the teacher points, not just *how far*.
+        - ``field_norm`` vs ``step_norm``: the geodesic length the flow prescribes
+          for the transition next to the geodesic length the layer actually moved.
+          A tiny ``dyn_residual`` means little if the prescribed step is negligible,
+          and this pair is what separates the two.
+        - ``direction_alignment``: cosine, in the tangent space of the current
+          layer, between Log of the actual update and the prescribed tangent
+          displacement. Scale-free, so unlike the loss it says whether the student
+          moves *where* the teacher points, not just *how far*.
         """
         teacher = self.normalize(teacher.to(states[-1].dtype))
         num_layers = len(states)
-        dt = 1.0 / num_layers
 
-        cos_teacher, gram_gap, energy = [], [], []
+        cos_teacher, distance, gram_gap, energy = [], [], [], []
         for state in states:
-            total, sem, geo = self.energy(state, teacher)
-            cos_teacher.append(float(1.0 - sem))
+            total, _, geo = self.energy(state, teacher)
+            cos_teacher.append(float((state * teacher).sum(dim=-1).mean()))
+            distance.append(float(self.geodesic_distance(state, teacher).mean()))
             gram_gap.append(float(geo))
             energy.append(float(total))
 
+        first_mass = self.guidance_mass(self._depth(0, num_layers))
+        predicted_distance = [
+            distance[0] * self.guidance_mass(self._depth(index, num_layers)) / first_mass
+            if first_mass > 0.0
+            else 0.0
+            for index in range(num_layers)
+        ]
+
         dyn_residual, field_norm, step_norm, alignment = [], [], [], []
         for index in range(num_layers - 1):
-            t = (index + 1) / num_layers
+            t = self._depth(index, num_layers)
+            t_next = self._depth(index + 1, num_layers)
             current, actual = states[index], states[index + 1]
-            field = dt * self.vector_field(current, teacher, t)
-            predicted = self.retract(current, field)
-            update = actual - current
+            field = self.step_fraction(t, t_next) * self.vector_field(current, teacher)
+            predicted = self.exp_map(current, field)
+            update = self.log_map(current, actual)
             dyn_residual.append(float((1.0 - (actual * predicted).sum(dim=-1)).mean()))
             field_norm.append(float(field.norm(dim=-1).mean()))
             step_norm.append(float(update.norm(dim=-1).mean()))
@@ -324,6 +410,8 @@ class GeoODEKD(nn.Module):
             "beta": self.beta,
             "layers": list(range(1, num_layers + 1)),
             "cos_teacher": cos_teacher,
+            "geodesic_distance": distance,
+            "predicted_geodesic_distance": predicted_distance,
             "gram_gap": gram_gap,
             "energy": energy,
             "dyn_residual": dyn_residual,
@@ -401,8 +489,8 @@ class GeoODEKD(nn.Module):
         )
 
         with torch.no_grad():
-            energy_first, sem_first, geo_first = self.energy(states[0], teacher)
-            energy_last, sem_last, geo_last = self.energy(states[-1], teacher)
+            energy_first, _, geo_first = self.energy(states[0], teacher)
+            energy_last, _, geo_last = self.energy(states[-1], teacher)
             metrics = {
                 "loss_total": float(total.detach()),
                 "loss_end": float(loss_end.detach()),
@@ -410,8 +498,8 @@ class GeoODEKD(nn.Module):
                 "loss_ctr": float(loss_ctr.detach()),
                 # The hypothesis is that both discrepancies contract with depth, so
                 # the shallow and final values are logged as a pair.
-                "cos_first": float(1.0 - sem_first),
-                "cos_final": float(1.0 - sem_last),
+                "cos_first": float((states[0] * teacher).sum(dim=-1).mean()),
+                "cos_final": float((states[-1] * teacher).sum(dim=-1).mean()),
                 "gram_gap_first": float(geo_first),
                 "gram_gap_final": float(geo_last),
                 "energy_first": float(energy_first),

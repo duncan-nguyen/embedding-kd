@@ -72,16 +72,21 @@ instead of pushing every layer at the final teacher embedding. Its own flags are
 `--student_pooling`. Training adds no parameters and inference is the plain
 student encoder.
 
-One deliberate deviation from the paper: the vector field is the gradient of the
-*per-sample* energy, i.e. `B` times Eq. (20), not of the batch mean Eqs. (23)-(25)
-differentiate. The literal equations carry a `1/B` that makes the prescribed step
-shrink with batch size — at B=32, L=12 an Euler step rotates a unit embedding by
-0.15 degrees, two to three orders of magnitude below a Transformer layer's own
-motion, so `L_dyn` stops measuring direction and collapses into "keep consecutive
-layers equal". The direction of the field is unchanged, so this is the same flow
-at a batch-size-independent speed and Propositions 1-2 and Corollary 1 still hold;
-alpha and beta also keep their relative meaning. `depth_metrics.jsonl` records
-`field_norm` next to `step_norm` precisely so this stays visible.
+The flow is the finite-horizon form of the paper's energy: the semantic term is
+the squared geodesic distance to the teacher, so its negative Riemannian gradient
+is the sphere's log map, and the field is run in the time warp `s(t) / R(t)` with
+`R(t) = int_t^1 s`. Under that warp the instance-only flow contracts the geodesic
+distance as `d(t) = d(0) R(t) / R(0)` and reaches the teacher exactly at `t = 1`
+(a plain gradient flow only gets there as `t -> inf`, which is why an earlier
+draft saw teacher cosine stay flat through depth and jump in the last two layers).
+The per-layer target is therefore `Exp_Z(rho_l V)` with
+`rho_l = 1 - R(t_{l+1}) / R(t_l)`, which with `beta = 0` is the spherical
+interpolation slerp(Z, T; rho_l); the last `rho` is 1, so `L_end` is the boundary
+condition of the same flow rather than a competing loss. The field is taken from
+the per-sample energy (`B` times the batch mean the paper writes) so its speed
+does not depend on batch size. `depth_metrics.jsonl` records `field_norm` next to
+`step_norm` and the closed-form `predicted_geodesic_distance` next to the
+realized one, so how closely the student tracks the flow stays visible.
 
 Training is single-process. Two visible CUDA devices place the student on
 `cuda:0` and the teacher on `cuda:1`; one device puts both on `cuda:0`.

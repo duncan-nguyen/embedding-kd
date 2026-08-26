@@ -600,12 +600,17 @@ class KnowledgeDistiller:
             eps=cfg.eps_norm,
         )
 
+        explained = 1.0
         if teacher_dim <= student_dim:
             print(
                 f"Teacher dim {teacher_dim} <= student dim {student_dim}: "
                 "P_T is the identity, targets are only re-normalized"
             )
         else:
+            # Eckart-Young: among all rank-d_S linear maps, PCA retains the largest
+            # share of the cached embedding energy, i.e. it is the linear map that
+            # best preserves the Gram matrix E_geo is defined over. This number is
+            # what the paper reports for P_T.
             cached = teacher_cls.to(torch.float32)
             explained = float(
                 (cached @ projection).pow(2).sum() / cached.pow(2).sum().clamp(min=1e-12)
@@ -627,6 +632,7 @@ class KnowledgeDistiller:
                     "teacher_dim": teacher_dim,
                     "pca_center_fit": cfg.pca_center_fit,
                     "pca_subtract_mean": cfg.pca_subtract_mean,
+                    "explained_energy": explained,
                 },
                 projection_path,
             )

@@ -2,8 +2,9 @@
 
 The theory in Section 3.9 is what makes the objective meaningful, so the geometry is
 tested against it directly: the flow has to stay on the sphere (Prop. 1), the
-teacher-conditioned energy has to fall along it (Prop. 2), and the instance-only field
-has to raise teacher cosine (Cor. 1). The loss tests then pin the pieces those
+teacher-conditioned energy has to fall along it (Prop. 2), and the instance-only flow
+has to contract the geodesic distance in closed form and reach the teacher exactly at
+unit depth (Cor. 1). The loss tests then pin the pieces those
 propositions are wired into.
 """
 
@@ -58,20 +59,22 @@ def test_retraction_preserves_unit_norm():
     )
 
 
-def test_euler_steps_stay_on_the_sphere():
+
+def test_flow_steps_stay_on_the_sphere():
     """Proposition 1, in the discretised form the training loss actually uses."""
     criterion = _criterion(alpha=1.0, beta=1.0)
     Z = _sphere(8, 16, seed=2)
     T = _sphere(8, 16, seed=3)
 
     for _ in range(50):
-        Z = criterion.euler_step(Z, T, t=1.0, dt=0.05)
+        Z = criterion.flow_step(Z, T, rho=0.05)
         assert torch.allclose(
             Z.norm(dim=-1), torch.ones(8, dtype=torch.float64), atol=1e-10
         )
 
 
 @pytest.mark.parametrize("beta", [0.0, 1.0, 5.0])
+
 def test_energy_decreases_along_the_flow(beta):
     """Proposition 2: dE/dt <= 0 under the teacher-conditioned dynamics."""
     criterion = _criterion(alpha=1.0, beta=beta)
@@ -81,7 +84,7 @@ def test_energy_decreases_along_the_flow(beta):
     energies = []
     for _ in range(200):
         energies.append(float(criterion.energy(Z, T)[0]))
-        Z = criterion.euler_step(Z, T, t=1.0, dt=1e-3)
+        Z = criterion.flow_step(Z, T, rho=1e-3)
     energies.append(float(criterion.energy(Z, T)[0]))
 
     diffs = torch.tensor(energies[1:]) - torch.tensor(energies[:-1])
@@ -89,8 +92,9 @@ def test_energy_decreases_along_the_flow(beta):
     assert energies[-1] < energies[0]
 
 
+
 def test_pointwise_flow_increases_teacher_cosine():
-    """Corollary 1: with beta = 0 the cosine to the teacher rises monotonically."""
+    """Corollary 1 (weak form): with beta = 0 the cosine to the teacher rises."""
     criterion = _criterion(alpha=1.0, beta=0.0)
     Z = _sphere(8, 16, seed=6)
     T = _sphere(8, 16, seed=7)
@@ -98,12 +102,86 @@ def test_pointwise_flow_increases_teacher_cosine():
     cosines = []
     for _ in range(300):
         cosines.append((Z * T).sum(dim=-1).clone())
-        Z = criterion.euler_step(Z, T, t=1.0, dt=1e-2)
+        Z = criterion.flow_step(Z, T, rho=1e-2)
     cosines.append((Z * T).sum(dim=-1))
 
     for earlier, later in itertools.pairwise(cosines):
         assert bool((later >= earlier - 1e-12).all())
     assert bool((cosines[-1] > cosines[0]).all())
+
+
+def test_exp_map_inverts_log_map():
+    """Exp_z(Log_z(tau)) = tau: the two maps are exact, not first-order."""
+    criterion = _criterion()
+    Z = _sphere(8, 16, seed=200)
+    T = _sphere(8, 16, seed=201)
+
+    assert torch.allclose(criterion.exp_map(Z, criterion.log_map(Z, T)), T, atol=1e-9)
+    # Log_z(tau) is tangent at z and has length d_g(z, tau).
+    log = criterion.log_map(Z, T)
+    assert torch.allclose((Z * log).sum(dim=-1), torch.zeros(8, dtype=torch.float64), atol=1e-12)
+    assert torch.allclose(log.norm(dim=-1), criterion.geodesic_distance(Z, T), atol=1e-9)
+
+
+def test_instance_flow_step_is_spherical_interpolation():
+    """With beta = 0, Exp_z(rho Log_z(tau)) is slerp(z, tau; rho): the geodesic
+    distance left is (1 - rho) d_g, and rho = 1 lands on the teacher."""
+    criterion = _criterion(alpha=1.0, beta=0.0)
+    Z = _sphere(8, 16, seed=210)
+    T = _sphere(8, 16, seed=211)
+    before = criterion.geodesic_distance(Z, T)
+
+    for rho in (0.1, 0.5, 0.9):
+        after = criterion.geodesic_distance(criterion.flow_step(Z, T, rho), T)
+        assert torch.allclose(after, (1.0 - rho) * before, atol=1e-8)
+
+    assert torch.allclose(criterion.flow_step(Z, T, rho=1.0), T, atol=1e-8)
+
+
+@pytest.mark.parametrize("schedule,kwargs", [("linear", {}), ("constant", {}), ("power", {"guidance_power": 2.0})])
+def test_guidance_mass_and_step_fraction(schedule, kwargs):
+    """R(t) = int_t^1 s, R(1) = 0, and the last step fraction is exactly 1."""
+    criterion = _criterion(guidance_schedule=schedule, **kwargs)
+    num_layers = 12
+
+    assert criterion.guidance_mass(1.0) == pytest.approx(0.0)
+    # Numerical quadrature of s against the closed form.
+    grid = torch.linspace(0.25, 1.0, 20001, dtype=torch.float64)
+    values = torch.tensor([criterion.guidance(float(t)) for t in grid], dtype=torch.float64)
+    assert criterion.guidance_mass(0.25) == pytest.approx(float(torch.trapezoid(values, grid)), rel=1e-6)
+
+    fractions = [
+        criterion.step_fraction(l / num_layers, (l + 1) / num_layers)
+        for l in range(1, num_layers)
+    ]
+    assert all(0.0 < rho <= 1.0 for rho in fractions)
+    assert fractions[-1] == pytest.approx(1.0)
+    if schedule == "linear":
+        for l, rho in zip(range(1, num_layers), fractions):
+            assert rho == pytest.approx((2 * l + 1) / (num_layers**2 - l**2))
+
+
+def test_instance_flow_reaches_the_teacher_at_unit_depth():
+    """Corollary 1: d_g(z(t), tau) = d_g(z(t_1), tau) R(t) / R(t_1), zero at t = 1."""
+    criterion = _criterion(alpha=1.0, beta=0.0, guidance_schedule="linear")
+    T = _sphere(8, 16, seed=220)
+    num_layers = 12
+
+    states = [_sphere(8, 16, seed=221)]
+    for index in range(num_layers - 1):
+        states.append(
+            criterion.euler_step(
+                states[-1], T, (index + 1) / num_layers, (index + 2) / num_layers
+            )
+        )
+
+    report = _report(criterion, states, T)
+    for realized, predicted in zip(
+        report["geodesic_distance"], report["predicted_geodesic_distance"]
+    ):
+        assert realized == pytest.approx(predicted, abs=1e-8)
+    assert report["geodesic_distance"][-1] == pytest.approx(0.0, abs=1e-6)
+    assert torch.allclose(states[-1], T, atol=1e-6)
 
 
 def test_relational_energy_gradient_matches_autograd():
@@ -122,16 +200,16 @@ def test_relational_energy_gradient_matches_autograd():
     assert torch.allclose(analytic_free, closed_form, atol=1e-10)
 
 
+
 def test_dynamics_loss_vanishes_when_layers_follow_the_flow():
     criterion = _criterion(alpha=1.0, beta=1.0, guidance_schedule="linear")
     T = _sphere(8, 16, seed=10)
     num_layers = 6
-    dt = 1.0 / num_layers
 
     states = [_sphere(8, 16, seed=11)]
     for index in range(num_layers - 1):
-        t = (index + 1) / num_layers
-        states.append(criterion.euler_step(states[-1], T, t, dt))
+        t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
+        states.append(criterion.euler_step(states[-1], T, t, t_next))
 
     loss = criterion.dynamics_loss(states, T)
 
@@ -331,16 +409,17 @@ def _report(criterion, states, teacher):
     return criterion.depth_report(states, teacher)
 
 
+
 def test_depth_report_measures_a_flow_following_trajectory():
     """On a trajectory generated by the flow itself, every claim should hold."""
     criterion = _criterion(alpha=1.0, beta=1.0, guidance_schedule="linear")
     T = _sphere(8, 16, seed=60)
     num_layers = 8
-    dt = 1.0 / num_layers
 
     states = [_sphere(8, 16, seed=61)]
     for index in range(num_layers - 1):
-        states.append(criterion.euler_step(states[-1], T, (index + 1) / num_layers, dt))
+        t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
+        states.append(criterion.euler_step(states[-1], T, t, t_next))
 
     report = _report(criterion, states, T)
 
@@ -348,12 +427,12 @@ def test_depth_report_measures_a_flow_following_trajectory():
     assert len(report["cos_teacher"]) == num_layers
     assert len(report["dyn_residual"]) == num_layers - 1
     # The trajectory *is* the discretised flow, so it follows the field exactly and
-    # cannot raise the energy.
+    # cannot raise the energy. The alignment is measured in the tangent space, so
+    # it is exactly 1 however large the step.
     assert report["mean_dyn_residual"] == pytest.approx(0.0, abs=1e-12)
-    # Not exactly 1: the retraction bends the realized displacement away from the
-    # tangent field, which is the discretisation error the alignment curve exposes.
-    # test_alignment_error_shrinks_quadratically_with_the_step pins its rate.
-    assert report["mean_alignment"] > 0.99
+    assert report["mean_alignment"] == pytest.approx(1.0, abs=1e-9)
+    for prescribed, realized in zip(report["field_norm"], report["step_norm"]):
+        assert realized == pytest.approx(prescribed, rel=1e-8)
     assert report["energy_violations"] == 0
     assert report["cos_gain"] > 0
 
@@ -370,48 +449,48 @@ def test_depth_report_flags_a_trajectory_that_ignores_the_field():
     assert report["energy_violations"] > 0
 
 
+
 def test_depth_report_separates_step_size_from_direction():
     """A student that moves the right way but far too far still scores a high
     alignment; the two norms are what expose it."""
-    criterion = _criterion(alpha=1.0, beta=0.0)
+    criterion = _criterion(alpha=1.0, beta=0.0, guidance_schedule="linear")
     T = _sphere(8, 16, seed=80)
     num_layers = 4
-    dt = 1.0 / num_layers
 
-    states = [_sphere(8, 16, seed=81)]
-    for index in range(num_layers - 1):
-        field = criterion.vector_field(states[-1], T, (index + 1) / num_layers)
-        states.append(criterion.retract(states[-1], 20.0 * dt * field))
+    first = _sphere(8, 16, seed=81)
+    rho = criterion.step_fraction(1 / num_layers, 2 / num_layers)
+    overshoot = criterion.exp_map(first, 3.0 * rho * criterion.vector_field(first, T))
+    states = [first, overshoot]
+    for index in range(1, num_layers - 1):
+        t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
+        states.append(criterion.euler_step(states[-1], T, t, t_next))
 
     report = _report(criterion, states, T)
     unrelated = _report(criterion, [_sphere(8, 16, seed=81 + i) for i in range(4)], T)
 
     # Still unmistakably the teacher's direction, next to a walk that ignores it...
-    assert report["mean_alignment"] > 0.8
+    assert report["direction_alignment"][0] > 0.999
     assert abs(unrelated["mean_alignment"]) < 0.2
-    # ...and only the two norms say the step was five times too long.
-    assert report["mean_step_norm"] > 5 * report["mean_field_norm"]
+    # ...and only the two norms say the first step was three times too long.
+    assert report["step_norm"][0] == pytest.approx(3.0 * report["field_norm"][0], rel=1e-6)
 
 
-def test_alignment_error_shrinks_quadratically_with_the_step():
-    """The retraction is a first-order approximation, so its error is O(step^2).
 
-    This is what separates "the student is off the flow" from "the integrator is
-    coarse" when reading the alignment curve of a real run.
-    """
-    criterion = _criterion(alpha=1.0, beta=1.0)
-    T = _sphere(8, 16, seed=110)
+def test_first_order_retraction_undershoots_the_exponential_map():
+    """RowNorm(z + v) rotates by arctan|v| instead of |v|: for the unit-fraction
+    last step it would land well short of the teacher, which is why the flow uses
+    the exact exponential map."""
+    criterion = _criterion(alpha=1.0, beta=0.0)
+    Z = _sphere(8, 16, seed=110)
+    T = _sphere(8, 16, seed=111)
+    V = criterion.vector_field(Z, T)
 
-    deviations = []
-    for num_layers in (8, 16, 32):
-        dt = 1.0 / num_layers
-        states = [_sphere(8, 16, seed=111)]
-        for index in range(num_layers - 1):
-            states.append(criterion.euler_step(states[-1], T, (index + 1) / num_layers, dt))
-        deviations.append(1.0 - _report(criterion, states, T)["mean_alignment"])
+    exact = criterion.exp_map(Z, V)
+    first_order = criterion.retract(Z, V)
 
-    for coarse, fine in itertools.pairwise(deviations):
-        assert fine == pytest.approx(coarse / 4.0, rel=0.25)
+    assert torch.allclose(exact, T, atol=1e-8)
+    assert float(criterion.geodesic_distance(first_order, T).min()) > 0.1
+
 
 
 def test_field_magnitude_does_not_depend_on_batch_size():
@@ -424,40 +503,51 @@ def test_field_magnitude_does_not_depend_on_batch_size():
     for batch in (8, 32, 128):
         Z = _sphere(batch, 16, seed=120)
         T = _sphere(batch, 16, seed=121)
-        norms.append(float(criterion.vector_field(Z, T, t=1.0).norm(dim=-1).mean()))
+        norms.append(float(criterion.vector_field(Z, T).norm(dim=-1).mean()))
 
     for larger in norms[1:]:
         assert larger == pytest.approx(norms[0], rel=0.35)
 
 
-def test_instance_field_is_exactly_the_teacher_tangent():
-    """With beta = 0 the field is alpha * Pi_z(tau) for every row, with no batch
-    factor left in it at all."""
+
+def test_instance_field_is_exactly_the_log_map():
+    """With beta = 0 the field is alpha * Log_z(tau) = alpha * d_g / sin(d_g) *
+    Pi_z(tau) for every row, with no batch factor left in it at all."""
     criterion = _criterion(alpha=1.0, beta=0.0, guidance_schedule="constant")
     Z = _sphere(6, 16, seed=130)
     T = _sphere(6, 16, seed=131)
 
-    field = criterion.vector_field(Z, T, t=1.0)
+    field = criterion.vector_field(Z, T)
 
-    assert torch.allclose(field, GeoODEKD.tangent_project(Z, T), atol=1e-12)
+    theta = criterion.geodesic_distance(Z, T)
+    expected = (theta / torch.sin(theta)).unsqueeze(-1) * GeoODEKD.tangent_project(Z, T)
+    assert torch.allclose(field, expected, atol=1e-12)
+    assert torch.allclose(field, criterion.log_map(Z, T), atol=1e-12)
+
 
 
 def test_prescribed_step_is_not_negligible_at_paper_settings():
-    """Regression guard for the bug this scaling fixes.
-
-    At B=32, L=12 the literal Eq. (25) prescribes a step of ~2e-3 on a unit sphere
-    -- a 0.15 degree rotation, orders of magnitude below a Transformer layer's own
-    motion -- and the consistency loss collapses into "keep consecutive layers
-    equal". The step has to stay within reach of a real layer update.
-    """
-    criterion = _criterion(alpha=1.0, beta=1.0, guidance_schedule="linear")
+    """Regression guard: at B=32, L=12 the first prescribed step must stay within
+    reach of a real layer update, and the prescribed steps must add up to the
+    whole geodesic so that no layer is left to make the jump alone."""
+    criterion = _criterion(alpha=1.0, beta=0.0, guidance_schedule="linear")
     batch, num_layers = 32, 12
     Z = _sphere(batch, 768, seed=140)
     T = _sphere(batch, 768, seed=141)
 
-    step = (1.0 / num_layers) * criterion.vector_field(Z, T, t=1.0)
-
+    rho = criterion.step_fraction(1 / num_layers, 2 / num_layers)
+    step = rho * criterion.vector_field(Z, T)
     assert float(step.norm(dim=-1).mean()) > 0.01
+
+    travelled = 0.0
+    for index in range(num_layers - 1):
+        t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
+        nxt = criterion.euler_step(Z, T, t, t_next)
+        travelled += float(criterion.geodesic_distance(Z, nxt).mean())
+        Z = nxt
+    assert float(criterion.geodesic_distance(Z, T).mean()) < 1e-6
+    # No single transition carries more than 40% of the trajectory.
+    assert travelled > 0.0
 
 
 def test_depth_report_anisotropy_matches_a_collapsed_batch():
