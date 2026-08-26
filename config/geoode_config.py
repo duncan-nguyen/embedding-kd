@@ -46,6 +46,11 @@ class GeoODEConfig(BaseConfig):
 
     eps_norm = 1e-12
 
+    # Gram matrix the relational energy E_geo is measured against, Eq. (18):
+    # "native" uses the teacher's own cosine matrix (no projection loss),
+    # "projected" the Gram of the P_T-projected targets (ablation).
+    relational_target = "native"
+
     # Fixed teacher dimensionality reduction P_T = P_PCA R, Eq. (8).
     pca_center_fit = True
     pca_subtract_mean = False

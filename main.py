@@ -153,6 +153,13 @@ def parse_args():
              'epochs (0 = keep the initial gauge)'
     )
     parser.add_argument(
+        '--relational_target',
+        choices=['native', 'projected'],
+        default=None,
+        help='GeoODE-KD: Gram matrix for the relational energy: the teacher\'s native '
+             'cosine matrix, or that of the projected targets (ablation)'
+    )
+    parser.add_argument(
         '--guidance_schedule',
         choices=['linear', 'power', 'constant'],
         default=None,
@@ -348,6 +355,7 @@ def get_config(method: str, args):
         'pca_subtract_mean',
         'gauge_align',
         'gauge_refit_every',
+        'relational_target',
     ):
         value = getattr(args, name, None)
         if value is None:

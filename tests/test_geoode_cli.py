@@ -71,6 +71,11 @@ def test_gauge_refit_flag_overrides_the_config():
     assert _config("--method", "geoode", "--gauge_refit_every", "1").gauge_refit_every == 1
 
 
+def test_relational_target_flag_overrides_the_config():
+    assert _config("--method", "geoode").relational_target == "native"
+    assert _config("--method", "geoode", "--relational_target", "projected").relational_target == "projected"
+
+
 def test_geoode_flags_are_rejected_for_other_methods():
     with pytest.raises(ValueError, match="only supported by the geoode method"):
         _config("--method", "talas", "--beta", "2.0")

@@ -6,7 +6,9 @@ continuous flow on the unit hypersphere. The teacher supplies a potential
     E(Z, T) = alpha * E_sem(Z, T) + beta * E_geo(Z, T)                     (Eq. 20)
 
 with E_sem the mean *squared geodesic distance* to the teacher and E_geo the batch
-Gram gap. Its negative Riemannian gradient, run in the finite-horizon time warp
+Gram gap. Cosine structure is dimension-free, so E_geo is measured against the
+teacher's *native* Gram matrix (``teacher_gram``) whenever the caller supplies it;
+the projection P_T then enters only the point-wise term. Its negative Riemannian gradient, run in the finite-horizon time warp
 s(t) / R(t) with R(t) = int_t^1 s, is a semantic vector field (Eq. 26) that reaches
 the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from layer
 ``l`` predicts where layer ``l+1`` should land (Eq. 30), and the dynamics loss
@@ -196,12 +198,25 @@ class GeoODEKD(nn.Module):
             return 1.0
         return 1.0 - self.guidance_mass(t_next) / remaining
 
+    @staticmethod
+    def teacher_gram(T: torch.Tensor, teacher_gram: torch.Tensor | None) -> torch.Tensor:
+        """G_T of Eq. (18): the native teacher Gram when given, else that of the
+        projected targets."""
+        if teacher_gram is not None:
+            return teacher_gram.to(T.dtype)
+        return T @ T.transpose(0, 1)
+
     def energy(
-        self, Z: torch.Tensor, T: torch.Tensor
+        self,
+        Z: torch.Tensor,
+        T: torch.Tensor,
+        teacher_gram: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Teacher-conditioned potential of Eq. (20).
 
         Returns ``(E, E_sem, E_geo)`` with the two components before their weights.
+        ``teacher_gram`` is the teacher's native ``[B, B]`` cosine matrix; without it
+        the Gram of the projected targets is used.
 
         Reported in the paper's batch-mean form so the numbers stay comparable across
         batch sizes; :meth:`vector_field` differentiates ``B`` times this, which is
@@ -209,11 +224,16 @@ class GeoODEKD(nn.Module):
         """
         batch = Z.shape[0]
         e_sem = 0.5 * self.geodesic_distance(Z, T).pow(2).mean()  # Eq. 17
-        gram_gap = Z @ Z.transpose(0, 1) - T @ T.transpose(0, 1)
+        gram_gap = Z @ Z.transpose(0, 1) - self.teacher_gram(T, teacher_gram)
         e_geo = gram_gap.pow(2).sum() / (batch * batch)  # Eq. 19
         return self.alpha * e_sem + self.beta * e_geo, e_sem, e_geo
 
-    def vector_field(self, Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
+    def vector_field(
+        self,
+        Z: torch.Tensor,
+        T: torch.Tensor,
+        teacher_gram: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """V(Z, T) of Eq. (25): the tangent negative gradient of the potential, before
         the depth-dependent time warp.
 
@@ -226,21 +246,32 @@ class GeoODEKD(nn.Module):
         rather than evaluated pointwise, so it never appears here.
         """
         batch = Z.shape[0]
-        gram_gap = Z @ Z.transpose(0, 1) - T @ T.transpose(0, 1)
+        gram_gap = Z @ Z.transpose(0, 1) - self.teacher_gram(T, teacher_gram)
         relational = self.tangent_project(Z, gram_gap @ Z)
         return self.alpha * self.log_map(Z, T) - (4.0 * self.beta / batch) * relational
 
-    def flow_step(self, Z: torch.Tensor, T: torch.Tensor, rho: float) -> torch.Tensor:
+    def flow_step(
+        self,
+        Z: torch.Tensor,
+        T: torch.Tensor,
+        rho: float,
+        teacher_gram: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Move a fraction ``rho`` of the prescribed tangent displacement along the
         geodesic: Exp_Z(rho * V(Z, T)). With beta = 0 this is exactly the spherical
         interpolation slerp(z, tau; rho), so rho = 1 lands on the teacher."""
-        return self.exp_map(Z, rho * self.vector_field(Z, T))
+        return self.exp_map(Z, rho * self.vector_field(Z, T, teacher_gram))
 
     def euler_step(
-        self, Z: torch.Tensor, T: torch.Tensor, t: float, t_next: float
+        self,
+        Z: torch.Tensor,
+        T: torch.Tensor,
+        t: float,
+        t_next: float,
+        teacher_gram: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """One step of the discretised flow from depth t to t_next, Eq. (30)."""
-        return self.flow_step(Z, T, self.step_fraction(t, t_next))
+        return self.flow_step(Z, T, self.step_fraction(t, t_next), teacher_gram)
 
     # ------------------------------------------------------------------ losses
 
@@ -268,6 +299,7 @@ class GeoODEKD(nn.Module):
         self,
         states: Sequence[torch.Tensor],
         teacher: torch.Tensor,
+        teacher_gram: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """ODE consistency, Eq. (32)."""
         num_layers = len(states)
@@ -283,9 +315,11 @@ class GeoODEKD(nn.Module):
                 # sg[.] of Eq. (32): the prediction is a fixed local target read off
                 # the current trajectory, so only the actual next layer is trained.
                 with torch.no_grad():
-                    predicted = self.euler_step(current.detach(), teacher, t, t_next)
+                    predicted = self.euler_step(
+                        current.detach(), teacher, t, t_next, teacher_gram
+                    )
             else:
-                predicted = self.euler_step(current, teacher, t, t_next)
+                predicted = self.euler_step(current, teacher, t, t_next, teacher_gram)
             actual = states[index + 1]
             terms.append((1.0 - (actual * predicted).sum(dim=-1)).mean())  # Eq. 33
 
@@ -325,6 +359,7 @@ class GeoODEKD(nn.Module):
         self,
         states: Sequence[torch.Tensor],
         teacher: torch.Tensor,
+        teacher_gram: torch.Tensor | None = None,
     ) -> dict[str, object]:
         """Per-depth diagnostics for post-hoc analysis of one batch.
 
@@ -358,8 +393,10 @@ class GeoODEKD(nn.Module):
         num_layers = len(states)
 
         cos_teacher, distance, gram_gap, energy = [], [], [], []
+        if teacher_gram is not None:
+            teacher_gram = teacher_gram.to(states[-1].dtype)
         for state in states:
-            total, _, geo = self.energy(state, teacher)
+            total, _, geo = self.energy(state, teacher, teacher_gram)
             cos_teacher.append(float((state * teacher).sum(dim=-1).mean()))
             distance.append(float(self.geodesic_distance(state, teacher).mean()))
             gram_gap.append(float(geo))
@@ -378,7 +415,9 @@ class GeoODEKD(nn.Module):
             t = self._depth(index, num_layers)
             t_next = self._depth(index + 1, num_layers)
             current, actual = states[index], states[index + 1]
-            field = self.step_fraction(t, t_next) * self.vector_field(current, teacher)
+            field = self.step_fraction(t, t_next) * self.vector_field(
+                current, teacher, teacher_gram
+            )
             predicted = self.exp_map(current, field)
             update = self.log_map(current, actual)
             dyn_residual.append(float((1.0 - (actual * predicted).sum(dim=-1)).mean()))
@@ -448,6 +487,7 @@ class GeoODEKD(nn.Module):
         teacher: torch.Tensor,
         attention_mask: torch.Tensor | None = None,
         second_view: torch.Tensor | None = None,
+        teacher_gram: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute L_total of Eq. (38).
 
@@ -459,6 +499,8 @@ class GeoODEKD(nn.Module):
             attention_mask: student attention mask, needed for mean pooling.
             second_view: pooled (unnormalised) final representation of a second
                 dropout view, used only for the contrastive term.
+            teacher_gram: the teacher's native ``[B, B]`` cosine matrix for the
+                relational energy; defaults to the Gram of the projected targets.
         """
         states = self.layer_states(hidden_states, attention_mask)
         if not states:
@@ -472,7 +514,14 @@ class GeoODEKD(nn.Module):
                 "must be projected into the student dimension before training"
             )
 
-        loss_dyn = self.dynamics_loss(states, teacher)
+        if teacher_gram is not None:
+            if teacher_gram.shape != (teacher.shape[0], teacher.shape[0]):
+                raise ValueError(
+                    f"teacher_gram must be [B, B] = {(teacher.shape[0],) * 2}, got "
+                    f"{tuple(teacher_gram.shape)}"
+                )
+            teacher_gram = teacher_gram.to(teacher.dtype)
+        loss_dyn = self.dynamics_loss(states, teacher, teacher_gram)
         loss_end = self.endpoint_loss(states[-1], teacher)
 
         if self.lambda_ctr > 0.0 and second_view is not None:
@@ -489,8 +538,8 @@ class GeoODEKD(nn.Module):
         )
 
         with torch.no_grad():
-            energy_first, _, geo_first = self.energy(states[0], teacher)
-            energy_last, _, geo_last = self.energy(states[-1], teacher)
+            energy_first, _, geo_first = self.energy(states[0], teacher, teacher_gram)
+            energy_last, _, geo_last = self.energy(states[-1], teacher, teacher_gram)
             metrics = {
                 "loss_total": float(total.detach()),
                 "loss_end": float(loss_end.detach()),

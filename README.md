@@ -67,8 +67,11 @@ then rotates those coordinates onto the *untrained* student's own embedding spac
 by orthogonal Procrustes (`P_T = P_PCA R`; both saved in `teacher_projection.pt`
 next to the checkpoints). The rotation is a closed-form statistic, not a
 parameter: it removes the arbitrary gauge of the PCA basis from the endpoint loss
-without touching the Gram matrix (`--no-gauge_align` is the ablation). It then
-supervises each
+without touching the Gram matrix (`--no-gauge_align` is the ablation;
+`--gauge_refit_every N` re-estimates it against the current student every N
+epochs). The relational energy is measured against the teacher's *native* cosine
+matrix, which needs no projection at all (`--relational_target projected` is the
+ablation that uses the PCA-projected Gram instead). It then supervises each
 Transformer layer as one Riemannian Euler step of a teacher-conditioned flow
 instead of pushing every layer at the final teacher embedding. Its own flags are
 `--alpha`/`--beta` (the semantic and relational parts of the energy),

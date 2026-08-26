@@ -518,7 +518,15 @@ class KnowledgeDistiller:
                     f"rows but training data has {len(df)} rows. Remove or regenerate {cache_path}."
                 )
 
+            teacher_native = None
             if cfg.distill_method == "geoode":
+                if getattr(cfg, "relational_target", "native") == "native":
+                    # E_geo is measured against the teacher's own cosine matrix:
+                    # Gram matrices are dimension-free, so P_T only has to enter
+                    # the point-wise term. Half precision keeps 100k x 2560 small.
+                    teacher_native = F.normalize(
+                        teacher_cls_list.to(torch.float32), dim=-1
+                    ).to(torch.float16)
                 teacher_cls_list = self._project_teacher_targets(
                     teacher_cls_list, df["premise"].astype(str).tolist()
                 )
@@ -548,6 +556,7 @@ class KnowledgeDistiller:
                 # persistent DataLoader workers only see that through shared memory.
                 teacher_cls_list = teacher_cls_list.contiguous().share_memory_()
             self.teacher_cls_all = teacher_cls_list
+            self.teacher_native_all = teacher_native
 
             # Free teacher model to save GPU memory (teacher not needed after caching)
             del self.model_teacher
@@ -556,7 +565,9 @@ class KnowledgeDistiller:
                 torch.cuda.empty_cache()
             print("Teacher model freed from GPU memory")
 
-            self.train_ds = TextPairWithTeacher(df, cfg.task_type, teacher_cls_list)
+            self.train_ds = TextPairWithTeacher(
+                df, cfg.task_type, teacher_cls_list, teacher_native
+            )
             self.collate_fn = DualTokenizerCollateWithTeacher(
                 self.tok_student, cfg.task_type, cfg.max_length
             )
@@ -783,11 +794,12 @@ class KnowledgeDistiller:
         attention_mask: torch.Tensor | None,
         teacher_cls: torch.Tensor,
         batch_size: int,
+        teacher_gram: torch.Tensor | None = None,
     ) -> None:
         """Sample one per-depth report and buffer it for the end of the epoch."""
         states = self.depth_probe.layer_states(hidden_states, attention_mask)
         report = self.depth_probe.depth_report(
-            states, self._depth_teacher_targets(teacher_cls)
+            states, self._depth_teacher_targets(teacher_cls), teacher_gram
         )
         self._depth_records.append(
             {
@@ -1125,10 +1137,16 @@ class KnowledgeDistiller:
             for k, v in batch.items():
                 if not torch.is_tensor(v):
                     continue
-                if k.endswith("_stu") or k in ("labels", "teacher_cls"):
+                if k.endswith("_stu") or k in ("labels", "teacher_cls", "teacher_native"):
                     batch_s[k] = v.to(self.device_s, non_blocking=True)
 
             self.optimizer.zero_grad(set_to_none=True)
+
+            # Native teacher cosine matrix for the relational energy (Eq. 18).
+            teacher_gram = None
+            if "teacher_native" in batch_s:
+                native = batch_s["teacher_native"].float()
+                teacher_gram = native @ native.transpose(0, 1)
 
             with autocast("cuda", enabled=torch.cuda.is_available()):
                 teacher_cls = batch_s["teacher_cls"]
@@ -1174,6 +1192,7 @@ class KnowledgeDistiller:
                     teacher=teacher_cls,
                     attention_mask=attention_mask,
                     second_view=second_view,
+                    teacher_gram=teacher_gram,
                 )
                 loss = loss.float()
 
@@ -1188,6 +1207,7 @@ class KnowledgeDistiller:
                     attention_mask,
                     teacher_cls,
                     input_ids.size(0),
+                    teacher_gram,
                 )
 
             return loss, metrics

@@ -634,3 +634,59 @@ def test_gauge_refit_never_lowers_the_cosine_of_the_current_student():
 
     assert stats["cos_after"] >= under_old_gauge - 1e-6
     assert stats["cos_after"] > under_old_gauge + 0.1  # the drift was large, so the refit must matter
+
+
+def test_native_gram_replaces_the_projected_gram_in_the_relational_energy():
+    """With a native teacher Gram supplied, E_geo measures the gap to *that* matrix,
+    and the relational field is its tangent gradient."""
+    criterion = _criterion(alpha=0.0, beta=1.0)
+    Z = _sphere(6, 10, seed=400)
+    T = _sphere(6, 10, seed=401)
+    native = _sphere(6, 40, seed=402)  # a higher-dimensional teacher
+    gram = native @ native.T
+
+    _, _, geo_projected = criterion.energy(Z, T)
+    _, _, geo_native = criterion.energy(Z, T, gram)
+    expected = ((Z @ Z.T - gram).pow(2).sum() / 36.0)
+    assert float(geo_native) == pytest.approx(float(expected), rel=1e-10)
+    assert float(geo_native) != pytest.approx(float(geo_projected), rel=1e-3)
+
+    Zg = Z.clone().requires_grad_(True)
+    (grad,) = torch.autograd.grad(criterion.energy(Zg, T, gram)[2], Zg)
+    field = criterion.vector_field(Z, T, gram)
+    # alpha = 0: the field is -B * Pi_Z[grad E_geo]
+    assert torch.allclose(field, -6.0 * GeoODEKD.tangent_project(Z, grad), atol=1e-10)
+
+
+def test_forward_accepts_and_validates_a_native_gram():
+    criterion = _criterion(alpha=1.0, beta=1.0, lambda_ctr=0.0)
+    hidden_states = [torch.randn(4, 5, 8) for _ in range(3)]
+    teacher = torch.nn.functional.normalize(torch.randn(4, 8), dim=-1)
+    native = torch.nn.functional.normalize(torch.randn(4, 32), dim=-1)
+
+    _, with_native = criterion(hidden_states=hidden_states, teacher=teacher, teacher_gram=native @ native.T)
+    _, without = criterion(hidden_states=hidden_states, teacher=teacher)
+    assert with_native["gram_gap_final"] != pytest.approx(without["gram_gap_final"], rel=1e-3)
+
+    with pytest.raises(ValueError):
+        criterion(hidden_states=hidden_states, teacher=teacher, teacher_gram=torch.eye(3))
+
+
+def test_cached_collate_carries_the_native_teacher_embedding():
+    import pandas as pd
+    from transformers import AutoTokenizer
+    from src.data_utils.dataset_cache import DualTokenizerCollateWithTeacher, TextPairWithTeacher
+
+    df = pd.DataFrame({"premise": ["a b", "c d e"], "hypothesis": ["a b", "c d e"]})
+    projected = torch.randn(2, 4)
+    native = torch.randn(2, 9)
+    tok = AutoTokenizer.from_pretrained("bert-base-uncased")
+    collate = DualTokenizerCollateWithTeacher(tok, "pair_cls", 8)
+
+    with_native = TextPairWithTeacher(df, "pair_cls", projected, native)
+    batch = collate([with_native[0], with_native[1]])
+    assert torch.equal(batch["teacher_native"], native)
+    assert torch.equal(batch["teacher_cls"], projected)
+
+    without = TextPairWithTeacher(df, "pair_cls", projected)
+    assert "teacher_native" not in collate([without[0], without[1]])

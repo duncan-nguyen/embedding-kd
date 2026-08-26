@@ -440,8 +440,8 @@ PCA coordinates to the untrained student,
 \end{equation}
 where $\mathbf{T}_{\mathrm{PCA}}$ stacks the PCA coordinates of a subset of
 the corpus and $\mathbf{Z}^{(L)}_{0}$ the initial student's output
-embeddings of the same sentences. Since $R$ is orthogonal, the Gram matrix
-$\mathbf{T}\mathbf{T}^{\top}$, the retained variance and the
+embeddings of the same sentences. Since $R$ is orthogonal, the Gram matrix of the targets, the retained
+variance and the
 Eckart--Young optimality of $P_{\mathrm{PCA}}$ are untouched; only the
 arbitrary part of the endpoint condition is removed. Like
 $P_{\mathrm{PCA}}$, $R$ is a closed-form statistic of the cached targets
@@ -588,9 +588,20 @@ We therefore construct batch-wise Gram matrices
     \qquad
     \mathbf{G}_{T}
     =
-    \mathbf{T}\mathbf{T}^{\top}.
+    \widetilde{\mathbf{T}}\widetilde{\mathbf{T}}^{\top},
+    \qquad
+    \widetilde{\boldsymbol{\tau}}_i=\operatorname{norm}\bigl(f_T(x_i)\bigr),
+    \label{eq:gram}
 \end{equation}
-Their $(i,j)$-th entries correspond to pairwise cosine similarities.
+whose $(i,j)$-th entries are pairwise cosine similarities. Note that
+$\mathbf{G}_T$ is built from the teacher's \emph{native} embeddings, not
+from the projected targets of Eq.~\eqref{eq:teacher_embedding}: a cosine
+matrix is dimension-free, so the relational structure of the teacher can be
+transferred without any loss, and the projection $P_T$ enters only the
+point-wise term where a coordinate system is unavoidable. In our setting the
+$7\%$ of embedding energy that $P_T$ discards therefore affects the anchor
+$\boldsymbol{\tau}_i$ but not the geometry the student is asked to
+reproduce.
 
 The geometric energy is
 \begin{equation}
@@ -600,7 +611,7 @@ The geometric energy is
     \left\|
         \mathbf{Z}\mathbf{Z}^{\top}
         -
-        \mathbf{T}\mathbf{T}^{\top}
+        \mathbf{G}_T
     \right\|_F^2.
     \label{eq:geometry_energy}
 \end{equation}
@@ -687,7 +698,7 @@ the geometric term satisfies
     \left(
         \mathbf{Z}\mathbf{Z}^{\top}
         -
-        \mathbf{T}\mathbf{T}^{\top}
+        \mathbf{G}_T
     \right)\mathbf{Z}.
     \label{eq:geo_gradient}
 \end{equation}
@@ -704,7 +715,7 @@ We therefore define the tangent descent direction
     \left(
         \mathbf{Z}\mathbf{Z}^{\top}
         -
-        \mathbf{T}\mathbf{T}^{\top}
+        \mathbf{G}_T
     \right)\mathbf{Z}
     \right]
     =
@@ -1212,7 +1223,8 @@ Eq.~\eqref{eq:teacher_embedding}
         \State{} Compute
         $\mathbf{G}_T
         \gets
-        \mathbf{T}\mathbf{T}^\top$
+        \widetilde{\mathbf{T}}\widetilde{\mathbf{T}}^\top$
+        from the native teacher embeddings, Eq.~\eqref{eq:gram}
 
         \State{} Compute the tangent direction
         $\mathbf{V}(
