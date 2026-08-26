@@ -169,6 +169,12 @@ def parse_args():
         )
     )
     parser.add_argument(
+        '--eval_every',
+        type=int,
+        default=None,
+        help='Run the per-epoch evaluation every N epochs (0 disables it; only the final test evaluation runs)'
+    )
+    parser.add_argument(
         '--depth_log_every',
         type=int,
         default=None,
@@ -300,6 +306,10 @@ def get_config(method: str, args):
         # the threshold source with it unless one was named explicitly.
         if args.pair_threshold_source is None:
             config.pair_threshold_source = 'test'
+    if args.eval_every is not None:
+        if args.eval_every < 0:
+            raise ValueError("--eval_every must be zero or positive")
+        config.eval_every = args.eval_every
     if args.depth_log_every is not None:
         if args.depth_log_every < 0:
             raise ValueError("--depth_log_every must be zero or positive")

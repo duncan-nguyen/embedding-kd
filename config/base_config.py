@@ -43,6 +43,7 @@ class BaseConfig:
 
     debug_align = False
     evaluate_test_each_epoch = False
+    # Per-epoch evaluation cadence; 0 disables it (only the final test eval runs).
     eval_every = 1
     
     seed = 42

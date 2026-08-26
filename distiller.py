@@ -2069,7 +2069,7 @@ class KnowledgeDistiller:
                 print(f"Evaluation after Epoch {epoch + 1}")
                 print("=" * 60)
 
-                if (epoch + 1) % cfg.eval_every == 0:
+                if cfg.eval_every and (epoch + 1) % cfg.eval_every == 0:
                     try:
                         epoch_results = self.evaluate(eval_split)
                         if (
@@ -2118,6 +2118,7 @@ class KnowledgeDistiller:
                 reusable = (
                     eval_split == "test"
                     and epoch_results is not None
+                    and cfg.eval_every
                     and cfg.epochs % cfg.eval_every == 0
                 )
                 if reusable:
