@@ -1,0 +1,51 @@
+\documentclass{article} % For LaTeX2e
+
+% Keep the official ICLR template isolated from the manuscript sources.
+\makeatletter
+\def\input@path{{template/}}
+\makeatother
+
+\usepackage{iclr2027_conference,times}
+\input{template/math_commands.tex}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\usepackage{url}
+
+\title{GeoODE-KD: Distilling Sentence Embeddings as\\
+Teacher-Guided Geometric Dynamics}
+
+% Authors must remain hidden while \iclrfinalcopy is commented out.
+\author{Anonymous Authors}
+
+% \iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/motivation}
+\input{sections/method}
+\input{sections/experiments}
+\input{sections/discussion}
+\input{sections/conclusion}
+\input{sections/statements}
+
+\bibliography{references/references}
+\bibliographystyle{template/iclr2027_conference}
+
+\appendix
+
+\input{appendices/derivations}
+\input{appendices/target_construction}
+\input{appendices/implementation}
+\input{appendices/evaluation}
+\input{appendices/additional_results}
+\input{appendices/ablations}
+
+\end{document}
