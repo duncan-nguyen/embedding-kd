@@ -222,8 +222,12 @@ def collect_msmarco(shard, wanted_queries, wanted_passages, seed, blocked, taken
             if len(accepted) == wanted:
                 break
         if len(accepted) < wanted:
+            # One shard splits into ~57.7k rows per pool, so a single-shard build
+            # tops out near 215k rows in total.
             raise SystemExit(
-                f"Only {len(accepted)} usable {kind} rows in the shard, wanted {wanted}"
+                f"Only {len(accepted)} usable {kind} rows in the shard, wanted "
+                f"{wanted}. Point MSMARCO_SHARD at a second shard of the train "
+                f"split (there are 7) to go past this size."
             )
         kept[kind] = accepted
         duplicates[kind] = seen_before
@@ -286,6 +290,13 @@ def main():
         if total % 1000:
             raise SystemExit(f"{total} rows has no <n>k name; pass --out explicitly")
         args.out = TRAIN_DIR / f"train_{total // 1000}k.csv"
+    # --total 100000 names the base file the script is reading from, and writing a
+    # 100k sample over a 102,361-row input would destroy the source of every rung.
+    if args.out.resolve() == args.base.resolve():
+        raise SystemExit(
+            f"--out and --base are both {args.out}; writing there would overwrite "
+            f"the corpus this build samples from. Pass an explicit --out."
+        )
 
     print("Loading exclusion sets")
     blocked = forbidden_texts()

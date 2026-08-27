@@ -15,6 +15,8 @@ sentencepiece>=0.1.99
 # Data Processing
 pandas>=1.5.0
 numpy>=1.24.0
+# read the MS MARCO parquet shard in scripts/build_train_corpus.py
+pyarrow>=14.0.0
 
 # Data visualization
 matplotlib==3.11.1

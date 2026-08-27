@@ -20,23 +20,42 @@ passages, drawn from disjoint rows of one pinned shard so no query in the corpus
 sits next to a passage that was retrieved for it. No qrel, `is_selected` flag or
 answer is ever read -- only raw text, so the objective stays unlabeled. MS MARCO
 is a *training* source for the retrieval evaluation and never a test one, which
-keeps ArguAna/FiQA/SCIDOCS zero-shot cross-dataset. Rebuild it with:
+keeps ArguAna/FiQA/SCIDOCS zero-shot cross-dataset.
+
+### The data-scaling ladder
+
+One script builds every rung. The base sample is identical at every size and the
+MS MARCO rows are accepted in a fixed permutation order, so a larger corpus
+**extends** a smaller one rather than resampling it -- `train_150k.csv` is a
+row-for-row prefix of `train_200k.csv` in all three blocks. The ablation then
+varies corpus size alone, not which sentences are in the corpus.
 
 ```bash
 python3 scripts/download_retrieval_benchmarks.py   # needed for the overlap check
-python3 scripts/build_train_150k.py
+python3 scripts/build_train_corpus.py --total 150000
+python3 scripts/build_train_corpus.py --total 200000
 ```
 
+| Corpus | Base | MS MARCO queries | MS MARCO passages |
+| --- | --- | --- | --- |
+| `train_150k.csv` | 100,000 | 25,000 | 25,000 |
+| `train_200k.csv` | 100,000 | 50,000 | 50,000 |
+
 Everything is seeded and the Hub file is pinned to a commit sha, so a re-run
-reproduces the file byte for byte. `train_150k.manifest.json` records the seed,
-the shard, the per-source counts and every overlap the build dropped. Every new
-text is checked, on normalised form, against the 100K base, against the other new
-texts, and against the queries and corpora of all three retrieval benchmarks plus
-every existing test and validation split.
+reproduces each file byte for byte. The matching `train_<n>k.manifest.json`
+records the seed, the shard, the per-source counts and every overlap the build
+dropped. Every new text is checked, on normalised form, against the 100K base,
+against the other new texts, and against the queries and corpora of all three
+retrieval benchmarks plus every existing test and validation split.
+
+One MS MARCO shard splits into ~57.7K rows per pool, so a single-shard build tops
+out near 215K rows; past that, point `MSMARCO_SHARD` at another of the seven train
+shards. For a clean 100K rung, `--total 100000 --out <path>` writes the base
+sample alone (the 100,000 rows the other rungs share), which is not the same file
+as the 102,361-row `data/train_set/train_100k.csv` it is sampled from.
 
 The TALAS paper setup (about 15K unlabeled sentences from EMOTION, WiC and STS-B)
-is still on disk as `data/train_set/merged_3_data_5k_each.csv`, and the 100K
-corpus as `data/train_set/train_100k.csv`, for the data-scaling ablation.
+is still on disk as `data/train_set/merged_3_data_5k_each.csv`.
 
 Benchmark CSV files are separated under `data/train_set/`, `data/val_set/`,
 and `data/test_set/`. Classification probe train and validation files are
