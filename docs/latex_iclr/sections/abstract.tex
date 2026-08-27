@@ -1,24 +1,21 @@
 \begin{abstract}
-Knowledge distillation is a practical route to compressing large text
-embedding models into efficient encoders. Existing methods predominantly
-formulate embedding transfer as \emph{state matching}: a student is trained to
-reproduce a teacher embedding, intermediate representation, or relational
-structure at one or more discrete depths. These objectives specify where a
-student representation should be, but not how it should evolve through depth.
-We introduce \textbf{GeoODE-KD}, a geometric dynamics formulation that instead
-distills a teacher-guided representation trajectory. We place normalized
-sentence embeddings on a hypersphere and define a semantic potential combining
-instance-level alignment with the teacher's pairwise geometry. Its negative
-Riemannian gradient induces an analytic vector field, while a finite-horizon
-time reparameterization distributes the remaining semantic displacement across
-student depth. Consecutive Transformer layers are treated as discrete
-observations of this flow: an exponential-map update predicts the next
-representation, and a dynamics-consistency objective trains the actual layer
-transition to follow it. GeoODE-KD requires only cached final teacher
-embeddings, introduces no learned flow module or numerical ODE solver, and
-leaves the inference architecture unchanged. The ideal continuous dynamics
-preserve embedding norms and monotonically decrease the teacher-conditioned
-energy; in the instance-only case, their geodesic distance to the teacher
-contracts in closed form and vanishes at the final depth.
+Embedding distillation can become restrictive when intermediate supervision
+treats representations at different depths as independent matches to the same
+final teacher embedding. Such objectives specify target states, but leave the
+transitions between them undefined. We propose \textbf{GeoODE-KD}, a sentence
+embedding distillation framework that turns cached teacher outputs into
+depth-dependent transition targets. GeoODE-KD places normalized embeddings on
+a hypersphere and defines a teacher-conditioned potential from point-wise
+semantic alignment and native teacher geometry. Its negative Riemannian
+gradient gives the direction of semantic change, while a finite-horizon
+schedule determines how much of the remaining displacement each student layer
+should cover. GeoODE-KD does not insert a Neural ODE module or run a numerical
+solver; instead, it treats the existing Transformer layers as a discrete
+trajectory and trains every transition to follow an exponential-map update.
+The method uses only final teacher embeddings cached before training and leaves
+the inference architecture unchanged. Its ideal continuous flow preserves
+embedding norms and decreases the teacher-conditioned energy; without the
+relational term, geodesic distance to the teacher contracts in closed form and
+reaches zero at the final depth.
 % TODO: Add the principal quantitative result after the final experiments.
 \end{abstract}

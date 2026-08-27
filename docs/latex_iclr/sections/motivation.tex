@@ -4,19 +4,16 @@
 \subsection{Embedding Distillation as Static State Matching}
 \label{sec:static-state-matching}
 
-Let $f_T$ be a teacher embedding model and let a student encoder $f_S$
-contain $L$ Transformer layers. For an input sentence $x_i$, pooling the token
-states after layer $\ell$ gives a normalized sentence representation
-$\mathbf{z}^{(\ell)}_i$. We denote its normalized teacher embedding by
-$\boldsymbol{\tau}_i$. The simplest embedding distillation objective constrains
-only the terminal representation,
+Let $\mathbf{z}^{(\ell)}_i$ be the normalized representation of sentence $x_i$
+after student layer $\ell$, and let $\boldsymbol{\tau}_i$ be its normalized
+teacher target. Endpoint distillation constrains only
 \begin{equation}
     \mathbf{z}^{(L)}_i \longrightarrow \boldsymbol{\tau}_i.
     \label{eq:endpoint-schematic}
 \end{equation}
-This supervision is efficient and effective, but leaves the internal path of
-the student unconstrained. Multi-layer distillation adds targets at a set of
-depths $\mathcal{A}$,
+This objective is efficient, but leaves the internal path unconstrained.
+Multi-layer distillation adds the same target at selected depths
+$\mathcal{A}$,
 \begin{equation}
     \mathcal{L}_{\mathrm{layer}}
     =
@@ -24,83 +21,72 @@ depths $\mathcal{A}$,
     D\!\left(\mathbf{Z}^{(\ell)},\mathbf{T}\right),
     \label{eq:static-layer-matching}
 \end{equation}
-where rows of $\mathbf{Z}^{(\ell)}$ and $\mathbf{T}$ correspond to examples in
-a mini-batch. Relational variants replace or supplement $D$ with discrepancies
-between pairwise similarity matrices. These objectives expose the student to
-more teacher information, yet each supervised depth remains an independent
-state-matching problem.
+where $\mathbf{Z}^{(\ell)}$ and $\mathbf{T}$ stack a mini-batch of student and
+teacher embeddings. Relational variants add discrepancies between pairwise
+similarity matrices. All three cases supervise states: endpoint KD constrains
+one state, multi-layer KD constrains several states, and relational KD
+constrains their geometry.
 
-The common endpoint in Eq.~\eqref{eq:static-layer-matching} contains no notion
-of how much semantic transformation is appropriate at depth $\ell$. A weak
-constraint may have little effect before the final layers, whereas a strong
-constraint can force shallow features to imitate a representation that the
-teacher produces only after substantially more computation. Selecting anchor
-layers reduces this tension but does not determine the transition between them.
-The missing object is a teacher-conditioned rule for local change.
+Equation~\ref{eq:static-layer-matching} does not say how much semantic change is
+appropriate at layer $\ell$. Weak supervision may have little effect before the
+output; strong supervision may force shallow features to imitate a state that
+the teacher produces only after substantially more computation. Selecting
+fewer anchors reduces this tension but still leaves the transitions undefined.
 
 \subsection{Representation Depth as Semantic Time}
 \label{sec:semantic-time}
 
-Residual computation suggests indexing representations by a normalized depth
-coordinate
+We index student representations by normalized depth,
 \begin{equation}
     t_\ell=\frac{\ell}{L},
     \qquad
     \mathbf{Z}^{(\ell)}\approx\mathbf{Z}(t_\ell),
     \label{eq:semantic-time}
 \end{equation}
-and viewing consecutive layers as observations along an underlying semantic
-trajectory. The corresponding supervision object is a teacher-conditioned
-vector field
+and treat consecutive layers as observations along a semantic trajectory. A
+teacher-conditioned vector field then specifies the local transition,
 \begin{equation}
     \frac{d\mathbf{Z}(t)}{dt}
     =F\!\left(\mathbf{Z}(t),\mathbf{T},t\right).
     \label{eq:general-semantic-flow}
 \end{equation}
-This view changes the question asked at intermediate depths. Static matching
-asks whether $\mathbf{Z}^{(\ell)}$ already resembles the terminal teacher
-state; trajectory supervision asks whether the observed transition
-$\mathbf{Z}^{(\ell)}\rightarrow\mathbf{Z}^{(\ell+1)}$ moves in a direction and
-at a pace that reduce teacher discrepancy.
+Static matching asks whether $\mathbf{Z}^{(\ell)}$ resembles the terminal
+teacher state. Equation~\ref{eq:general-semantic-flow} instead asks whether the
+transition $\mathbf{Z}^{(\ell)}\rightarrow\mathbf{Z}^{(\ell+1)}$ moves in a
+direction and at a pace that reduce teacher discrepancy.
 
-We use ``semantic time'' as an ordered coordinate for supervision, not as an
-assumption that a pretrained Transformer is literally the numerical solution of
-a latent ODE. The model remains a conventional finite-depth encoder. Continuous
-dynamics provide a principled way to construct compatible local targets whose
-composition leads toward the teacher endpoint.
+Semantic time is an ordered coordinate for supervision; it is not an assumption
+that a pretrained Transformer is literally the solution of a latent ODE. The
+student remains a conventional finite-depth encoder. Continuous dynamics only
+provide compatible local targets whose composition leads toward the endpoint.
 
 \subsection{Connections to Layer-Wise, Geometric, and Flow-Based Distillation}
 \label{sec:related-paradigms}
 
 \paragraph{Sentence-embedding distillation.}
-Directly regressing teacher sentence embeddings is attractive because teacher
-outputs can be cached and reused \citep{reimers2020multilingual}. Contrastive
-objectives and multi-stage procedures enrich this signal
-\citep{xu2023distillcse,zhang2024jasper}, while recent methods address
-architectural and tokenizer mismatch using hidden-state relations or optimal
-transport \citep{truong2025emo}. GeoODE-KD retains the efficiency of cached
-sentence-level supervision, but uses each teacher output to define both an
+Direct regression is attractive because teacher sentence embeddings can be
+cached and reused \citep{reimers2020multilingual}. Contrastive and multi-stage
+methods enrich this signal \citep{xu2023distillcse,zhang2024jasper}; hidden-state
+relations and optimal transport address architectural or tokenizer mismatch
+\citep{truong2025emo}. These methods strengthen what is matched. GeoODE-KD
+instead changes how the target is used: each cached output defines both an
 endpoint and a direction of evolution.
 
 \paragraph{Layer-wise and geometric transfer.}
-Depth-aware embedding methods encourage semantics to emerge at multiple student
-depths. ESE trains depth-scalable representations, while TALAS combines upper
-layer teacher anchors with adjacent-layer structural propagation
-\citep{li2025ese,talas}. These methods motivate our focus on depth but supervise
-states or relations at selected locations. GeoODE-KD instead derives every
-local transition from one global teacher-conditioned potential. Relational
-knowledge therefore affects the direction of representation change, rather
-than serving only as an additional state constraint.
+ESE trains depth-scalable representations, while TALAS combines upper-layer
+teacher anchors with adjacent-layer structural propagation
+\citep{li2025ese,talas}. Both make depth explicit, but supervise states or
+relations at selected locations. GeoODE-KD derives each local transition from
+one teacher-conditioned potential, so relational knowledge changes the
+direction of motion rather than acting only as another state constraint.
 
 \paragraph{Continuous-depth and flow-based transfer.}
-Neural ODEs replace a discrete block sequence with a learned differential
-equation, and ODE-inspired Transformers use numerical-integration ideas in
-architecture design \citep{chen2018neuralode,li2022odetransformer}. Diffusion
-and flow-matching approaches have also been used to transport student features
-or distributions toward teacher features
-\citep{huang2023diffkd,lipman2023flow,shao2024fmkt}. GeoODE-KD does neither: it
-learns no velocity network and performs no continuous solve. Its vector field
+Neural ODEs replace discrete blocks with a learned differential equation, while
+ODE-inspired Transformers use integration rules in architecture design
+\citep{chen2018neuralode,li2022odetransformer}. Diffusion and flow matching also
+transport student features or distributions toward a teacher
+\citep{huang2023diffkd,lipman2023flow,chen2024riemannian,shao2024fmkt}.
+GeoODE-KD learns no velocity network and performs no continuous solve. Its field
 is the analytic gradient of a teacher-conditioned potential, and the existing
-Transformer layers are optimized to agree with a geometric discretization of
-that field. This distinction allows the continuous formulation to disappear
-entirely at inference time.
+Transformer layers follow a geometric discretization of that field. The
+continuous formulation therefore disappears at inference time.

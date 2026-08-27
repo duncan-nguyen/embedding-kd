@@ -443,6 +443,30 @@ class KnowledgeDistiller:
                 trust_remote_code=True,
                 **tokenizer_kwargs,
             )
+        # transformers >= 5 renamed the loading keyword and, by default, loads a
+        # checkpoint in the dtype it was saved in. A student saved in fp16 (the
+        # jim12345 MiniLMv2 checkpoints are) would then train in fp16, and the
+        # GradScaler refuses to unscale fp16 gradients. The student is therefore
+        # loaded in fp32 unless the config asks for something else; mixed precision
+        # comes from autocast, not from the parameter dtype.
+        try:
+            transformers_major = int(transformers_version.split(".", maxsplit=1)[0])
+        except (TypeError, ValueError):
+            transformers_major = 4
+        dtype_argument = "dtype" if transformers_major >= 5 else "torch_dtype"
+        model_dtypes = {
+            "float32": torch.float32,
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+        }
+        student_dtype_name = getattr(cfg, "student_dtype", None) or "float32"
+        if student_dtype_name not in model_dtypes:
+            raise ValueError(
+                f"Unsupported student_dtype={student_dtype_name!r}; "
+                f"expected one of {sorted(model_dtypes)}"
+            )
+        student_torch_dtype = model_dtypes[student_dtype_name]
+
         if cfg.distill_method == "stella":
             print(f"Loading Stella student model: {cfg.student_model_name}")
             # Stage 1 and stage 2 both take a cosine loss between fc1 and the
@@ -467,31 +491,12 @@ class KnowledgeDistiller:
                 output_dim2=getattr(cfg, "output_dim2", 512),
                 output_dim3=getattr(cfg, "output_dim3", 256),
                 output_dim4=getattr(cfg, "output_dim4", 128),
+                backbone_kwargs={dtype_argument: student_torch_dtype},
             )
             self.current_stage = 1
         else:
             print(f"Loading student model: {cfg.student_model_name}")
-            student_kwargs = {}
-            student_dtype_name = getattr(cfg, "student_dtype", None)
-            student_dtypes = {
-                "float32": torch.float32,
-                "float16": torch.float16,
-                "bfloat16": torch.bfloat16,
-            }
-            if student_dtype_name is not None:
-                if student_dtype_name not in student_dtypes:
-                    raise ValueError(
-                        f"Unsupported student_dtype={student_dtype_name!r}; "
-                        f"expected one of {sorted(student_dtypes)}"
-                    )
-                try:
-                    transformers_major = int(
-                        transformers_version.split(".", maxsplit=1)[0]
-                    )
-                except (TypeError, ValueError):
-                    transformers_major = 4
-                dtype_argument = "dtype" if transformers_major >= 5 else "torch_dtype"
-                student_kwargs[dtype_argument] = student_dtypes[student_dtype_name]
+            student_kwargs = {dtype_argument: student_torch_dtype}
 
             # EMO reads the student's attention maps too, and SDPA returns none of
             # them: output_attentions=True then yields an empty list and the loss
@@ -516,10 +521,8 @@ class KnowledgeDistiller:
         else:
             print(f"Loading teacher model: {cfg.teacher_model_name}")
             teacher_kwargs = {"trust_remote_code": True}
-            if cfg.teacher_dtype == "bfloat16":
-                teacher_kwargs["torch_dtype"] = torch.bfloat16
-            elif cfg.teacher_dtype == "float16":
-                teacher_kwargs["torch_dtype"] = torch.float16
+            if cfg.teacher_dtype in ("bfloat16", "float16"):
+                teacher_kwargs[dtype_argument] = model_dtypes[cfg.teacher_dtype]
 
             # EMO method needs attentions, force eager attention implementation
             if cfg.distill_method == "emo":
@@ -541,6 +544,11 @@ class KnowledgeDistiller:
 
         student_dtype = next(self.model_student.parameters()).dtype
         print(f"Student training dtype: {student_dtype}")
+        if student_dtype != student_torch_dtype:
+            raise RuntimeError(
+                f"Student loaded as {student_dtype} although {student_torch_dtype} "
+                "was requested; the checkpoint dtype leaked through the loader"
+            )
         assert_module_parameters_finite(self.model_student, "Student model after load")
 
         if self.model_teacher is not None:

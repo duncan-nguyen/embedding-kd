@@ -9,11 +9,16 @@ class StellaModel(nn.Module):
     
     def __init__(self, model_name: str, output_dim1: int = 1024, 
                  pooling: str = 'cls', output_dim2: int = 512, 
-                 output_dim3: int = 256, output_dim4: int = 128):
+                 output_dim3: int = 256, output_dim4: int = 128,
+                 backbone_kwargs: dict | None = None):
         super().__init__()
         from transformers import AutoModel
         self.model_name = model_name
-        self.backbone = AutoModel.from_pretrained(self.model_name)
+        # backbone_kwargs carries the loading dtype so an fp16 checkpoint still
+        # trains in fp32 like every other student.
+        self.backbone = AutoModel.from_pretrained(
+            self.model_name, **(backbone_kwargs or {})
+        )
         self.fc1 = nn.Linear(self.backbone.config.hidden_size, output_dim1)
         self.fc2 = nn.Linear(self.backbone.config.hidden_size, output_dim2)
         self.fc3 = nn.Linear(self.backbone.config.hidden_size, output_dim3)

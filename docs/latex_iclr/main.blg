@@ -2,47 +2,45 @@ This is BibTeX, Version 0.99d (TeX Live 2023/Debian)
 Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: main.aux
 The style file: template/iclr2027_conference.bst
-I found no \citation commands---while reading file main.aux
 Database file #1: references/references.bib
-You've used 0 entries,
+You've used 14 entries,
             2773 wiz_defined-function locations,
-            593 strings with 4862 characters,
-and the built_in function-call counts, 33 in all, are:
-= -- 0
-> -- 0
-< -- 0
-+ -- 0
-- -- 0
-* -- 2
-:= -- 10
-add.period$ -- 0
-call.type$ -- 0
-change.case$ -- 0
-chr.to.int$ -- 0
-cite$ -- 0
-duplicate$ -- 0
-empty$ -- 1
-format.name$ -- 0
-if$ -- 1
+            660 strings with 7610 characters,
+and the built_in function-call counts, 7992 in all, are:
+= -- 644
+> -- 634
+< -- 7
++ -- 212
+- -- 198
+* -- 667
+:= -- 1224
+add.period$ -- 42
+call.type$ -- 14
+change.case$ -- 108
+chr.to.int$ -- 14
+cite$ -- 28
+duplicate$ -- 343
+empty$ -- 579
+format.name$ -- 216
+if$ -- 1669
 int.to.chr$ -- 1
 int.to.str$ -- 1
-missing$ -- 0
-newline$ -- 8
-num.names$ -- 0
-pop$ -- 0
+missing$ -- 13
+newline$ -- 78
+num.names$ -- 56
+pop$ -- 249
 preamble$ -- 1
-purify$ -- 0
+purify$ -- 94
 quote$ -- 0
-skip$ -- 1
+skip$ -- 288
 stack$ -- 0
-substring$ -- 0
-swap$ -- 0
-text.length$ -- 0
+substring$ -- 164
+swap$ -- 57
+text.length$ -- 4
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 0
+type$ -- 154
 warning$ -- 0
-while$ -- 0
+while$ -- 53
 width$ -- 0
-write$ -- 7
-(There was 1 error message)
+write$ -- 180
