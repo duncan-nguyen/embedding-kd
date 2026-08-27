@@ -63,6 +63,30 @@ under `config/`, which supplies the defaults that the CLI flags then override:
 (`cache_path`) and free the teacher model afterwards; `simcse` loads no teacher
 at all; the remaining methods run the teacher alongside the student every step.
 
+`--teacher_pooling` (`last_token`, `cls`, `mean`) is how the teacher's sentence
+vector is read, and it follows the teacher family, not the method: Qwen3-Embedding
+is a decoder and reads its last token (the default), BGE-M3 is an XLM-R encoder and
+reads `cls`. The cached methods apply it once at cache time and the online ones
+apply it every step, so one flag covers all eight methods. The token-level
+alignments of `cdm` (and `emo`) strip a sub-word marker before comparing token
+strings; `--teacher_special_token` sets it (`Ġ` for Qwen3's byte-level BPE, `▁`
+for SentencePiece teachers such as BGE-M3; EMO reads the same flag as the
+teacher's BOS token string, `<s>`).
+
+Teacher/student pairs that have been checked against every method:
+
+| Teacher | Student | Flags |
+| --- | --- | --- |
+| `Qwen/Qwen3-Embedding-0.6B` (1024-d) | `jim12345/MiniLMv2-L6-H384-distilled-from-BERT-Base` (384-d, 6 layers) | `--teacher_pooling last_token --teacher_special_token Ġ` |
+| `BAAI/bge-m3` (1024-d, XLM-R) | `nreimers/MiniLMv2-L6-H768-distilled-from-BERT-Large` (768-d, 6 layers) | `--teacher_pooling cls --teacher_special_token ▁` |
+| `Qwen/Qwen3-Embedding-4B` (2560-d) | `google-bert/bert-base-uncased` (768-d, 12 layers) | `--teacher_pooling last_token --teacher_special_token Ġ` |
+
+Nothing in the objectives is sized to a particular pair: projection heads read
+both widths from the model configs, GeoODE-KD's flow has as many steps as the
+student has Transformer layers, and TALAS anchors the last `last_layer_idx` of
+however many hidden states the student returns. `test_mdd.ipynb` selects one of
+the three pairs with its `PAIR` variable and passes the flags above.
+
 The last two rows are the reference points the distillation methods are read
 against. `simcse` is the no-distillation control: the same student, corpus,
 schedule and pooling as every other row, with the teacher term removed and only
@@ -231,15 +255,21 @@ cache/talas/qwen3_4b_bert_base_teacher_train.pt
 
 ## Rebuilding Caches
 
-The cache is keyed only by its path, so a change of training corpus, teacher
-model or pooling needs the old file removed first:
+The cache is looked up by its path, so use one path per teacher / pooling /
+corpus. Each file records the teacher name, pooling, normalisation and corpus it
+was built from next to the embeddings, and a run whose settings differ from that
+record (or whose teacher width or corpus length differs from the tensor) is
+rejected at startup with the mismatching fields listed, rather than trained
+against the wrong teacher. This is what catches a swap between two teachers of
+the same width, e.g. Qwen3-Embedding-0.6B and BGE-M3, both 1024-d. To rebuild a
+cache, remove the file and rerun:
 
 ```bash
 rm cache/talas/qwen3_4b_bert_base_teacher_train.pt
 ```
 
-Then rerun training. A cache whose row count does not match the corpus is
-rejected at startup rather than silently misaligned.
+Caches written before this record existed still load; they are checked by shape
+only and a warning says so.
 
 ## Evaluation
 

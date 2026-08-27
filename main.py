@@ -57,7 +57,25 @@ def parse_args():
         '--teacher_pooling',
         choices=['last_token', 'mean', 'cls'],
         default=None,
-        help='Pooling used when caching teacher sentence embeddings'
+        help='Pooling of the teacher sentence vector: applied once at cache time by '
+             'talas/geoode/rkd and every step by cdm/dskd/emo/stella. Qwen3-Embedding '
+             'reads last_token, encoder teachers such as BGE-M3 read cls'
+    )
+    parser.add_argument(
+        '--teacher_special_token',
+        type=str,
+        default=None,
+        help='Sub-word marker of the teacher tokenizer that the CDM token alignment '
+             'strips before comparing token strings ("Ġ" for Qwen3 byte-level BPE, '
+             '"▁" for SentencePiece teachers such as BGE-M3). EMO reads it as the '
+             'teacher BOS token string instead ("<s>")'
+    )
+    parser.add_argument(
+        '--student_special_token',
+        type=str,
+        default=None,
+        help='Sub-word marker of the student tokenizer ("##" for WordPiece students; '
+             'EMO reads it as the student CLS token string, "[CLS]")'
     )
     
     parser.add_argument(
@@ -356,6 +374,10 @@ def get_config(method: str, args):
         config.teacher_model_name = args.teacher_model
     if args.teacher_pooling is not None:
         config.pooling_method = args.teacher_pooling
+    if args.teacher_special_token is not None:
+        config.teacher_special_token = args.teacher_special_token
+    if args.student_special_token is not None:
+        config.student_special_token = args.student_special_token
     
     if args.batch_size is not None:
         config.batch_size = args.batch_size

@@ -1,2 +1,95 @@
 \section{Introduction}
 \label{sec:introduction}
+
+Dense text embeddings are a common interface between language models and
+applications such as semantic search, retrieval-augmented generation,
+clustering, classification, and semantic textual similarity. Strong embedding
+models increasingly rely on large encoders, broad training corpora, and high
+dimensional representations, all of which raise inference and deployment
+costs. Knowledge distillation offers a practical alternative: an expensive
+teacher can supervise a compact encoder that retains much of its semantic
+quality while remaining inexpensive to serve
+\citep{hinton2015distilling,reimers2020multilingual}.
+
+Most embedding distillation methods transfer \emph{representation states}.
+They align the final student embedding with the teacher, add contrastive or
+relational constraints, or extend the same supervision to selected student
+layers \citep{xu2023distillcse,zhang2024jasper,truong2025emo}. Recent
+depth-aware approaches further encourage high-level semantic information to
+appear in shallower representations or anchor several upper student layers to
+a final teacher embedding \citep{li2025ese,talas}. Despite their differences,
+these objectives primarily constrain a collection of states
+$\{\mathbf{z}^{(\ell)}\}_{\ell=1}^{L}$. They do not explicitly describe the
+transition by which one level of representation should become the next.
+
+This distinction matters when teacher and student have substantially different
+capacities. A shallow Transformer layer must preserve information useful for
+subsequent computation, whereas a deep teacher embedding already represents a
+terminal semantic abstraction. Requiring many shallow or intermediate layers
+to imitate that same endpoint can therefore conflict with the student's native
+hierarchy. More layer-wise supervision is not necessarily more informative: it
+may simply ask the student to arrive at the answer prematurely. This motivates
+our central question:
+
+\begin{quote}
+\emph{Can a teacher specify how student representations should move through
+depth, rather than only where they should end?}
+\end{quote}
+
+The continuous-depth view of residual networks provides a useful language for
+answering this question. Residual transformations can be interpreted as
+discrete approximations to continuous dynamics, an idea underlying Neural ODEs
+and ODE-inspired Transformers \citep{chen2018neuralode,li2022odetransformer}.
+We use this perspective as a supervision principle, not as an architectural
+claim. We neither replace Transformer blocks with a Neural ODE nor learn an
+auxiliary flow that post-processes the student output. Instead, the teacher
+defines an analytic semantic vector field, and the student's existing layers
+are trained to realize its local transitions.
+
+We propose \textbf{GeoODE-KD}, a teacher-guided geometric dynamics framework
+for sentence embedding distillation. Because sentence embeddings are commonly
+normalized and compared by cosine similarity, we model them on the unit
+hypersphere. Cached teacher outputs define a semantic potential with two
+components: an instance term that attracts each student sentence toward its
+teacher target and a relational term that transfers the teacher's native
+pairwise cosine geometry. The negative Riemannian gradient of this potential
+provides a tangent vector that points toward lower teacher discrepancy. We run
+this field under a finite-horizon time reparameterization so that the amount of
+semantic displacement remaining is explicitly tied to the amount of student
+depth remaining.
+
+GeoODE-KD then assigns each student layer a normalized depth coordinate. From a
+representation at depth $t_\ell$, the local vector field and an exponential-map
+update predict the representation expected at $t_{\ell+1}$. A dynamics loss
+aligns the actual next Transformer layer with this prediction, while endpoint
+and contrastive terms supervise the final embedding. Thus, intermediate layers
+are not independently pulled toward a common terminal state; each is trained to
+perform a prescribed fraction of the remaining semantic transformation.
+
+This formulation separates training-time guidance from inference-time
+architecture. The teacher is evaluated once, and only its final sentence
+embeddings are cached. GeoODE-KD uses no teacher hidden states, attention maps,
+learned projection head, continuous solver, or auxiliary flow network during
+student optimization. All geometric operations are discarded after training,
+so inference uses the unmodified student encoder. The formulation also yields
+testable depth-wise predictions: the ideal flow preserves hyperspherical norms
+and decreases its teacher-conditioned energy monotonically; without the
+relational component, geodesic distance to the teacher follows a closed-form
+depth profile and reaches zero at the endpoint.
+
+Our contributions are threefold:
+\begin{itemize}
+    \item We formulate sentence embedding distillation as supervision of a
+    \emph{trajectory} through representation depth, shifting the target of
+    transfer from isolated states to transitions between consecutive layers.
+
+    \item We derive a teacher-conditioned Riemannian vector field that combines
+    point-wise semantic alignment with native teacher geometry, together with a
+    finite-horizon parameterization that yields explicit, depth-dependent local
+    targets without a learned ODE module.
+
+    \item We train the existing Transformer layers as a discrete realization of
+    this flow using a dynamics-consistency objective. The method requires only
+    cached teacher outputs, adds no inference-time parameters, and makes its
+    trajectory hypothesis directly measurable at every student depth.
+\end{itemize}

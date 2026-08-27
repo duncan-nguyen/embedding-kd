@@ -1,6 +1,7 @@
 \begin{table}[t]
-    \caption{Main results for distillation from Qwen3-Embedding-4B to BERT-base. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. $\star$ denotes an in-domain benchmark. Higher is better.}
+    \caption{Main results for distillation from Qwen3-Embedding-4B to BERT-base. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Among non-teacher models, the best result is shown in bold and the second-best result is underlined.}
     \label{tab:main-results}
+    \vspace{0.5em}
     \centering
     \scriptsize
     \setlength{\tabcolsep}{2.6pt}
@@ -14,17 +15,17 @@
         Method
         & Banking77
         & Tweet
-        & Emotion$^\star$
+        & Emotion
         & MRPC
         & SciTail
-        & WiC$^\star$
+        & WiC
         & SICK
         & STS12
-        & STS-B$^\star$
+        & STS-B
         & Avg. \\
         \midrule
-        \multicolumn{11}{@{}l}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
-        \addlinespace[2pt]
+        \multicolumn{11}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
+        \midrule
         Teacher
         & 93.63
         & 72.22
@@ -52,9 +53,9 @@
         & 91.08
         & 73.40
         & 64.40
-        & 86.23
+        & \underline{86.23}
         & 83.22
-        & 68.98
+        & \underline{68.98}
         & 78.38
         & 71.31
         & 79.16
@@ -65,7 +66,7 @@
         & 52.67
         & 84.03
         & 71.47
-        & 69.83
+        & \textbf{69.83}
         & 71.36
         & 68.87
         & 74.68
@@ -74,7 +75,7 @@
         & 88.89
         & 69.31
         & 53.39
-        & 86.35
+        & \textbf{86.35}
         & 67.73
         & 68.89
         & 70.58
@@ -93,28 +94,28 @@
         & 70.14
         & 69.60 \\
         TALAS
-        & 93.34
-        & 74.45
-        & 72.70
+        & \textbf{93.34}
+        & \textbf{74.45}
+        & \textbf{72.70}
         & 86.16
-        & 87.78
+        & \textbf{87.78}
         & 68.11
-        & 80.70
-        & 77.34
-        & 83.57
-        & 80.46 \\
+        & \underline{80.70}
+        & \textbf{77.34}
+        & \textbf{83.57}
+        & \textbf{80.46} \\
         \midrule
         \textbf{GeoODE-KD}
-        & 92.92
-        & 74.05
-        & 72.49
+        & \underline{92.92}
+        & \underline{74.05}
+        & \underline{72.49}
         & 85.89
-        & 86.12
+        & \underline{86.12}
         & 66.60
-        & 80.78
-        & 76.01
-        & 81.23
-        & 79.57 \\
+        & \textbf{80.78}
+        & \underline{76.01}
+        & \underline{81.23}
+        & \underline{79.57} \\
         \bottomrule
     \end{tabular}
 \end{table}

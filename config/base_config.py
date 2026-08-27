@@ -17,7 +17,17 @@ class BaseConfig:
     student_model_name = "bert-base-uncased"
     teacher_model_name = "sentence-transformers/all-MiniLM-L6-v2"
     teacher_dtype = "float32"
+    # Pooling of the teacher sentence vector, for every method that has a teacher:
+    # the cached methods (talas/geoode/rkd) apply it once at cache time, the online
+    # ones (cdm/dskd/emo/stella) every step. "last_token" is the Qwen3-Embedding
+    # convention; encoder teachers such as BGE-M3 read "cls". CLI: --teacher_pooling.
+    pooling_method = "last_token"
     
+    # Sub-word markers the token-level alignments strip before comparing token
+    # strings: "##" for WordPiece students, "Ġ" for byte-level BPE teachers
+    # (Qwen3), "▁" for SentencePiece teachers (BGE-M3). EMO reads
+    # teacher_special_token as the teacher's BOS token string instead.
+    # CLI: --student_special_token / --teacher_special_token.
     student_special_token = "##"
     teacher_special_token = "_"
     

@@ -35,7 +35,11 @@ except ImportError:
     print(
         "Warning: pytorch_optimizer not installed. SAM optimizer unavailable for TALAS."
     )
-from src.cache_teacher import cache_teacher_embeddings, load_cached_embeddings
+from src.cache_teacher import (
+    cache_teacher_embeddings,
+    load_cached_embeddings,
+    validate_cached_embeddings,
+)
 from src.criterions.contextual_dynamic_mapping import ContextualDynamicMapping
 from src.criterions.dual_space_kd import DualSpaceKD
 from src.criterions.emo_embedding_distillation import EMODistillation
@@ -67,7 +71,7 @@ from src.evaluation.evaluation_automodel import (
     test_sts_tasks,
 )
 from src.loss import info_nce
-from src.pooling import last_token_pool, mean_pooling
+from src.pooling import mean_pooling, pool_sentence_embedding
 from src.teacher_projection import (
     fit_gauge_alignment,
     fit_pca_projection,
@@ -376,6 +380,19 @@ class KnowledgeDistiller:
                 flat.update(KnowledgeDistiller._flatten_metrics(name, value))
         return flat
 
+    @staticmethod
+    def _embedding_dim_of(model_config, model_name: str) -> int:
+        """Hidden width of a model config, looking through a wrapped text_config."""
+        dim = getattr(model_config, "hidden_size", None)
+        if dim is None:
+            text_config = getattr(model_config, "text_config", None)
+            dim = getattr(text_config, "hidden_size", None)
+        if dim is None:
+            raise ValueError(
+                f"Could not read an embedding dim from the config of {model_name}"
+            )
+        return int(dim)
+
     def _resolve_teacher_embedding_dim(self) -> int:
         """Embedding width of the teacher, read from its config without loading it.
 
@@ -387,16 +404,25 @@ class KnowledgeDistiller:
             self.config.teacher_model_name,
             trust_remote_code=True,
         )
-        dim = getattr(teacher_config, "hidden_size", None)
-        if dim is None:
-            text_config = getattr(teacher_config, "text_config", None)
-            dim = getattr(text_config, "hidden_size", None)
-        if dim is None:
-            raise ValueError(
-                f"Could not read an embedding dim from the config of "
-                f"{self.config.teacher_model_name}; set output_dim1 to it manually."
-            )
-        return int(dim)
+        try:
+            return self._embedding_dim_of(teacher_config, self.config.teacher_model_name)
+        except ValueError as error:
+            raise ValueError(f"{error}; set output_dim1 to it manually.") from error
+
+    def _pool_teacher(
+        self, last_hidden_state: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """Sentence vector of the online teacher under ``pooling_method``.
+
+        The same dispatch the cached-teacher methods run at cache time, so
+        ``--teacher_pooling`` means one thing for every method: a BGE-style encoder
+        is read at its CLS position, a Qwen3-style decoder at its last token.
+        """
+        return pool_sentence_embedding(
+            last_hidden_state,
+            attention_mask,
+            getattr(self.config, "pooling_method", "last_token"),
+        )
 
     def setup_models(self):
         cfg = self.config
@@ -506,6 +532,10 @@ class KnowledgeDistiller:
             self.model_teacher = AutoModel.from_pretrained(
                 cfg.teacher_model_name, **teacher_kwargs
             )
+            print(
+                f"Teacher pooling: {getattr(cfg, 'pooling_method', 'last_token')} "
+                f"(dim {self._embedding_dim_of(self.model_teacher.config, cfg.teacher_model_name)})"
+            )
 
         self.model_student.to(self.device_s)
 
@@ -551,11 +581,35 @@ class KnowledgeDistiller:
         # the teacher is run once, offline, and never during student optimization.
         if cfg.distill_method in ("talas", "geoode", "rkd"):
             cache_path = Path(cfg.cache_path)
+            teacher_dim = self._embedding_dim_of(
+                self.model_teacher.config, cfg.teacher_model_name
+            )
+            cache_metadata = {
+                "teacher_model_name": cfg.teacher_model_name,
+                "pooling_method": cfg.pooling_method,
+                "normalize": bool(cfg.normalize_cache),
+                "train_data_path": str(cfg.train_data_path),
+                "max_length": int(cfg.max_length),
+            }
 
             # Check if cache exists
             if cache_path.exists():
                 print(f"Loading cached teacher embeddings from: {cache_path}")
-                teacher_cls_list = load_cached_embeddings(str(cache_path))
+                teacher_cls_list, cached_metadata = load_cached_embeddings(
+                    str(cache_path)
+                )
+                # The cache is keyed by its path alone, so this is the only place a
+                # teacher/pooling swap behind an unchanged --cache_path gets caught.
+                validate_cached_embeddings(
+                    teacher_cls_list,
+                    cached_metadata,
+                    str(cache_path),
+                    teacher_model_name=cfg.teacher_model_name,
+                    pooling_method=cfg.pooling_method,
+                    normalize=bool(cfg.normalize_cache),
+                    teacher_dim=teacher_dim,
+                    rows=len(df),
+                )
                 print(f"Loaded {len(teacher_cls_list)} cached embeddings")
             else:
                 print("Cache not found. Pre-computing teacher embeddings...")
@@ -587,6 +641,7 @@ class KnowledgeDistiller:
                     if cfg.cache_dtype == "float32"
                     else torch.float16,
                     cache_path=str(cache_path),
+                    metadata=cache_metadata,
                 )
                 print(
                     f"Cached {len(teacher_cls_list)} teacher embeddings to {cache_path}"
@@ -1434,7 +1489,7 @@ class KnowledgeDistiller:
                     return_dict=True,
                 )
                 T_last1 = t_out1.last_hidden_state
-                T_cls1 = last_token_pool(T_last1, batch_t["attention_mask1_tea"])
+                T_cls1 = self._pool_teacher(T_last1, batch_t["attention_mask1_tea"])
 
                 T_last1 = T_last1.to(self.device_s, non_blocking=True)
                 T_cls1 = T_cls1.to(self.device_s, non_blocking=True)
