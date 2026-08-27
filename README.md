@@ -56,10 +56,32 @@ under `config/`, which supplies the defaults that the CLI flags then override:
 | `dskd` | `config/dskd_config.py` | Dual-space KD with a learned projection |
 | `emo` | `config/emo_config.py` | Optimal-transport embedding distillation |
 | `stella` | `config/stella_config.py` | Stella multi-dimension student heads |
+| `rkd` | `config/rkd_config.py` | Relational KD: distance-wise and angle-wise relations to the cached teacher |
+| `simcse` | `config/simcse_config.py` | SimCSE-only control: the student's contrastive loss, no teacher |
 
-`talas` and `geoode` cache the teacher's sentence embeddings once (`cache_path`)
-and free the teacher model afterwards; the other methods run the teacher
-alongside the student every step.
+`talas`, `geoode` and `rkd` cache the teacher's sentence embeddings once
+(`cache_path`) and free the teacher model afterwards; `simcse` loads no teacher
+at all; the remaining methods run the teacher alongside the student every step.
+
+The last two rows are the reference points the distillation methods are read
+against. `simcse` is the no-distillation control: the same student, corpus,
+schedule and pooling as every other row, with the teacher term removed and only
+the InfoNCE task loss those objectives already contain left in place, so
+whatever a method reports above this line is what its teacher signal bought. Its
+positives are two dropout views of the same sentence (unsupervised SimCSE);
+`--simcse_view pair` uses the row's paired sentence instead.
+
+`rkd` implements Park et al. (2019): the teacher supervises the *relations*
+between examples — pairwise distances normalised by the batch mean, and the
+cosines of the angles subtended at each middle point — under a Huber loss. Both
+potentials are invariant to the width, scale and orientation of the space they
+are measured in, so a 2560-d teacher supervises a 768-d student with nothing
+fitted between them and no parameters added, exactly like `geoode`. Its flags are
+`--w_dist`/`--w_angle` (the paper's 25 and 50) and `--normalize_student`, which
+measures the student's relations on the unit sphere the normalised teacher cache
+and every cosine benchmark already live on (`--no-normalize_student` is the
+raw-Euclidean ablation). It constrains the final layer only, which is what makes
+it the relational counterpart to GeoODE-KD's per-layer flow.
 
 `geoode` implements `docs/ode_embedding_kd.pdf`. It reduces the cached teacher
 embeddings to the student dimension with a PCA map fitted on the cache itself,
@@ -109,8 +131,8 @@ bash scripts/train_talas.sh
 ```
 
 One script per method lives in `scripts/` (`train_talas.sh`, `train_cdm.sh`,
-`train_dskd.sh`, `train_emo.sh`, `train_stella.sh`, `train_geoode.sh`, plus
-`.ps1` equivalents).
+`train_dskd.sh`, `train_emo.sh`, `train_stella.sh`, `train_geoode.sh`,
+`train_rkd.sh`, `train_simcse.sh`, plus `.ps1` equivalents).
 
 Or run the Python entry point directly:
 
@@ -163,12 +185,14 @@ models/talas/qwen3_4b_to_bert_base/depth_metrics.jsonl # per-layer profile, samp
 
 ## Depth Diagnostics
 
-`talas` and `geoode` additionally sample a per-layer profile every
+`talas`, `geoode` and `rkd` additionally sample a per-layer profile every
 `--depth_log_every` steps (default 50, `0` disables) and append it to
-`depth_metrics.jsonl`. A compact table is printed at the end of every epoch. Both
-methods are measured with the same parameter-free probe, so their profiles are
+`depth_metrics.jsonl`. A compact table is printed at the end of every epoch. All
+three are measured with the same parameter-free probe, so their profiles are
 directly comparable — which is the point, since GeoODE-KD's central claim is
-about how the depth profile differs from static multi-layer anchoring.
+about how the depth profile differs from static multi-layer anchoring and from a
+relational constraint on the final layer alone. `simcse` has no teacher
+embedding to profile a depth against, so the diagnostic is off for it.
 
 Each record holds, for one batch: teacher cosine, relational (Gram) gap and
 energy at every depth; the ODE consistency residual, the prescribed step size

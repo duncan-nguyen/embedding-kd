@@ -7,6 +7,8 @@ from config import (
     DSKDConfig,
     EMOConfig,
     GeoODEConfig,
+    RKDConfig,
+    SimCSEConfig,
     StellaConfig,
     TALASConfig,
 )
@@ -22,7 +24,7 @@ def parse_args():
         '--method',
         type=str,
         default='cdm',
-        choices=['cdm', 'dskd', 'emo', 'stella', 'talas', 'geoode'],
+        choices=['cdm', 'dskd', 'emo', 'stella', 'talas', 'geoode', 'rkd', 'simcse'],
         help='Distillation method to use'
     )
     
@@ -172,10 +174,38 @@ def parse_args():
         help='GeoODE-KD: exponent p of the power guidance schedule s(t)=t^p'
     )
     parser.add_argument(
+        '--w_dist',
+        type=float,
+        default=None,
+        help='RKD: weight of the distance-wise relational loss (lambda_RKD-D)'
+    )
+    parser.add_argument(
+        '--w_angle',
+        type=float,
+        default=None,
+        help='RKD: weight of the angle-wise relational loss (lambda_RKD-A)'
+    )
+    parser.add_argument(
+        '--normalize_student',
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help='RKD: L2-normalise the student embeddings before measuring relations, '
+             'so they are compared on the same sphere as the normalised teacher '
+             'cache. --no-normalize_student is the raw-Euclidean ablation'
+    )
+    parser.add_argument(
+        '--simcse_view',
+        choices=['dropout', 'pair'],
+        default=None,
+        help='SimCSE-only: positive view. "dropout" encodes the same sentence twice '
+             '(unsupervised SimCSE); "pair" uses the paired sentence of the row'
+    )
+    parser.add_argument(
         '--student_pooling',
         choices=['cls', 'mean'],
         default=None,
-        help='GeoODE-KD: pooling applied to every student layer'
+        help='GeoODE-KD/RKD/SimCSE: pooling of the student sentence vector '
+             '(GeoODE-KD applies it at every layer)'
     )
     parser.add_argument(
         '--evaluate_test_each_epoch',
@@ -206,7 +236,7 @@ def parse_args():
         '--depth_log_every',
         type=int,
         default=None,
-        help='Sample per-depth diagnostics every N steps (0 disables; talas/geoode only)'
+        help='Sample per-depth diagnostics every N steps (0 disables; talas/geoode/rkd only)'
     )
     parser.add_argument(
         '--task_type',
@@ -279,6 +309,22 @@ def parse_args():
     return parser.parse_args()
 
 
+def apply_method_flags(config, args, names, supported: str) -> None:
+    """Copy the flags of one method's own objective onto its config.
+
+    A flag whose attribute the selected config does not define is an error rather
+    than a silently ignored argument: the run would otherwise print and log a
+    setting it never applied.
+    """
+    for name in names:
+        value = getattr(args, name, None)
+        if value is None:
+            continue
+        if not hasattr(config, name):
+            raise ValueError(f"--{name} is only supported by the {supported}")
+        setattr(config, name, value)
+
+
 def get_config(method: str, args):
     if method == 'cdm':
         config = CDMConfig()
@@ -292,6 +338,10 @@ def get_config(method: str, args):
         config = TALASConfig()
     elif method == 'geoode':
         config = GeoODEConfig()
+    elif method == 'rkd':
+        config = RKDConfig()
+    elif method == 'simcse':
+        config = SimCSEConfig()
     else:
         config = BaseConfig()
     
@@ -343,26 +393,29 @@ def get_config(method: str, args):
             raise ValueError("--depth_log_every must be zero or positive")
         config.depth_log_every = args.depth_log_every
 
-    for name in (
-        'alpha',
-        'beta',
-        'lambda_end',
-        'lambda_dyn',
-        'lambda_ctr',
-        'guidance_schedule',
-        'guidance_power',
-        'student_pooling',
-        'pca_subtract_mean',
-        'gauge_align',
-        'gauge_refit_every',
-        'relational_target',
-    ):
-        value = getattr(args, name, None)
-        if value is None:
-            continue
-        if not hasattr(config, name):
-            raise ValueError(f"--{name} is only supported by the geoode method")
-        setattr(config, name, value)
+    apply_method_flags(
+        config,
+        args,
+        (
+            'alpha',
+            'beta',
+            'lambda_end',
+            'lambda_dyn',
+            'lambda_ctr',
+            'guidance_schedule',
+            'guidance_power',
+            'pca_subtract_mean',
+            'gauge_align',
+            'gauge_refit_every',
+            'relational_target',
+        ),
+        'geoode method',
+    )
+    apply_method_flags(config, args, ('w_dist', 'w_angle', 'normalize_student'), 'rkd method')
+    apply_method_flags(config, args, ('simcse_view',), 'simcse method')
+    apply_method_flags(
+        config, args, ('student_pooling',), 'geoode, rkd and simcse methods'
+    )
     
     if args.save_dir is not None:
         config.save_dir = args.save_dir

@@ -56,6 +56,13 @@ class TextPairRaw(Dataset):
 
 
 class DualTokenizerCollate:
+    """Tokenizes each row for the student and, when there is one, the teacher.
+
+    ``tok_teacher=None`` is the teacher-free case (the SimCSE-only control): the
+    batch then carries the ``*_stu`` tensors alone, so no teacher tokenizer has to
+    be downloaded to run a method that never encodes anything with it.
+    """
+
     def __init__(
         self,
         tok_student,
@@ -93,10 +100,10 @@ class DualTokenizerCollate:
         labels = [sample[2] for sample in batch]
 
         student1 = self._encode(self.ts, text1s)
-        teacher1 = self._encode(self.tt, text1s)
         out = {}
         self._add_encoding(out, student1, 1, "stu")
-        self._add_encoding(out, teacher1, 1, "tea")
+        if self.tt is not None:
+            self._add_encoding(out, self._encode(self.tt, text1s), 1, "tea")
 
         has_second_text = all(text is not None for text in text2s)
         if any(text is not None for text in text2s) and not has_second_text:
@@ -104,9 +111,9 @@ class DualTokenizerCollate:
         if has_second_text:
             pair_texts = [str(text) for text in text2s]
             student2 = self._encode(self.ts, pair_texts)
-            teacher2 = self._encode(self.tt, pair_texts)
             self._add_encoding(out, student2, 2, "stu")
-            self._add_encoding(out, teacher2, 2, "tea")
+            if self.tt is not None:
+                self._add_encoding(out, self._encode(self.tt, pair_texts), 2, "tea")
 
         has_labels = all(label is not None for label in labels)
         if any(label is not None for label in labels) and not has_labels:

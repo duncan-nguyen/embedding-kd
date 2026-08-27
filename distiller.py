@@ -40,6 +40,8 @@ from src.criterions.contextual_dynamic_mapping import ContextualDynamicMapping
 from src.criterions.dual_space_kd import DualSpaceKD
 from src.criterions.emo_embedding_distillation import EMODistillation
 from src.criterions.geoode_kd import GeoODEKD
+from src.criterions.relational_kd import RelationalKD
+from src.criterions.simcse import SimCSEOnly
 from src.criterions.stella_distillation import (
     StellaModel,
     stella_stage1_loss,
@@ -227,16 +229,44 @@ class KnowledgeDistiller:
                 f"lambda_end={config.lambda_end}, lambda_dyn={config.lambda_dyn}, "
                 f"lambda_ctr={config.lambda_ctr}, schedule={config.guidance_schedule}"
             )
+        elif config.distill_method == "rkd":
+            # RKD holds no parameters either: both of its potentials are invariant
+            # to the width of the space, so the teacher supervises the student
+            # across the dimensionality gap with nothing fitted in between.
+            self.criterion = RelationalKD(
+                w_task=config.w_task,
+                w_dist=config.w_dist,
+                w_angle=config.w_angle,
+                huber_delta=config.huber_delta,
+                normalize_student=config.normalize_student,
+                eps=config.eps_norm,
+            ).to(self.device_s)
+            print(
+                "RKD criterion initialized: "
+                f"w_task={config.w_task}, w_dist={config.w_dist}, "
+                f"w_angle={config.w_angle}, "
+                f"normalize_student={config.normalize_student}"
+            )
+        elif config.distill_method == "simcse":
+            self.criterion = SimCSEOnly(temperature=config.temperature).to(
+                self.device_s
+            )
+            print(
+                "SimCSE-only control initialized: "
+                f"view={config.simcse_view}, temperature={config.temperature}. "
+                "No teacher term is in this objective."
+            )
         else:
             self.criterion = None
 
         # The depth diagnostics are parameter-free geometry, so any method with
         # per-layer hidden states and a batch teacher embedding can be measured with
-        # the same probe. TALAS is measured too: hypothesis 1 of the paper is a
-        # comparison against exactly that kind of static multi-layer anchoring, and
-        # it cannot be checked from a GeoODE-only run.
+        # the same probe. TALAS and RKD are measured too: the paper compares GeoODE-KD
+        # against exactly that static multi-layer anchoring and against a relational
+        # constraint on the final layer alone, and neither comparison can be checked
+        # from a GeoODE-only run.
         if self.depth_probe is None and self.depth_log_every > 0:
-            if config.distill_method == "talas":
+            if config.distill_method in ("talas", "rkd"):
                 self.depth_probe = GeoODEKD(
                     alpha=1.0,
                     beta=1.0,
@@ -377,11 +407,16 @@ class KnowledgeDistiller:
             cfg.student_model_name,
             **tokenizer_kwargs,
         )
-        self.tok_teacher = AutoTokenizer.from_pretrained(
-            cfg.teacher_model_name,
-            trust_remote_code=True,
-            **tokenizer_kwargs,
-        )
+        # The SimCSE-only control has no teacher term, so neither the teacher
+        # tokenizer nor the teacher weights are loaded: the run is the student's own
+        # contrastive objective on the same corpus and nothing else.
+        self.tok_teacher = None
+        if cfg.distill_method != "simcse":
+            self.tok_teacher = AutoTokenizer.from_pretrained(
+                cfg.teacher_model_name,
+                trust_remote_code=True,
+                **tokenizer_kwargs,
+            )
         if cfg.distill_method == "stella":
             print(f"Loading Stella student model: {cfg.student_model_name}")
             # Stage 1 and stage 2 both take a cosine loss between fc1 and the
@@ -446,35 +481,43 @@ class KnowledgeDistiller:
                 **student_kwargs,
             )
 
-        print(f"Loading teacher model: {cfg.teacher_model_name}")
-        teacher_kwargs = {"trust_remote_code": True}
-        if cfg.teacher_dtype == "bfloat16":
-            teacher_kwargs["torch_dtype"] = torch.bfloat16
-        elif cfg.teacher_dtype == "float16":
-            teacher_kwargs["torch_dtype"] = torch.float16
-
-        # EMO method needs attentions, force eager attention implementation
-        if cfg.distill_method == "emo":
-            teacher_kwargs["attn_implementation"] = "eager"
+        self.model_teacher = None
+        if cfg.distill_method == "simcse":
             print(
-                "Using eager attention implementation for the EMO teacher "
-                "(required for output_attentions)"
+                "SimCSE-only: no teacher model is loaded "
+                f"(the control for {cfg.teacher_model_name})"
+            )
+        else:
+            print(f"Loading teacher model: {cfg.teacher_model_name}")
+            teacher_kwargs = {"trust_remote_code": True}
+            if cfg.teacher_dtype == "bfloat16":
+                teacher_kwargs["torch_dtype"] = torch.bfloat16
+            elif cfg.teacher_dtype == "float16":
+                teacher_kwargs["torch_dtype"] = torch.float16
+
+            # EMO method needs attentions, force eager attention implementation
+            if cfg.distill_method == "emo":
+                teacher_kwargs["attn_implementation"] = "eager"
+                print(
+                    "Using eager attention implementation for the EMO teacher "
+                    "(required for output_attentions)"
+                )
+
+            self.model_teacher = AutoModel.from_pretrained(
+                cfg.teacher_model_name, **teacher_kwargs
             )
 
-        self.model_teacher = AutoModel.from_pretrained(
-            cfg.teacher_model_name, **teacher_kwargs
-        )
-
         self.model_student.to(self.device_s)
-        self.model_teacher.to(self.device_t)
 
         student_dtype = next(self.model_student.parameters()).dtype
         print(f"Student training dtype: {student_dtype}")
         assert_module_parameters_finite(self.model_student, "Student model after load")
 
-        self.model_teacher.eval()
-        for p in self.model_teacher.parameters():
-            p.requires_grad_(False)
+        if self.model_teacher is not None:
+            self.model_teacher.to(self.device_t)
+            self.model_teacher.eval()
+            for p in self.model_teacher.parameters():
+                p.requires_grad_(False)
 
         print("Models loaded successfully!")
         print("Done setup_models")
@@ -504,9 +547,9 @@ class KnowledgeDistiller:
                     self.device_s
                 )
 
-        # TALAS and GeoODE-KD both train against cached teacher embeddings only:
+        # TALAS, GeoODE-KD and RKD all train against cached teacher embeddings only:
         # the teacher is run once, offline, and never during student optimization.
-        if cfg.distill_method in ("talas", "geoode"):
+        if cfg.distill_method in ("talas", "geoode", "rkd"):
             cache_path = Path(cfg.cache_path)
 
             # Check if cache exists
@@ -912,6 +955,14 @@ class KnowledgeDistiller:
             for i in range(torch.cuda.device_count()):
                 torch.cuda.synchronize(i)
 
+    def _pool_student(
+        self, last_hidden_state: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """Sentence vector of the student, pooled the way the benchmarks read it."""
+        if getattr(self.config, "student_pooling", "cls") == "mean":
+            return mean_pooling(last_hidden_state, attention_mask)
+        return last_hidden_state[:, 0, :]
+
     def _compute_task_loss(
         self,
         student_cls1: torch.Tensor,
@@ -1246,6 +1297,116 @@ class KnowledgeDistiller:
                     input_ids.size(0),
                     teacher_gram,
                 )
+
+            return loss, metrics
+
+        if method == "rkd":
+            batch_s = {}
+            for k, v in batch.items():
+                if not torch.is_tensor(v):
+                    continue
+                if k.endswith("_stu") or k in ("labels", "teacher_cls"):
+                    batch_s[k] = v.to(self.device_s, non_blocking=True)
+
+            self.optimizer.zero_grad(set_to_none=True)
+            log_depth = self._should_log_depth(self.current_step)
+
+            with autocast("cuda", enabled=torch.cuda.is_available()):
+                teacher_cls = batch_s["teacher_cls"]
+                input_ids = batch_s["input_ids1_stu"]
+                attention_mask = batch_s["attention_mask1_stu"]
+
+                s_out = self.model_student(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    output_hidden_states=log_depth,
+                    return_dict=True,
+                )
+                student_cls = self._pool_student(
+                    s_out.last_hidden_state, attention_mask
+                )
+
+                # The same in-batch contrastive term every other cached-teacher
+                # method carries, so this row differs from them by its KD term only.
+                view_mask = batch_s["attention_mask2_stu"]
+                s_out_view = self.model_student(
+                    input_ids=batch_s["input_ids2_stu"],
+                    attention_mask=view_mask,
+                    output_hidden_states=False,
+                    return_dict=True,
+                )
+                second_cls = self._pool_student(s_out_view.last_hidden_state, view_mask)
+                task_loss, _ = info_nce(
+                    student_cls, second_cls, temperature=cfg.temperature
+                )
+
+                loss, metrics = self.criterion(student_cls, teacher_cls, task_loss)
+                loss = loss.float()
+
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.scheduler.step()
+
+            if log_depth:
+                self._record_depth(
+                    s_out.hidden_states,
+                    attention_mask,
+                    teacher_cls,
+                    input_ids.size(0),
+                )
+
+            return loss, metrics
+
+        if method == "simcse":
+            batch_s = {}
+            for k, v in batch.items():
+                if not torch.is_tensor(v):
+                    continue
+                if k.endswith("_stu") or k == "labels":
+                    batch_s[k] = v.to(self.device_s, non_blocking=True)
+
+            self.optimizer.zero_grad(set_to_none=True)
+
+            input_ids = batch_s["input_ids1_stu"]
+            attention_mask = batch_s["attention_mask1_stu"]
+            # "dropout" re-encodes the same sentence, so the two views differ only by
+            # the dropout masks (unsupervised SimCSE); "pair" takes the row's second
+            # sentence as the positive instead.
+            if cfg.simcse_view == "dropout":
+                view_ids, view_mask = input_ids, attention_mask
+            elif cfg.simcse_view == "pair":
+                view_ids = batch_s["input_ids2_stu"]
+                view_mask = batch_s["attention_mask2_stu"]
+            else:
+                raise ValueError(
+                    f"Unsupported simcse_view={cfg.simcse_view!r}; "
+                    "expected 'dropout' or 'pair'"
+                )
+
+            with autocast("cuda", enabled=torch.cuda.is_available()):
+                out1 = self.model_student(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    output_hidden_states=False,
+                    return_dict=True,
+                )
+                out2 = self.model_student(
+                    input_ids=view_ids,
+                    attention_mask=view_mask,
+                    output_hidden_states=False,
+                    return_dict=True,
+                )
+                view1 = self._pool_student(out1.last_hidden_state, attention_mask)
+                view2 = self._pool_student(out2.last_hidden_state, view_mask)
+
+                loss, metrics = self.criterion(view1, view2)
+                loss = loss.float()
+
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.scheduler.step()
 
             return loss, metrics
 
@@ -2225,7 +2386,10 @@ class KnowledgeDistiller:
             print("=" * 60)
             print(f"Method: {cfg.distill_method}")
             print(f"Student: {cfg.student_model_name}")
-            print(f"Teacher: {cfg.teacher_model_name}")
+            if cfg.distill_method == "simcse":
+                print(f"Teacher: none (control for {cfg.teacher_model_name})")
+            else:
+                print(f"Teacher: {cfg.teacher_model_name}")
             print(f"Epochs: {cfg.epochs}")
             print(f"Batch size: {cfg.batch_size}")
             print(f"Learning rate: {cfg.learning_rate}")

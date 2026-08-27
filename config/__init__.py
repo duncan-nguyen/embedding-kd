@@ -3,6 +3,8 @@ from .cdm_config import CDMConfig
 from .dskd_config import DSKDConfig
 from .emo_config import EMOConfig
 from .geoode_config import GeoODEConfig
+from .rkd_config import RKDConfig
+from .simcse_config import SimCSEConfig
 from .stella_config import StellaConfig
 from .talas_config import TALASConfig
 
@@ -12,6 +14,8 @@ __all__ = [
     'DSKDConfig',
     'EMOConfig',
     'GeoODEConfig',
+    'RKDConfig',
+    'SimCSEConfig',
     'StellaConfig',
     'TALASConfig'
 ]
