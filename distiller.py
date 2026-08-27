@@ -16,7 +16,7 @@ from torch import nn, optim
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, get_scheduler
+from transformers import AutoConfig, AutoModel, AutoTokenizer, get_scheduler
 from transformers import __version__ as transformers_version
 
 try:
@@ -346,6 +346,28 @@ class KnowledgeDistiller:
                 flat.update(KnowledgeDistiller._flatten_metrics(name, value))
         return flat
 
+    def _resolve_teacher_embedding_dim(self) -> int:
+        """Embedding width of the teacher, read from its config without loading it.
+
+        The teacher weights are loaded further down, but the Stella student's fc1
+        has to be built before that, so the width comes from the config file
+        instead of from a materialized model.
+        """
+        teacher_config = AutoConfig.from_pretrained(
+            self.config.teacher_model_name,
+            trust_remote_code=True,
+        )
+        dim = getattr(teacher_config, "hidden_size", None)
+        if dim is None:
+            text_config = getattr(teacher_config, "text_config", None)
+            dim = getattr(text_config, "hidden_size", None)
+        if dim is None:
+            raise ValueError(
+                f"Could not read an embedding dim from the config of "
+                f"{self.config.teacher_model_name}; set output_dim1 to it manually."
+            )
+        return int(dim)
+
     def setup_models(self):
         cfg = self.config
 
@@ -362,9 +384,24 @@ class KnowledgeDistiller:
         )
         if cfg.distill_method == "stella":
             print(f"Loading Stella student model: {cfg.student_model_name}")
+            # Stage 1 and stage 2 both take a cosine loss between fc1 and the
+            # teacher embedding itself, so fc1 has to land in the teacher's
+            # dimension: one head per teacher, sized to that teacher's vector.
+            # The default (1024) only happens to fit Qwen3-Embedding-0.6B; a
+            # larger teacher moves it. fc2-fc4 are compared to fc1 through Gram
+            # matrices only, so those Matryoshka dims stay free.
+            teacher_dim = self._resolve_teacher_embedding_dim()
+            configured_dim = getattr(cfg, "output_dim1", 1024)
+            if configured_dim != teacher_dim:
+                print(
+                    f"[stella] output_dim1={configured_dim} does not match the "
+                    f"{cfg.teacher_model_name} embedding dim ({teacher_dim}); "
+                    f"sizing fc1 to {teacher_dim}."
+                )
+                cfg.output_dim1 = teacher_dim
             self.model_student = StellaModel(
                 cfg.student_model_name,
-                output_dim1=getattr(cfg, "output_dim1", 1024),
+                output_dim1=teacher_dim,
                 pooling=getattr(cfg, "pooling", "cls"),
                 output_dim2=getattr(cfg, "output_dim2", 512),
                 output_dim3=getattr(cfg, "output_dim3", 256),
