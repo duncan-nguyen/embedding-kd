@@ -38,9 +38,17 @@ def evaluator(monkeypatch):
     def fake_sts(model, tasks, tokenizer):
         return dict.fromkeys(tasks, 0.6)
 
+    def fake_retrieval(model, tasks, tokenizer):
+        calls["retrieval"] = list(tasks)
+        return {
+            path: {"ndcg_at_10": 0.3, "recall_at_10": 0.4, "mrr_at_10": 0.25}
+            for path in tasks
+        }
+
     monkeypatch.setattr(distiller_module, "eval_classification_task", fake_classification)
     monkeypatch.setattr(distiller_module, "eval_pair_task", fake_pair)
     monkeypatch.setattr(distiller_module, "eval_sts_task", fake_sts)
+    monkeypatch.setattr(distiller_module, "eval_retrieval_task", fake_retrieval)
 
     instance = object.__new__(KnowledgeDistiller)
     instance.config = BaseConfig()
@@ -234,3 +242,52 @@ def test_final_test_skips_the_extra_validation_when_calibrating_on_test(evaluato
 
     assert "thresholds" not in calls  # no validation pass was run
     assert not hasattr(instance, "pair_validation_thresholds")
+
+
+def test_retrieval_runs_on_test_only_and_stays_out_of_the_sentence_averages(evaluator):
+    """Retrieval joins AVG (ALL) but must not move AVG (IOD)/AVG (OOD).
+
+    The sentence-level groups are what earlier runs are reported against, so
+    folding three nDCG@10 scores into AVG (OOD) would silently redefine a number
+    the paper already carries.
+    """
+    instance, calls = evaluator
+    instance.config.pair_threshold_source = "test"
+
+    validation = instance.evaluate("validation")
+    assert "retrieval" not in calls  # no qrels on the validation side
+    assert validation["retrieval"] == {}
+    assert "avg_retrieval" not in validation["summary"]
+
+    test = instance.evaluate("test")
+    assert calls["retrieval"] == distiller_module.test_retrieval_tasks
+    assert test["summary"]["avg_retrieval"] == pytest.approx(0.3)
+    assert test["summary"]["avg_iod"] == pytest.approx(validation["summary"]["avg_iod"])
+    assert test["summary"]["avg_ood"] == pytest.approx(validation["summary"]["avg_ood"])
+    assert test["summary"]["avg_all"] < validation["summary"]["avg_all"]
+
+
+def test_retrieval_can_be_switched_off(evaluator):
+    instance, calls = evaluator
+    instance.config.pair_threshold_source = "test"
+    instance.config.eval_retrieval = False
+
+    results = instance.evaluate("test")
+
+    assert "retrieval" not in calls
+    assert results["retrieval"] == {}
+    assert "avg_retrieval" not in results["summary"]
+
+
+def test_cli_disables_retrieval(monkeypatch):
+    import sys
+
+    from main import get_config, parse_args
+
+    monkeypatch.setattr(
+        sys, "argv", ["main.py", "--method", "geoode", "--no_eval_retrieval"]
+    )
+    config = get_config("geoode", parse_args())
+
+    assert config.eval_retrieval is False
+    assert BaseConfig().eval_retrieval is True

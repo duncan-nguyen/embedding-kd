@@ -1,0 +1,54 @@
+{
+  "output": "data/train_set/train_150k.csv",
+  "rows": 150000,
+  "seed": 42,
+  "base": {
+    "file": "data/train_set/train_100k.csv",
+    "rows": 100000,
+    "overlap_with_excluded_sets": {
+      "arguana": 0,
+      "fiqa": 0,
+      "scidocs": 0,
+      "sentence_eval_splits": 7646
+    }
+  },
+  "msmarco": {
+    "repo": "microsoft/ms_marco",
+    "revision": "a47ee7aae8d7d466ba15f9f0bfac3b3681087b3a",
+    "shard": "v2.1/train-00000-of-00007.parquet",
+    "queries": 25000,
+    "passages": 25000,
+    "duplicates_skipped": {
+      "query": 0,
+      "passage": 93
+    },
+    "overlap_dropped": {
+      "query": {
+        "arguana": 0,
+        "fiqa": 0,
+        "scidocs": 0,
+        "sentence_eval_splits": 0
+      },
+      "passage": {
+        "arguana": 0,
+        "fiqa": 0,
+        "scidocs": 0,
+        "sentence_eval_splits": 0
+      }
+    },
+    "labels_used": null
+  },
+  "sources": {
+    "MSMARCO_QUERY": 25000,
+    "MSMARCO_PASSAGE": 25000,
+    "SCITAIL": 23265,
+    "TWEET": 23145,
+    "EMOTION": 15592,
+    "STSB": 8986,
+    "BANKING77": 8797,
+    "MRPC": 6887,
+    "WIC": 6209,
+    "SICK": 4682,
+    "STS12": 2437
+  }
+}

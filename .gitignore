@@ -40,3 +40,7 @@ htmlcov/
 # Environment files
 .env
 .env.*
+
+# Benchmark data rebuilt by scripts/, too large to track
+data/test_set/retrieval/
+data/cache/

@@ -70,6 +70,7 @@ from src.evaluation.evaluation_automodel import (
     test_pair_tasks,
     test_sts_tasks,
 )
+from src.evaluation.retrieval import eval_retrieval_task, test_retrieval_tasks
 from src.loss import info_nce
 from src.pooling import mean_pooling, pool_sentence_embedding
 from src.teacher_projection import (
@@ -83,6 +84,10 @@ from src.teacher_projection import (
 # remaining ones are held out. Reporting them as one number would let an
 # in-distribution gain stand in for transfer, so the table averages them apart.
 IOD_BENCHMARKS = frozenset({"emotion", "wic", "stsb"})
+# Scored by nDCG@10 over a whole corpus rather than over a sentence pair, so
+# they get their own summary row instead of diluting the sentence-level AVG
+# (OOD) that earlier runs are reported against.
+RETRIEVAL_BENCHMARKS = frozenset({"arguana", "fiqa", "scidocs"})
 
 
 def should_save_epoch(epoch_index: int, save_every: int) -> bool:
@@ -1998,6 +2003,9 @@ class KnowledgeDistiller:
             "recall": "R",
             "average_precision": "AP",
             "spearman": "Spearman",
+            "ndcg_at_10": "nDCG@10",
+            "recall_at_10": "R@10",
+            "mrr_at_10": "MRR@10",
         }
         details = []
         for key, label in labels.items():
@@ -2010,21 +2018,35 @@ class KnowledgeDistiller:
     def _benchmark_group_averages(
         scores_by_benchmark: dict[str, float],
     ) -> dict[str, dict[str, Any]]:
-        """Average the primary scores over IOD, OOD and all benchmarks.
+        """Average the primary scores over IOD, OOD, retrieval and all benchmarks.
 
-        Every benchmark contributes its own primary metric (macro-F1, AP or
-        Spearman), all on a 0-1 scale, so the groups are unweighted means over
+        Every benchmark contributes its own primary metric (macro-F1, AP, Spearman
+        or nDCG@10), all on a 0-1 scale, so the groups are unweighted means over
         benchmarks rather than over examples.
+
+        The IOD/OOD split covers the sentence-level probes only: retrieval is held
+        out from both and reported on its own row, so AVG (IOD) and AVG (OOD) keep
+        meaning what they meant before retrieval was added. AVG (ALL) spans
+        everything.
         """
+        sentence_level = [
+            name for name in scores_by_benchmark if name not in RETRIEVAL_BENCHMARKS
+        ]
         groups = {
             "avg_iod": (
                 "AVG (IOD)",
-                sorted(name for name in scores_by_benchmark if name in IOD_BENCHMARKS),
+                sorted(name for name in sentence_level if name in IOD_BENCHMARKS),
             ),
             "avg_ood": (
                 "AVG (OOD)",
+                sorted(name for name in sentence_level if name not in IOD_BENCHMARKS),
+            ),
+            "avg_retrieval": (
+                "AVG (RETRIEVAL)",
                 sorted(
-                    name for name in scores_by_benchmark if name not in IOD_BENCHMARKS
+                    name
+                    for name in scores_by_benchmark
+                    if name in RETRIEVAL_BENCHMARKS
                 ),
             ),
             "avg_all": ("AVG (ALL)", sorted(scores_by_benchmark)),
@@ -2050,10 +2072,11 @@ class KnowledgeDistiller:
             "classification": "f1",
             "pair": "average_precision",
             "sts": "spearman",
+            "retrieval": "ndcg_at_10",
         }
         rows = []
         scores_by_benchmark: dict[str, float] = {}
-        for family in ("classification", "pair", "sts"):
+        for family in ("classification", "pair", "sts", "retrieval"):
             for path, raw_values in results.get(family, {}).items():
                 values = (
                     {"spearman": raw_values} if family == "sts" else dict(raw_values)
@@ -2182,12 +2205,20 @@ class KnowledgeDistiller:
             thresholds=thresholds,
         )
         sts = eval_sts_task(student_model, sts_tasks, self.tok_student)
+        # Retrieval has no validation qrels and embedding the three corpora is ~92k
+        # forward passes, so it is scored on the test split only.
+        retrieval = {}
+        if split == "test" and getattr(self.config, "eval_retrieval", True):
+            retrieval = eval_retrieval_task(
+                student_model, test_retrieval_tasks, self.tok_student
+            )
         if split == "validation":
             self.pair_validation_thresholds = selected_thresholds
         results = {
             "classification": classification,
             "pair": pair,
             "sts": sts,
+            "retrieval": retrieval,
             # Recorded per evaluation so a later reader of metrics.jsonl can tell a
             # held-out pair score from a self-calibrated one.
             "pair_threshold_source": "test" if thresholds is None else "validation",

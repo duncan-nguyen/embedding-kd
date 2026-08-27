@@ -31,7 +31,10 @@ class BaseConfig:
     student_special_token = "##"
     teacher_special_token = "_"
     
-    train_data_path = "data/train_set/merged_3_data_5k_each.csv"
+    # Every method in the paper is distilled on this one corpus: 100k benchmark
+    # sentences plus 25k MS MARCO queries and 25k MS MARCO passages, all raw
+    # text. Built by scripts/build_train_150k.py.
+    train_data_path = "data/train_set/train_150k.csv"
     eval_data_path = None
     num_workers = 2
     
@@ -50,6 +53,11 @@ class BaseConfig:
     # the test score held out; "test" sweeps it on the test split itself, which turns
     # the pair accuracy/F1 into an upper bound rather than an estimate.
     pair_threshold_source = "validation"
+
+    # Score ArguAna/FiQA/SCIDOCS (nDCG@10) as part of the final test evaluation.
+    # Needs data/test_set/retrieval, written by
+    # scripts/download_retrieval_benchmarks.py. CLI: --no_eval_retrieval.
+    eval_retrieval = True
 
     debug_align = False
     evaluate_test_each_epoch = False

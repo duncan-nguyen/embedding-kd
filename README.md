@@ -8,13 +8,35 @@ teachers. The reproduction target follows the Qwen3 to BERT-base pair in
 Qwen3-Embedding-4B -> BERT-base 109M
 ```
 
-The training corpus follows the TALAS paper setup: about 15K unlabeled sentences
-sampled from the three in-domain datasets EMOTION, WiC, and STS-B. In this repo,
-that corpus is:
+The default training corpus is 150K unlabeled texts:
 
 ```text
-data/train_set/merged_3_data_5k_each.csv
+data/train_set/train_150k.csv
 ```
+
+100K of them are a fixed sample of the benchmark train splits (the corpus the
+earlier 100K runs used); the other 50K are 25K MS MARCO queries and 25K MS MARCO
+passages, drawn from disjoint rows of one pinned shard so no query in the corpus
+sits next to a passage that was retrieved for it. No qrel, `is_selected` flag or
+answer is ever read -- only raw text, so the objective stays unlabeled. MS MARCO
+is a *training* source for the retrieval evaluation and never a test one, which
+keeps ArguAna/FiQA/SCIDOCS zero-shot cross-dataset. Rebuild it with:
+
+```bash
+python3 scripts/download_retrieval_benchmarks.py   # needed for the overlap check
+python3 scripts/build_train_150k.py
+```
+
+Everything is seeded and the Hub file is pinned to a commit sha, so a re-run
+reproduces the file byte for byte. `train_150k.manifest.json` records the seed,
+the shard, the per-source counts and every overlap the build dropped. Every new
+text is checked, on normalised form, against the 100K base, against the other new
+texts, and against the queries and corpora of all three retrieval benchmarks plus
+every existing test and validation split.
+
+The TALAS paper setup (about 15K unlabeled sentences from EMOTION, WiC and STS-B)
+is still on disk as `data/train_set/merged_3_data_5k_each.csv`, and the 100K
+corpus as `data/train_set/train_100k.csv`, for the data-scaling ablation.
 
 Benchmark CSV files are separated under `data/train_set/`, `data/val_set/`,
 and `data/test_set/`. Classification probe train and validation files are
@@ -163,7 +185,7 @@ Or run the Python entry point directly:
 ```bash
 python3 main.py \
   --method talas \
-  --train_data data/train_set/merged_3_data_5k_each.csv \
+  --train_data data/train_set/train_150k.csv \
   --student_model google-bert/bert-base-uncased \
   --teacher_model Qwen/Qwen3-Embedding-4B \
   --batch_size 32 \
@@ -281,6 +303,12 @@ calibration differently:
 | Classification | Banking77, Emotion, Tweet | a logistic-regression probe is fitted on that benchmark's *train* split and scored on the eval split (accuracy, macro-F1) |
 | Pair | MRPC, SciTail, WiC | cosine similarity mapped to `[0, 1]`, then a **decision threshold** turns it into a label (accuracy, F1, precision, recall, average precision) |
 | STS | SICK, STS12, STS-B | cosine similarity against gold scores, Spearman correlation |
+| Retrieval | ArguAna, FiQA-2018, SCIDOCS | exhaustive cosine ranking of the whole corpus (nDCG@10, Recall@10, MRR@10) |
+
+The summary block reports `AVG (IOD)` and `AVG (OOD)` over the sentence-level
+families only, `AVG (RETRIEVAL)` over the three retrieval benchmarks, and
+`AVG (ALL)` over all twelve, so adding retrieval did not redefine the two
+averages earlier runs are reported against.
 
 Validation runs after every `--eval_every` epochs; test runs once, after training.
 `--evaluate_test_each_epoch` swaps that around: the test split is evaluated after
@@ -335,6 +363,12 @@ Semantic textual similarity:
 SICK, STS12, STS-B
 ```
 
+Zero-shot retrieval:
+
+```text
+ArguAna, FiQA-2018, SCIDOCS
+```
+
 Validation runs after each epoch. Final test evaluation runs after training,
 reusing pair-classification thresholds selected on validation.
 
@@ -351,6 +385,34 @@ python3 scripts/download_eval_train_splits.py --force    # refetch everything
 The script rebuilds each benchmark's existing validation and test files from the
 upstream source first and refuses to write the train split unless they match, so
 a source that has drifted fails loudly instead of landing a mismatched split.
+
+### Retrieval benchmarks
+
+The three retrieval benchmarks are ~90 MB and are not tracked in git. Fetch them
+once, before the first run:
+
+```bash
+python3 scripts/download_retrieval_benchmarks.py
+```
+
+They land under `data/test_set/retrieval/<name>/{corpus,queries,qrels}.csv`, pinned
+to a Hub commit sha, with row counts asserted against the BEIR paper (ArguAna
+8674/1406, FiQA 57638/648, SCIDOCS 25657/1000).
+
+Scoring follows BEIR exactly, so the numbers are comparable to published ones: a
+document is `title + " " + text`, ranking is exhaustive cosine over the full
+corpus with no ANN index, a document whose id equals the query id is dropped
+before the top-k cut, and nDCG@10 uses `2^rel - 1` gains with `log2(rank + 1)`
+discounts. Checked end to end against MTEB: `all-MiniLM-L6-v2` (mean-pooled)
+scores **50.25** on ArguAna here against MTEB's 50.17.
+
+Retrieval is scored on the test split only -- there are no validation qrels for
+these three, and embedding the three corpora is ~92k forward passes, more than the
+rest of the protocol combined. To skip it:
+
+```bash
+python3 main.py --method geoode --no_eval_retrieval
+```
 
 ## Tests
 
