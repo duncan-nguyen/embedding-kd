@@ -4,8 +4,420 @@
 \subsection{Riemannian Geometry and Vector Field Derivations}
 \label{app:riemannian-derivations}
 
+The batch state lies on the product manifold
+\begin{equation}
+    \mathcal{M}
+    =
+    \left(\mathbb{S}^{d_S-1}\right)^B,
+\end{equation}
+equipped with the Frobenius inner product. Its tangent space at
+$\mathbf{Z}$ is
+\begin{equation}
+    T_{\mathbf{Z}}\mathcal{M}
+    =
+    \left\{
+        \mathbf{U}\in\mathbb{R}^{B\times d_S}
+        :
+        \mathbf{z}_i^\top\mathbf{u}_i=0
+        \text{ for every }i
+    \right\}.
+    \label{eq:app-product-tangent}
+\end{equation}
+The row-wise projection in Eq.~\ref{eq:tangent-projection} follows directly:
+\begin{equation}
+    \Pi_{\mathbf{Z}}(\mathbf{U})_i
+    =
+    \mathbf{u}_i
+    -
+    (\mathbf{z}_i^\top\mathbf{u}_i)\mathbf{z}_i.
+    \label{eq:app-batch-projection}
+\end{equation}
+
+\paragraph{Point-wise semantic gradient.}
+For one normalized pair $(\mathbf{z},\boldsymbol{\tau})$, let
+$c=\mathbf{z}^\top\boldsymbol{\tau}$ and
+$\theta=\arccos(c)\in[0,\pi)$. We exclude the antipodal cut locus
+$\theta=\pi$, where the shortest geodesic is not unique. The ambient
+derivative of the squared geodesic potential is
+\begin{equation}
+    \nabla_{\mathbf{z}}
+    \frac{1}{2}\theta^2
+    =
+    -\frac{\theta}{\sin\theta}
+    \boldsymbol{\tau}.
+\end{equation}
+Projecting this derivative onto the tangent space gives
+\begin{align}
+    \operatorname{grad}_{\mathbb{S}}
+    \frac{1}{2}\theta^2
+    &=
+    -\frac{\theta}{\sin\theta}
+    \left(
+        \boldsymbol{\tau}
+        -
+        c\mathbf{z}
+    \right)
+    \nonumber\\
+    &=
+    -\operatorname{Log}_{\mathbf{z}}(\boldsymbol{\tau}).
+    \label{eq:app-semantic-single-gradient}
+\end{align}
+The continuous extension at $\theta=0$ is zero. Applying
+Eq.~\ref{eq:app-semantic-single-gradient} to the batch mean in
+Eq.~\ref{eq:semantic-potential} yields
+\begin{equation}
+    \operatorname{grad}_{\mathbb{S}}
+    \mathcal{E}_{\mathrm{sem}}(\mathbf{Z},\mathbf{T})
+    =
+    -\frac{1}{B}
+    \operatorname{Log}_{\mathbf{Z}}(\mathbf{T}).
+    \label{eq:app-semantic-batch-gradient}
+\end{equation}
+The norm of each logarithmic-map row equals its geodesic distance because
+\begin{equation}
+    \left\lVert
+        \boldsymbol{\tau}
+        -
+        c\mathbf{z}
+    \right\rVert_2
+    =
+    \sin\theta,
+    \qquad
+    \left\lVert
+        \operatorname{Log}_{\mathbf{z}}(\boldsymbol{\tau})
+    \right\rVert_2
+    =
+    \theta.
+    \label{eq:app-log-map-norm}
+\end{equation}
+
+\paragraph{Relational gradient.}
+Let
+\begin{equation}
+    \mathbf{A}
+    =
+    \mathbf{Z}\mathbf{Z}^\top-\mathbf{G}_T.
+\end{equation}
+Both Gram matrices are symmetric, so $\mathbf{A}=\mathbf{A}^\top$. For a
+perturbation $\mathbf{H}$, the differential of
+Eq.~\ref{eq:geometric-potential} is
+\begin{align}
+    \mathrm{D}\mathcal{E}_{\mathrm{geo}}[\mathbf{H}]
+    &=
+    \frac{2}{B^2}
+    \left\langle
+        \mathbf{A},
+        \mathbf{H}\mathbf{Z}^\top
+        +
+        \mathbf{Z}\mathbf{H}^\top
+    \right\rangle_F
+    \nonumber\\
+    &=
+    \frac{4}{B^2}
+    \left\langle
+        \mathbf{A}\mathbf{Z},
+        \mathbf{H}
+    \right\rangle_F.
+    \label{eq:app-relational-differential}
+\end{align}
+Hence the ambient and Riemannian gradients are
+\begin{align}
+    \nabla_{\mathbf{Z}}\mathcal{E}_{\mathrm{geo}}
+    &=
+    \frac{4}{B^2}
+    \mathbf{A}\mathbf{Z},
+    \nonumber\\
+    \operatorname{grad}_{\mathbb{S}}
+    \mathcal{E}_{\mathrm{geo}}
+    &=
+    \frac{4}{B^2}
+    \Pi_{\mathbf{Z}}(\mathbf{A}\mathbf{Z}).
+    \label{eq:app-relational-gradient}
+\end{align}
+
+Combining Eqs.~\ref{eq:app-semantic-batch-gradient} and
+\ref{eq:app-relational-gradient} gives
+\begin{equation}
+    \operatorname{grad}_{\mathbb{S}}\mathcal{E}
+    =
+    -\frac{\alpha}{B}
+    \operatorname{Log}_{\mathbf{Z}}(\mathbf{T})
+    +
+    \frac{4\beta}{B^2}
+    \Pi_{\mathbf{Z}}
+    \!\left[
+        (\mathbf{Z}\mathbf{Z}^\top-\mathbf{G}_T)\mathbf{Z}
+    \right].
+    \label{eq:app-total-riemannian-gradient}
+\end{equation}
+Multiplying by $-B$ recovers the vector direction in
+Eq.~\ref{eq:semantic-vector-direction}. This scaling removes the $1/B$ from
+the batch mean without changing the descent direction.
+
 \subsection{Finite-Horizon Flow Derivation}
 \label{app:finite-horizon-derivation}
 
+Consider first the teacher-conditioned gradient flow in an auxiliary time
+$\tau$,
+\begin{equation}
+    \frac{d\mathbf{Z}}{d\tau}
+    =
+    \mathbf{V}(\mathbf{Z},\mathbf{T},\mathbf{G}_T)
+    =
+    -B\operatorname{grad}_{\mathbb{S}}\mathcal{E}.
+    \label{eq:app-auxiliary-flow}
+\end{equation}
+This flow generally reaches a stationary point only as
+$\tau\rightarrow\infty$. To fit that horizon into student depth
+$t\in[0,1]$, define
+\begin{equation}
+    \tau(t)
+    =
+    \int_0^t\frac{s(u)}{R(u)}\,du,
+    \qquad
+    R(t)=\int_t^1s(u)\,du.
+    \label{eq:app-time-change}
+\end{equation}
+Since $\dot{R}(t)=-s(t)$,
+\begin{equation}
+    \frac{d}{dt}\log R(t)
+    =
+    -\frac{s(t)}{R(t)},
+\end{equation}
+and therefore
+\begin{equation}
+    \tau(t)
+    =
+    \log\frac{R(0)}{R(t)}.
+    \label{eq:app-warped-time}
+\end{equation}
+For any schedule with $R(t)>0$ for $t<1$ and $R(1)=0$,
+$\tau(t)\rightarrow\infty$ as $t\rightarrow1$. Applying the chain rule to
+Eq.~\ref{eq:app-auxiliary-flow} gives
+\begin{equation}
+    \frac{d\mathbf{Z}}{dt}
+    =
+    \frac{d\tau}{dt}
+    \frac{d\mathbf{Z}}{d\tau}
+    =
+    \frac{s(t)}{R(t)}
+    \mathbf{V}(\mathbf{Z},\mathbf{T},\mathbf{G}_T),
+\end{equation}
+which is Eq.~\ref{eq:finite-horizon-flow}.
+
+\paragraph{Schedules.}
+For $s(t)=t^p$ with $p>-1$,
+\begin{equation}
+    R(t)
+    =
+    \frac{1-t^{p+1}}{p+1}.
+    \label{eq:app-power-remaining-mass}
+\end{equation}
+The constant schedule is $p=0$, while the default linear schedule is $p=1$
+and gives $R(t)=(1-t^2)/2$.
+
+\paragraph{Discrete step fraction.}
+The warped time elapsed between two student depths is
+\begin{align}
+    \Delta\tau_\ell
+    &=
+    \int_{t_\ell}^{t_{\ell+1}}
+    \frac{s(u)}{R(u)}\,du
+    \nonumber\\
+    &=
+    \log\frac{R(t_\ell)}{R(t_{\ell+1})}.
+    \label{eq:app-warped-layer-interval}
+\end{align}
+Under the instance-only auxiliary flow, the distance remaining after this
+interval is multiplied by $\exp(-\Delta\tau_\ell)$. The fraction covered is
+therefore
+\begin{align}
+    \rho_\ell
+    &=
+    1-\exp(-\Delta\tau_\ell)
+    \nonumber\\
+    &=
+    1-\frac{R(t_{\ell+1})}{R(t_\ell)},
+    \label{eq:app-step-fraction}
+\end{align}
+which recovers Eq.~\ref{eq:finite-step-fraction}. For the default schedule and
+$t_\ell=\ell/L$,
+\begin{equation}
+    \rho_\ell
+    =
+    \frac{2\ell+1}{L^2-\ell^2},
+    \qquad
+    \rho_{L-1}=1.
+    \label{eq:app-linear-step-fraction}
+\end{equation}
+For the point-wise field, this fraction reproduces the exact geodesic progress
+over the interval. For the coupled semantic--relational field, GeoODE-KD uses
+the same $\rho_\ell$ as a local exponential-map step; it is a discretization,
+not an exact integration of the changing nonlinear field.
+
+The exponential map also preserves the discrete target norm. If
+$\mathbf{v}\in T_{\mathbf{z}}\mathbb{S}^{d_S-1}$, then
+$\mathbf{z}^\top\mathbf{v}=0$, and Eq.~\ref{eq:sphere-exp-map} gives
+\begin{equation}
+    \left\lVert
+        \operatorname{Exp}_{\mathbf{z}}(\mathbf{v})
+    \right\rVert_2^2
+    =
+    \cos^2\lVert\mathbf{v}\rVert_2
+    +
+    \sin^2\lVert\mathbf{v}\rVert_2
+    =1.
+    \label{eq:app-exp-map-norm}
+\end{equation}
+
 \subsection{Proofs of the Flow Properties}
 \label{app:proofs}
+
+The following statements assume $s(t)\geq0$, $R(t)>0$ for $t<1$, and that no
+student--teacher pair lies at the antipodal cut locus. The logarithmic map is
+defined by continuous extension when a student state already equals its target.
+
+\paragraph{Proposition 1 (norm preservation).}
+Every row of a solution to Eq.~\ref{eq:finite-horizon-flow} remains on the unit
+hypersphere.
+
+\paragraph{Proof.}
+Both terms in Eq.~\ref{eq:semantic-vector-direction} are tangent: the log map
+lies in $T_{\mathbf{z}_i}\mathbb{S}^{d_S-1}$, and the relational term is
+explicitly projected by $\Pi_{\mathbf{Z}}$. Thus
+$\mathbf{z}_i^\top\dot{\mathbf{z}}_i=0$ and
+\begin{equation}
+    \frac{d}{dt}
+    \lVert\mathbf{z}_i(t)\rVert_2^2
+    =
+    2\mathbf{z}_i(t)^\top\dot{\mathbf{z}}_i(t)
+    =0.
+\end{equation}
+Since $\lVert\mathbf{z}_i(0)\rVert_2=1$, its norm remains one. \hfill$\square$
+
+\paragraph{Proposition 2 (energy descent).}
+Along the ideal continuous flow, the teacher-conditioned potential is
+non-increasing for every $t<1$.
+
+\paragraph{Proof.}
+By Eq.~\ref{eq:app-total-riemannian-gradient},
+$\mathbf{V}=-B\operatorname{grad}_{\mathbb{S}}\mathcal{E}$. The Riemannian
+chain rule gives
+\begin{align}
+    \frac{d\mathcal{E}}{dt}
+    &=
+    \left\langle
+        \operatorname{grad}_{\mathbb{S}}\mathcal{E},
+        \dot{\mathbf{Z}}
+    \right\rangle_F
+    \nonumber\\
+    &=
+    -\frac{B\,s(t)}{R(t)}
+    \left\lVert
+        \operatorname{grad}_{\mathbb{S}}\mathcal{E}
+    \right\rVert_F^2
+    \leq0.
+\end{align}
+This proves Eq.~\ref{eq:energy-descent}. \hfill$\square$
+
+\paragraph{Corollary 1 (point-wise geodesic contraction).}
+For $\alpha=1$ and $\beta=0$, the geodesic distance
+$\theta(t)=d_g(\mathbf{z}(t),\boldsymbol{\tau})$ satisfies
+\begin{equation}
+    \theta(t)
+    =
+    \theta(0)\frac{R(t)}{R(0)},
+    \qquad
+    \lim_{t\rightarrow1}\theta(t)=0.
+    \label{eq:app-pointwise-contraction}
+\end{equation}
+
+\paragraph{Proof.}
+For one pair, define $e(t)=\tfrac{1}{2}\theta(t)^2$. From
+Eq.~\ref{eq:app-semantic-single-gradient} and the point-wise form of
+Eq.~\ref{eq:finite-horizon-flow},
+\begin{align}
+    \dot{e}(t)
+    &=
+    \left\langle
+        -\operatorname{Log}_{\mathbf{z}}(\boldsymbol{\tau}),
+        \frac{s(t)}{R(t)}
+        \operatorname{Log}_{\mathbf{z}}(\boldsymbol{\tau})
+    \right\rangle
+    \nonumber\\
+    &=
+    -\frac{s(t)}{R(t)}\theta(t)^2,
+\end{align}
+where Eq.~\ref{eq:app-log-map-norm} is used in the last line. For
+$\theta(t)>0$, $\dot{e}=\theta\dot{\theta}$, so
+\begin{equation}
+    \frac{d}{dt}\log\theta(t)
+    =
+    -\frac{s(t)}{R(t)}
+    =
+    \frac{d}{dt}\log R(t).
+\end{equation}
+Integrating from $0$ to $t$ proves Eq.~\ref{eq:app-pointwise-contraction}. If
+$\theta$ reaches zero earlier, the log-map vector is zero and the state remains
+at the target. \hfill$\square$
+
+If the observed student trajectory begins at the first Transformer layer
+$t_1=1/L$ rather than at $t=0$, the same argument starts from $t_1$ and gives
+\begin{equation}
+    \theta(t)
+    =
+    \theta(t_1)\frac{R(t)}{R(t_1)},
+    \qquad t\geq t_1.
+    \label{eq:app-first-layer-contraction}
+\end{equation}
+
+Since $\theta(t)\in[0,\pi)$ and $\dot{\theta}(t)\leq0$, teacher cosine is also
+non-decreasing:
+\begin{equation}
+    \frac{d}{dt}\cos\theta(t)
+    =
+    \frac{s(t)}{R(t)}
+    \theta(t)\sin\theta(t)
+    \geq0.
+    \label{eq:app-cosine-monotonicity}
+\end{equation}
+
+\paragraph{Corollary 2 (exact sampled profile).}
+For $0\leq a\leq1$, the curve
+\begin{equation}
+    \gamma(a)
+    =
+    \operatorname{Exp}_{\mathbf{z}}
+    \!\left(
+        a\operatorname{Log}_{\mathbf{z}}(\boldsymbol{\tau})
+    \right)
+\end{equation}
+is the shortest geodesic from $\mathbf{z}$ to $\boldsymbol{\tau}$ and satisfies
+\begin{equation}
+    d_g(\gamma(a),\boldsymbol{\tau})
+    =
+    (1-a)d_g(\mathbf{z},\boldsymbol{\tau}).
+    \label{eq:app-slerp-distance}
+\end{equation}
+Setting $a=\rho_\ell$ in the instance-only target gives
+\begin{equation}
+    \theta_{\ell+1}
+    =
+    (1-\rho_\ell)\theta_\ell
+    =
+    \frac{R(t_{\ell+1})}{R(t_\ell)}\theta_\ell.
+    \label{eq:app-discrete-contraction}
+\end{equation}
+The factors telescope, so the predicted states reproduce
+Eq.~\ref{eq:app-pointwise-contraction} at every sampled depth and the last
+target equals $\boldsymbol{\tau}$ because $\rho_{L-1}=1$.
+
+\paragraph{Scope of the guarantees.}
+Norm preservation and energy descent describe the ideal continuous field.
+Exact arrival and the sampled profile require the instance-only setting
+$\alpha=1,\beta=0$. With $\beta>0$, the native teacher Gram target can compete
+with the projected point-wise target, so individual distances need not decrease
+at every depth. Finally, the realized Transformer trajectory satisfies the
+sampled profile only to the extent that it minimizes
+$\mathcal{L}_{\mathrm{dyn}}$; the propositions do not assume zero
+discretization or optimization error.

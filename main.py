@@ -248,7 +248,9 @@ def parse_args():
         '--eval_every',
         type=int,
         default=None,
-        help='Run the per-epoch evaluation every N epochs (0 disables it; only the final test evaluation runs)'
+        help='Run the per-epoch evaluation every N epochs (0 disables it; only the final test '
+             'evaluation runs, preceded by one validation pass when the pair thresholds '
+             'are calibrated on validation)'
     )
     parser.add_argument(
         '--depth_log_every',

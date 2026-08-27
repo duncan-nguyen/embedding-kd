@@ -1,5 +1,5 @@
 \begin{table}[t]
-    \caption{Main results for distillation from Qwen3-Embedding-4B to BERT-base. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Among non-teacher models, the best result is shown in bold and the second-best result is underlined.}
+    \caption{Main downstream results across two teacher--student configurations. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Within each configuration, the best result among distillation methods is shown in bold and the second-best result is underlined; Teacher and Student base are excluded from this ranking.}
     \label{tab:main-results}
     \vspace{0.5em}
     \centering
@@ -116,6 +116,99 @@
         & \underline{76.01}
         & \underline{81.23}
         & \underline{79.57} \\
+        \midrule
+        \multicolumn{11}{@{}c}{\textit{(b) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
+        \midrule
+        Teacher
+        & 93.21
+        & 71.33
+        & 66.53
+        & 83.37
+        & 90.00
+        & 66.85
+        & 80.64
+        & 77.11
+        & 84.60
+        & 79.29 \\
+        Student base
+        & 68.29
+        & 41.07
+        & 69.90
+        & 78.39
+        & 64.56
+        & 59.58
+        & 47.60
+        & 21.95
+        & 22.08
+        & 52.60 \\
+        \midrule
+        Stella
+        & 84.36
+        & 68.81
+        & 54.01
+        & 81.61
+        & 72.69
+        & \underline{68.53}
+        & 65.30
+        & 61.02
+        & 64.70
+        & 69.00 \\
+        CDM
+        & 85.21
+        & 69.36
+        & 52.31
+        & 81.65
+        & 73.12
+        & 68.52
+        & 65.20
+        & 61.91
+        & 65.23
+        & 69.17 \\
+        DSKD
+        & 85.28
+        & 69.34
+        & 53.41
+        & 81.40
+        & 72.77
+        & \textbf{68.56}
+        & 64.88
+        & 61.42
+        & 64.85
+        & 69.10 \\
+        EMO
+        & 84.40
+        & 69.20
+        & 56.13
+        & 81.68
+        & 72.21
+        & 68.22
+        & 63.82
+        & 57.88
+        & 63.34
+        & 68.54 \\
+        TALAS
+        & \underline{86.67}
+        & \textbf{72.41}
+        & \underline{59.93}
+        & \textbf{84.75}
+        & \textbf{80.47}
+        & 66.72
+        & \textbf{71.59}
+        & \textbf{69.80}
+        & \textbf{74.94}
+        & \textbf{74.14} \\
+        \midrule
+        \textbf{GeoODE-KD}
+        & \textbf{86.69}
+        & \underline{72.22}
+        & \textbf{60.12}
+        & \underline{83.53}
+        & \underline{80.13}
+        & 68.49
+        & \underline{71.30}
+        & \underline{66.43}
+        & \underline{72.43}
+        & \underline{73.48} \\
         \bottomrule
     \end{tabular}
 \end{table}

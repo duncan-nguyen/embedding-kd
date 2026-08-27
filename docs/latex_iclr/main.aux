@@ -9,24 +9,24 @@
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \newlabel{sec:introduction}{{1}{1}{Introduction}{section.1}{}}
 \citation{chen2018neuralode,li2022odetransformer}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Distillation Should Specify a Path, Not Only an Endpoint}{2}{section.2}\protected@file@percent }
-\newlabel{sec:motivation}{{2}{2}{Distillation Should Specify a Path, Not Only an Endpoint}{section.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Embedding Distillation as Static State Matching}{2}{subsection.2.1}\protected@file@percent }
-\newlabel{sec:static-state-matching}{{2.1}{2}{Embedding Distillation as Static State Matching}{subsection.2.1}{}}
-\newlabel{eq:endpoint-schematic}{{1}{2}{Embedding Distillation as Static State Matching}{equation.2.1}{}}
-\newlabel{eq:static-layer-matching}{{2}{2}{Embedding Distillation as Static State Matching}{equation.2.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Representation Depth as Semantic Time}{2}{subsection.2.2}\protected@file@percent }
-\newlabel{sec:semantic-time}{{2.2}{2}{Representation Depth as Semantic Time}{subsection.2.2}{}}
-\newlabel{eq:semantic-time}{{3}{2}{Representation Depth as Semantic Time}{equation.2.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Related Work}{2}{section.2}\protected@file@percent }
+\newlabel{sec:motivation}{{2}{2}{Background and Related Work}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Static Embedding Distillation}{2}{subsection.2.1}\protected@file@percent }
+\newlabel{sec:static-state-matching}{{2.1}{2}{Static Embedding Distillation}{subsection.2.1}{}}
+\newlabel{eq:endpoint-schematic}{{1}{2}{Static Embedding Distillation}{equation.2.1}{}}
+\newlabel{eq:static-layer-matching}{{2}{2}{Static Embedding Distillation}{equation.2.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Depth as Semantic Time}{2}{subsection.2.2}\protected@file@percent }
+\newlabel{sec:semantic-time}{{2.2}{2}{Depth as Semantic Time}{subsection.2.2}{}}
+\newlabel{eq:semantic-time}{{3}{2}{Depth as Semantic Time}{equation.2.3}{}}
 \citation{reimers2020multilingual}
 \citation{xu2023distillcse,zhang2024jasper}
 \citation{truong2025emo}
 \citation{li2025ese,talas}
 \citation{chen2018neuralode,li2022odetransformer}
 \citation{huang2023diffkd,lipman2023flow,chen2024riemannian,shao2024fmkt}
-\newlabel{eq:general-semantic-flow}{{4}{3}{Representation Depth as Semantic Time}{equation.2.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Connections to Layer-Wise, Geometric, and Flow-Based Distillation}{3}{subsection.2.3}\protected@file@percent }
-\newlabel{sec:related-paradigms}{{2.3}{3}{Connections to Layer-Wise, Geometric, and Flow-Based Distillation}{subsection.2.3}{}}
+\newlabel{eq:general-semantic-flow}{{4}{3}{Depth as Semantic Time}{equation.2.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Related Distillation Paradigms}{3}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:related-paradigms}{{2.3}{3}{Related Distillation Paradigms}{subsection.2.3}{}}
 \@writefile{toc}{\contentsline {paragraph}{Sentence-embedding distillation.}{3}{section*.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Layer-wise and geometric transfer.}{3}{section*.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Continuous-depth and flow-based transfer.}{3}{section*.3}\protected@file@percent }
@@ -59,8 +59,6 @@
 \newlabel{eq:flow-predicted-state}{{22}{5}{Layer-Wise Flow Supervision}{equation.3.22}{}}
 \newlabel{eq:sphere-exp-map}{{23}{5}{Layer-Wise Flow Supervision}{equation.3.23}{}}
 \newlabel{eq:dynamics-consistency-loss}{{24}{5}{Layer-Wise Flow Supervision}{equation.3.24}{}}
-\bibdata{references/references}
-\bibcite{chen2024riemannian}{{1}{2024}{{Chen \& Lipman}}{{Chen and Lipman}}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Training Objective}{6}{subsection.3.5}\protected@file@percent }
 \newlabel{sec:objective-properties}{{3.5}{6}{Training Objective}{subsection.3.5}{}}
 \newlabel{eq:endpoint-objective}{{26}{6}{Training Objective}{equation.3.26}{}}
@@ -69,6 +67,11 @@
 \@writefile{toc}{\contentsline {paragraph}{Properties of the ideal flow.}{6}{section*.4}\protected@file@percent }
 \newlabel{eq:energy-descent}{{29}{6}{Properties of the ideal flow}{equation.3.29}{}}
 \@writefile{toc}{\contentsline {paragraph}{Training and inference.}{6}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{6}{section.4}\protected@file@percent }
+\newlabel{sec:experiments}{{4}{6}{Experiments}{section.4}{}}
+\@input{tables/main_results.aux}
+\bibdata{references/references}
+\bibcite{chen2024riemannian}{{1}{2024}{{Chen \& Lipman}}{{Chen and Lipman}}}
 \bibcite{chen2018neuralode}{{2}{2018}{{Chen et~al.}}{{Chen, Rubanova, Bettencourt, and Duvenaud}}}
 \bibcite{talas}{{3}{2026}{{Dao et~al.}}{{Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and Le}}}
 \bibcite{hinton2015distilling}{{4}{2015}{{Hinton et~al.}}{{Hinton, Vinyals, and Dean}}}
@@ -83,34 +86,65 @@
 \bibcite{xu2023distillcse}{{13}{2023}{{Xu et~al.}}{{Xu, Shao, Chen, and Liu}}}
 \bibcite{zhang2024jasper}{{14}{2024}{{Zhang et~al.}}{{Zhang, Li, Zeng, and Wang}}}
 \bibstyle{template/iclr2027_conference}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{7}{section.4}\protected@file@percent }
-\newlabel{sec:experiments}{{4}{7}{Experiments}{section.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion and Limitations}{7}{section.5}\protected@file@percent }
-\newlabel{sec:discussion-limitations}{{5}{7}{Discussion and Limitations}{section.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{7}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{7}{Conclusion}{section.6}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {A}Mathematical Derivations and Proofs}{8}{appendix.A}\protected@file@percent }
-\newlabel{app:derivations}{{A}{8}{Mathematical Derivations and Proofs}{appendix.A}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {A.1}Riemannian Geometry and Vector Field Derivations}{8}{subsection.A.1}\protected@file@percent }
-\newlabel{app:riemannian-derivations}{{A.1}{8}{Riemannian Geometry and Vector Field Derivations}{subsection.A.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {A.2}Finite-Horizon Flow Derivation}{8}{subsection.A.2}\protected@file@percent }
-\newlabel{app:finite-horizon-derivation}{{A.2}{8}{Finite-Horizon Flow Derivation}{subsection.A.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {A.3}Proofs of the Flow Properties}{8}{subsection.A.3}\protected@file@percent }
-\newlabel{app:proofs}{{A.3}{8}{Proofs of the Flow Properties}{subsection.A.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {B}Target Construction and Gauge Alignment}{8}{appendix.B}\protected@file@percent }
-\newlabel{app:target-construction}{{B}{8}{Target Construction and Gauge Alignment}{appendix.B}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.1}PCA Initialization}{8}{subsection.B.1}\protected@file@percent }
-\newlabel{app:pca}{{B.1}{8}{PCA Initialization}{subsection.B.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.2}Gram-Consistent Target Fitting}{8}{subsection.B.2}\protected@file@percent }
-\newlabel{app:gram-fitting}{{B.2}{8}{Gram-Consistent Target Fitting}{subsection.B.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.3}Orthogonal Gauge Alignment}{8}{subsection.B.3}\protected@file@percent }
-\newlabel{app:gauge-alignment}{{B.3}{8}{Orthogonal Gauge Alignment}{subsection.B.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {C}Training Algorithm and Implementation Details}{8}{appendix.C}\protected@file@percent }
-\newlabel{app:implementation}{{C}{8}{Training Algorithm and Implementation Details}{appendix.C}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {D}Datasets, Baselines, and Evaluation Protocol}{8}{appendix.D}\protected@file@percent }
-\newlabel{app:evaluation}{{D}{8}{Datasets, Baselines, and Evaluation Protocol}{appendix.D}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {E}Additional Results and Depth Diagnostics}{8}{appendix.E}\protected@file@percent }
-\newlabel{app:additional-results}{{E}{8}{Additional Results and Depth Diagnostics}{appendix.E}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {F}Extended Ablations and Sensitivity Analysis}{8}{appendix.F}\protected@file@percent }
-\newlabel{app:extended-ablations}{{F}{8}{Extended Ablations and Sensitivity Analysis}{appendix.F}{}}
-\gdef \@abspage@last{8}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion and Limitations}{8}{section.5}\protected@file@percent }
+\newlabel{sec:discussion-limitations}{{5}{8}{Discussion and Limitations}{section.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{8}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{8}{Conclusion}{section.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Mathematical Derivations and Proofs}{9}{appendix.A}\protected@file@percent }
+\newlabel{app:derivations}{{A}{9}{Mathematical Derivations and Proofs}{appendix.A}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.1}Riemannian Geometry and Vector Field Derivations}{9}{subsection.A.1}\protected@file@percent }
+\newlabel{app:riemannian-derivations}{{A.1}{9}{Riemannian Geometry and Vector Field Derivations}{subsection.A.1}{}}
+\newlabel{eq:app-product-tangent}{{31}{9}{Riemannian Geometry and Vector Field Derivations}{equation.A.31}{}}
+\newlabel{eq:app-batch-projection}{{32}{9}{Riemannian Geometry and Vector Field Derivations}{equation.A.32}{}}
+\@writefile{toc}{\contentsline {paragraph}{Point-wise semantic gradient.}{9}{section*.10}\protected@file@percent }
+\newlabel{eq:app-semantic-single-gradient}{{34}{9}{Point-wise semantic gradient}{equation.A.34}{}}
+\newlabel{eq:app-semantic-batch-gradient}{{35}{9}{Point-wise semantic gradient}{equation.A.35}{}}
+\newlabel{eq:app-log-map-norm}{{36}{9}{Point-wise semantic gradient}{equation.A.36}{}}
+\@writefile{toc}{\contentsline {paragraph}{Relational gradient.}{9}{section*.11}\protected@file@percent }
+\newlabel{eq:app-relational-differential}{{38}{9}{Relational gradient}{equation.A.38}{}}
+\newlabel{eq:app-relational-gradient}{{39}{9}{Relational gradient}{equation.A.39}{}}
+\newlabel{eq:app-total-riemannian-gradient}{{40}{9}{Relational gradient}{equation.A.40}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.2}Finite-Horizon Flow Derivation}{10}{subsection.A.2}\protected@file@percent }
+\newlabel{app:finite-horizon-derivation}{{A.2}{10}{Finite-Horizon Flow Derivation}{subsection.A.2}{}}
+\newlabel{eq:app-auxiliary-flow}{{41}{10}{Finite-Horizon Flow Derivation}{equation.A.41}{}}
+\newlabel{eq:app-time-change}{{42}{10}{Finite-Horizon Flow Derivation}{equation.A.42}{}}
+\newlabel{eq:app-warped-time}{{44}{10}{Finite-Horizon Flow Derivation}{equation.A.44}{}}
+\@writefile{toc}{\contentsline {paragraph}{Schedules.}{10}{section*.12}\protected@file@percent }
+\newlabel{eq:app-power-remaining-mass}{{46}{10}{Schedules}{equation.A.46}{}}
+\@writefile{toc}{\contentsline {paragraph}{Discrete step fraction.}{10}{section*.13}\protected@file@percent }
+\newlabel{eq:app-warped-layer-interval}{{47}{10}{Discrete step fraction}{equation.A.47}{}}
+\newlabel{eq:app-step-fraction}{{48}{10}{Discrete step fraction}{equation.A.48}{}}
+\newlabel{eq:app-linear-step-fraction}{{49}{10}{Discrete step fraction}{equation.A.49}{}}
+\newlabel{eq:app-exp-map-norm}{{50}{10}{Discrete step fraction}{equation.A.50}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.3}Proofs of the Flow Properties}{11}{subsection.A.3}\protected@file@percent }
+\newlabel{app:proofs}{{A.3}{11}{Proofs of the Flow Properties}{subsection.A.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{Proposition 1 (norm preservation).}{11}{section*.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Proof.}{11}{section*.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Proposition 2 (energy descent).}{11}{section*.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Proof.}{11}{section*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Corollary 1 (point-wise geodesic contraction).}{11}{section*.18}\protected@file@percent }
+\newlabel{eq:app-pointwise-contraction}{{53}{11}{Corollary 1 (point-wise geodesic contraction)}{equation.A.53}{}}
+\@writefile{toc}{\contentsline {paragraph}{Proof.}{11}{section*.19}\protected@file@percent }
+\newlabel{eq:app-first-layer-contraction}{{56}{11}{Proof}{equation.A.56}{}}
+\newlabel{eq:app-cosine-monotonicity}{{57}{11}{Proof}{equation.A.57}{}}
+\@writefile{toc}{\contentsline {paragraph}{Corollary 2 (exact sampled profile).}{12}{section*.20}\protected@file@percent }
+\newlabel{eq:app-slerp-distance}{{59}{12}{Corollary 2 (exact sampled profile)}{equation.A.59}{}}
+\newlabel{eq:app-discrete-contraction}{{60}{12}{Corollary 2 (exact sampled profile)}{equation.A.60}{}}
+\@writefile{toc}{\contentsline {paragraph}{Scope of the guarantees.}{12}{section*.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {B}Target Construction and Gauge Alignment}{12}{appendix.B}\protected@file@percent }
+\newlabel{app:target-construction}{{B}{12}{Target Construction and Gauge Alignment}{appendix.B}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.1}PCA Initialization}{12}{subsection.B.1}\protected@file@percent }
+\newlabel{app:pca}{{B.1}{12}{PCA Initialization}{subsection.B.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.2}Gram-Consistent Target Fitting}{12}{subsection.B.2}\protected@file@percent }
+\newlabel{app:gram-fitting}{{B.2}{12}{Gram-Consistent Target Fitting}{subsection.B.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.3}Orthogonal Gauge Alignment}{12}{subsection.B.3}\protected@file@percent }
+\newlabel{app:gauge-alignment}{{B.3}{12}{Orthogonal Gauge Alignment}{subsection.B.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C}Training Algorithm and Implementation Details}{12}{appendix.C}\protected@file@percent }
+\newlabel{app:implementation}{{C}{12}{Training Algorithm and Implementation Details}{appendix.C}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {D}Datasets, Baselines, and Evaluation Protocol}{12}{appendix.D}\protected@file@percent }
+\newlabel{app:evaluation}{{D}{12}{Datasets, Baselines, and Evaluation Protocol}{appendix.D}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {E}Additional Results and Depth Diagnostics}{12}{appendix.E}\protected@file@percent }
+\newlabel{app:additional-results}{{E}{12}{Additional Results and Depth Diagnostics}{appendix.E}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {F}Extended Ablations and Sensitivity Analysis}{12}{appendix.F}\protected@file@percent }
+\newlabel{app:extended-ablations}{{F}{12}{Extended Ablations and Sensitivity Analysis}{appendix.F}{}}
+\gdef \@abspage@last{12}

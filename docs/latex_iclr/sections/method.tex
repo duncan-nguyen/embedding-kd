@@ -44,8 +44,8 @@ student to match it.
 We fix this coordinate \emph{gauge} before training. Let
 $\mathbf{T}_{\mathrm{PCA}}$ contain normalized PCA coordinates for a fitting
 subset, and let $\mathbf{Z}^{(L)}_0$ contain normalized output embeddings of the
-initial student for the same sentences. Orthogonal Procrustes gives
-\citep{schonemann1966procrustes}
+initial student for the same sentences. We solve orthogonal Procrustes
+\citep{schonemann1966procrustes}:
 \begin{equation}
     R^\star
     =
@@ -146,6 +146,7 @@ We combine the two terms as
     \alpha\mathcal{E}_{\mathrm{sem}}(\mathbf{Z},\mathbf{T})
     +
     \beta\mathcal{E}_{\mathrm{geo}}(\mathbf{Z},\mathbf{G}_T)
+    .
     \label{eq:teacher-potential}
 \end{equation}
 with $\alpha,\beta\geq0$. GeoODE-KD does not minimize this expression
@@ -181,6 +182,7 @@ Applying both maps row-wise gives
     \!\left[
         (\mathbf{Z}\mathbf{Z}^\top-\mathbf{G}_T)\mathbf{Z}
     \right]
+    .
     \label{eq:semantic-vector-direction}
 \end{equation}
 This direction equals $-B\operatorname{grad}_{\mathbb{S}}\mathcal{E}$. The
@@ -205,6 +207,7 @@ The depth-indexed field is
     \mathbf{V}\!\left(
         \mathbf{Z}(t),\mathbf{T},\mathbf{G}_T
     \right)
+    ,
     \label{eq:finite-horizon-flow}
 \end{equation}
 for $t<1$. The ratio $s(t)/R(t)$ maps unbounded gradient-flow time into this

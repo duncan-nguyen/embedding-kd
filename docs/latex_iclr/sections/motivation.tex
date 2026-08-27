@@ -1,7 +1,7 @@
-\section{Distillation Should Specify a Path, Not Only an Endpoint}
+\section{Background and Related Work}
 \label{sec:motivation}
 
-\subsection{Embedding Distillation as Static State Matching}
+\subsection{Static Embedding Distillation}
 \label{sec:static-state-matching}
 
 Let $\mathbf{z}^{(\ell)}_i$ be the normalized representation of sentence $x_i$
@@ -33,7 +33,7 @@ output; strong supervision may force shallow features to imitate a state that
 the teacher produces only after substantially more computation. Selecting
 fewer anchors reduces this tension but still leaves the transitions undefined.
 
-\subsection{Representation Depth as Semantic Time}
+\subsection{Depth as Semantic Time}
 \label{sec:semantic-time}
 
 We index student representations by normalized depth,
@@ -60,7 +60,7 @@ that a pretrained Transformer is literally the solution of a latent ODE. The
 student remains a conventional finite-depth encoder. Continuous dynamics only
 provide compatible local targets whose composition leads toward the endpoint.
 
-\subsection{Connections to Layer-Wise, Geometric, and Flow-Based Distillation}
+\subsection{Related Distillation Paradigms}
 \label{sec:related-paradigms}
 
 \paragraph{Sentence-embedding distillation.}

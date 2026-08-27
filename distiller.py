@@ -2119,6 +2119,26 @@ class KnowledgeDistiller:
 
         return {key: group["score"] for key, group in averages.items()}
 
+    def _ensure_pair_thresholds(self) -> None:
+        """Run one validation pass if the final test needs thresholds it never got.
+
+        With eval_every=0 no per-epoch validation runs, but the pair benchmarks
+        still calibrate their threshold on validation unless pair_threshold_source
+        is "test". Doing that pass here keeps the test score held out instead of
+        failing the run after training has finished.
+        """
+        source = getattr(self.config, "pair_threshold_source", "validation")
+        if source != "validation":
+            return
+        if getattr(self, "pair_validation_thresholds", None) is not None:
+            return
+        print(
+            "No validation pass has run (eval_every=0); running one now to select "
+            "the pair thresholds for the final test evaluation"
+        )
+        validation_results = self.evaluate("validation")
+        self.log_experiment_record({"validation": validation_results})
+
     def evaluate(self, split: str = "validation", final: bool = False):
         if split not in {"validation", "test"}:
             raise ValueError("split must be 'validation' or 'test'")
@@ -2425,6 +2445,7 @@ class KnowledgeDistiller:
 
             self.save_checkpoint(cfg.epochs_stage2 - 1, {"loss": avg_loss})
             try:
+                self._ensure_pair_thresholds()
                 test_results = self.evaluate("test", final=True)
                 if (
                     getattr(self, "use_wandb", False)
@@ -2534,6 +2555,7 @@ class KnowledgeDistiller:
                     test_results = epoch_results
                     self.print_evaluation_table("test", test_results, final=True)
                 else:
+                    self._ensure_pair_thresholds()
                     test_results = self.evaluate("test", final=True)
                 if (
                     getattr(self, "use_wandb", False)

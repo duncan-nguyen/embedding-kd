@@ -209,3 +209,28 @@ def test_explicit_threshold_source_still_wins_and_is_rejected_if_contradictory(m
     assert config.pair_threshold_source == "validation"
     with pytest.raises(ValueError, match="pair_threshold_source='test'"):
         KnowledgeDistiller._validate_eval_config(config)
+
+
+def test_final_test_runs_validation_once_when_no_epoch_eval_happened(evaluator):
+    # eval_every=0 skips every per-epoch validation; the final test still has to
+    # calibrate on validation, so the distiller runs that pass itself.
+    instance, calls = evaluator
+    instance.config.save_dir = None
+
+    assert not hasattr(instance, "pair_validation_thresholds")
+    instance._ensure_pair_thresholds()
+    assert instance.pair_validation_thresholds == {0: 0.42, 1: 0.42, 2: 0.42}
+
+    results = instance.evaluate("test")
+    assert calls["thresholds"] == {0: 0.42, 1: 0.42, 2: 0.42}
+    assert results["pair_threshold_source"] == "validation"
+
+
+def test_final_test_skips_the_extra_validation_when_calibrating_on_test(evaluator):
+    instance, calls = evaluator
+    instance.config.pair_threshold_source = "test"
+
+    instance._ensure_pair_thresholds()
+
+    assert "thresholds" not in calls  # no validation pass was run
+    assert not hasattr(instance, "pair_validation_thresholds")
