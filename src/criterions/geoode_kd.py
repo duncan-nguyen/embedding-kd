@@ -11,10 +11,12 @@ teacher's *native* Gram matrix (``teacher_gram``) whenever the caller supplies i
 the projection P_T then enters only the point-wise term. Its negative Riemannian gradient, run in the finite-horizon time warp
 s(t) / R(t) with R(t) = int_t^1 s, is a semantic vector field (Eq. 26) that reaches
 the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from layer
-``l`` predicts where layer ``l+1`` should land (Eq. 30), and the dynamics loss
-(Eq. 32) asks the actual next layer to agree with that prediction. Only the final
-layer is anchored on the teacher endpoint (Eq. 36), which is the boundary condition
-of the same flow.
+``l`` predicts where layer ``l+1`` should land (Eq. 30). The velocity loss
+(Eq. 32) compares the *direction* of the realized layer update
+U^(l) = Log_{Z^(l)}(Z^(l+1)) with the field V^(l) = -B grad_S E(Z^(l), T) in the
+tangent space of Z^(l), over the intermediate transitions l = 1..L-2. Only the
+final layer is anchored on the teacher endpoint (Eq. 36), which is the boundary
+condition of the same flow and supervises the last transition.
 
 Nothing here is a module with weights: the criterion is teacher-conditioned geometry
 plus a stop-gradient target, so training adds no parameters and inference is exactly
@@ -57,7 +59,7 @@ class GeoODEKD(nn.Module):
         alpha: weight of the instance-level semantic energy inside the potential.
         beta: weight of the relational (Gram) energy inside the potential.
         lambda_end: weight of the endpoint distillation loss.
-        lambda_dyn: weight of the ODE consistency loss.
+        lambda_vel: weight of the velocity-matching loss.
         lambda_ctr: weight of the contrastive regulariser at the final layer.
         contrastive_temperature: tau_c of Eq. (37).
         guidance_schedule: ``"linear"`` for s(t) = t (the paper default),
@@ -66,7 +68,7 @@ class GeoODEKD(nn.Module):
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
             Off by default: the paper's L states are the L Transformer layers.
-        stop_grad_target: apply sg[.] to the flow prediction (Eq. 32). Turning it off
+        stop_grad_target: apply sg[.] to the field V^(l) (Eq. 32). Turning it off
             is the full-gradient-dynamics ablation named in Section 3.5.
 
     Per-layer diagnostics are not part of the returned training metrics; they are
@@ -83,7 +85,7 @@ class GeoODEKD(nn.Module):
         alpha: float = 1.0,
         beta: float = 1.0,
         lambda_end: float = 1.0,
-        lambda_dyn: float = 1.0,
+        lambda_vel: float = 1.0,
         lambda_ctr: float = 0.1,
         contrastive_temperature: float = 0.05,
         guidance_schedule: str = "linear",
@@ -107,7 +109,7 @@ class GeoODEKD(nn.Module):
         self.alpha = float(alpha)
         self.beta = float(beta)
         self.lambda_end = float(lambda_end)
-        self.lambda_dyn = float(lambda_dyn)
+        self.lambda_vel = float(lambda_vel)
         self.lambda_ctr = float(lambda_ctr)
         self.contrastive_temperature = float(contrastive_temperature)
         self.guidance_schedule = guidance_schedule
@@ -295,33 +297,39 @@ class GeoODEKD(nn.Module):
         """t_l = l / L of Eq. (14) for the 0-based state ``index`` (l = index + 1)."""
         return (index + 1) / num_layers
 
-    def dynamics_loss(
+    def velocity_loss(
         self,
         states: Sequence[torch.Tensor],
         teacher: torch.Tensor,
         teacher_gram: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """ODE consistency, Eq. (32)."""
+        """Velocity matching, Eq. (32):
+
+            L_vel = 1/(L-2) sum_{l=1}^{L-2} 1/B sum_i [1 - cos(U_i^(l), sg[V_i^(l)])]
+
+        with U^(l) = Log_{Z^(l)}(Z^(l+1)) the realized tangent update and
+        V^(l) = V(Z^(l), T) the teacher-conditioned field. The cosine is scale-free,
+        so the depth warp s(t)/R(t) (a positive scalar) drops out: only the
+        direction of each intermediate transition is trained. The final transition
+        l = L-1 is left to :meth:`endpoint_loss`.
+        """
         num_layers = len(states)
-        if num_layers < 2:
+        if num_layers < 3:
             return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
         terms = []
-        for index in range(num_layers - 1):
-            t = self._depth(index, num_layers)
-            t_next = self._depth(index + 1, num_layers)
-            current = states[index]
+        for index in range(num_layers - 2):
+            current, actual = states[index], states[index + 1]
             if self.stop_grad_target:
-                # sg[.] of Eq. (32): the prediction is a fixed local target read off
-                # the current trajectory, so only the actual next layer is trained.
+                # sg[.] of Eq. (32): the field is a fixed local target read off the
+                # current state; gradients reach Z^(l) only through U^(l).
                 with torch.no_grad():
-                    predicted = self.euler_step(
-                        current.detach(), teacher, t, t_next, teacher_gram
-                    )
+                    field = self.vector_field(current.detach(), teacher, teacher_gram)
             else:
-                predicted = self.euler_step(current, teacher, t, t_next, teacher_gram)
-            actual = states[index + 1]
-            terms.append((1.0 - (actual * predicted).sum(dim=-1)).mean())  # Eq. 33
+                field = self.vector_field(current, teacher, teacher_gram)
+            update = self.log_map(current, actual)
+            cosine = F.cosine_similarity(update, field, dim=-1, eps=self.eps_norm)
+            terms.append((1.0 - cosine).mean())
 
         return torch.stack(terms).mean()
 
@@ -378,11 +386,13 @@ class GeoODEKD(nn.Module):
         - ``energy_violations``: depths where the realized trajectory *raises* the
           energy. Proposition 2 guarantees descent for the ideal continuous flow, so
           this counts how far the discrete student is from realizing it.
-        - ``dyn_residual``: the per-transition term of Eq. (32), i.e. where along
-          depth the ODE consistency is actually being paid.
+        - ``vel_residual``: the per-transition term of Eq. (32),
+          1 - cos(U, V) in the tangent space, i.e. where along depth the velocity
+          loss is actually being paid. Reported for every transition, including
+          the last one that the training loss leaves to the endpoint term.
         - ``field_norm`` vs ``step_norm``: the geodesic length the flow prescribes
           for the transition next to the geodesic length the layer actually moved.
-          A tiny ``dyn_residual`` means little if the prescribed step is negligible,
+          A tiny ``vel_residual`` means little if the prescribed step is negligible,
           and this pair is what separates the two.
         - ``direction_alignment``: cosine, in the tangent space of the current
           layer, between Log of the actual update and the prescribed tangent
@@ -410,7 +420,7 @@ class GeoODEKD(nn.Module):
             for index in range(num_layers)
         ]
 
-        dyn_residual, field_norm, step_norm, alignment = [], [], [], []
+        vel_residual, field_norm, step_norm, alignment = [], [], [], []
         for index in range(num_layers - 1):
             t = self._depth(index, num_layers)
             t_next = self._depth(index + 1, num_layers)
@@ -418,16 +428,14 @@ class GeoODEKD(nn.Module):
             field = self.step_fraction(t, t_next) * self.vector_field(
                 current, teacher, teacher_gram
             )
-            predicted = self.exp_map(current, field)
             update = self.log_map(current, actual)
-            dyn_residual.append(float((1.0 - (actual * predicted).sum(dim=-1)).mean()))
+            cosine = float(
+                F.cosine_similarity(update, field, dim=-1, eps=self.eps_norm).mean()
+            )
+            vel_residual.append(1.0 - cosine)
             field_norm.append(float(field.norm(dim=-1).mean()))
             step_norm.append(float(update.norm(dim=-1).mean()))
-            alignment.append(
-                float(
-                    F.cosine_similarity(update, field, dim=-1, eps=self.eps_norm).mean()
-                )
-            )
+            alignment.append(cosine)
 
         def _violations(values: list[float], should_decrease: bool) -> int:
             pairs = itertools.pairwise(values)
@@ -453,7 +461,7 @@ class GeoODEKD(nn.Module):
             "predicted_geodesic_distance": predicted_distance,
             "gram_gap": gram_gap,
             "energy": energy,
-            "dyn_residual": dyn_residual,
+            "vel_residual": vel_residual,
             "field_norm": field_norm,
             "step_norm": step_norm,
             "direction_alignment": alignment,
@@ -469,8 +477,8 @@ class GeoODEKD(nn.Module):
             "energy_first": energy[0],
             "energy_final": energy[-1],
             "energy_violations": _violations(energy, should_decrease=True),
-            "mean_dyn_residual": sum(dyn_residual) / len(dyn_residual)
-            if dyn_residual
+            "mean_vel_residual": sum(vel_residual) / len(vel_residual)
+            if vel_residual
             else 0.0,
             "mean_alignment": sum(alignment) / len(alignment) if alignment else 0.0,
             "mean_field_norm": sum(field_norm) / len(field_norm) if field_norm else 0.0,
@@ -521,7 +529,7 @@ class GeoODEKD(nn.Module):
                     f"{tuple(teacher_gram.shape)}"
                 )
             teacher_gram = teacher_gram.to(teacher.dtype)
-        loss_dyn = self.dynamics_loss(states, teacher, teacher_gram)
+        loss_vel = self.velocity_loss(states, teacher, teacher_gram)
         loss_end = self.endpoint_loss(states[-1], teacher)
 
         if self.lambda_ctr > 0.0 and second_view is not None:
@@ -533,7 +541,7 @@ class GeoODEKD(nn.Module):
 
         total = (
             self.lambda_end * loss_end
-            + self.lambda_dyn * loss_dyn
+            + self.lambda_vel * loss_vel
             + self.lambda_ctr * loss_ctr
         )
 
@@ -543,7 +551,7 @@ class GeoODEKD(nn.Module):
             metrics = {
                 "loss_total": float(total.detach()),
                 "loss_end": float(loss_end.detach()),
-                "loss_dyn": float(loss_dyn.detach()),
+                "loss_vel": float(loss_vel.detach()),
                 "loss_ctr": float(loss_ctr.detach()),
                 # The hypothesis is that both discrepancies contract with depth, so
                 # the shallow and final values are logged as a pair.

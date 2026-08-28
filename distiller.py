@@ -221,7 +221,7 @@ class KnowledgeDistiller:
                 alpha=config.alpha,
                 beta=config.beta,
                 lambda_end=config.lambda_end,
-                lambda_dyn=config.lambda_dyn,
+                lambda_vel=config.lambda_vel,
                 lambda_ctr=config.lambda_ctr,
                 contrastive_temperature=config.contrastive_temperature,
                 guidance_schedule=config.guidance_schedule,
@@ -235,7 +235,7 @@ class KnowledgeDistiller:
             print(
                 "GeoODE-KD criterion initialized: "
                 f"alpha={config.alpha}, beta={config.beta}, "
-                f"lambda_end={config.lambda_end}, lambda_dyn={config.lambda_dyn}, "
+                f"lambda_end={config.lambda_end}, lambda_vel={config.lambda_vel}, "
                 f"lambda_ctr={config.lambda_ctr}, schedule={config.guidance_schedule}"
             )
         elif config.distill_method == "rkd":
@@ -2267,7 +2267,7 @@ class KnowledgeDistiller:
             "cos_teacher",
             "gram_gap",
             "energy",
-            "dyn_residual",
+            "vel_residual",
             "field_norm",
             "step_norm",
             "direction_alignment",
@@ -2293,7 +2293,7 @@ class KnowledgeDistiller:
             "cos(teacher)",
             "gram gap",
             "energy",
-            "dyn resid",
+            "vel resid",
             "align",
             "|dz|",
             "|dt*F|",
@@ -2301,7 +2301,7 @@ class KnowledgeDistiller:
         cosines = summary["cos_teacher"]
         rows = []
         for index, cosine in enumerate(cosines):
-            transition = index if index < len(summary["dyn_residual"]) else None
+            transition = index if index < len(summary["vel_residual"]) else None
             rows.append(
                 (
                     str(index + 1),
@@ -2310,7 +2310,7 @@ class KnowledgeDistiller:
                     f"{summary['energy'][index]:.4f}",
                     "-"
                     if transition is None
-                    else f"{summary['dyn_residual'][transition]:.4f}",
+                    else f"{summary['vel_residual'][transition]:.4f}",
                     "-"
                     if transition is None
                     else f"{summary['direction_alignment'][transition]:+.3f}",

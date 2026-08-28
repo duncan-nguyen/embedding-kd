@@ -39,7 +39,7 @@ CURVES = {
     "cos_teacher": ("Teacher cosine by depth", "cos(z, tau)", "layer"),
     "gram_gap": ("Relational geometry gap by depth", "||ZZ' - TT'||_F^2 / B^2", "layer"),
     "energy": ("Teacher-conditioned energy by depth", "E(Z, T)", "layer"),
-    "dyn_residual": ("ODE consistency residual by transition", "D_cos", "transition"),
+    "vel_residual": ("Velocity residual by transition", "1 - cos(U, V)", "transition"),
     "direction_alignment": (
         "Alignment of the layer update with the field",
         "cos(dz, dt*F)",
@@ -59,7 +59,7 @@ SUMMARY_COLUMNS = (
     "energy_first",
     "energy_final",
     "energy_violations",
-    "mean_dyn_residual",
+    "mean_vel_residual",
     "mean_alignment",
     "mean_field_norm",
     "mean_step_norm",
@@ -205,7 +205,7 @@ def plot_training_progress(depth: pd.DataFrame, run: str, out_dir: Path) -> Path
 
 def plot_losses(run_dir: Path, run: str, out_dir: Path) -> Path | None:
     steps = read_jsonl(run_dir / "step_metrics.jsonl")
-    columns = [c for c in ("loss_end", "loss_dyn", "loss_ctr") if c in steps]
+    columns = [c for c in ("loss_end", "loss_vel", "loss_ctr") if c in steps]
     if steps.empty or not columns:
         return None
     window = max(1, len(steps) // 100)

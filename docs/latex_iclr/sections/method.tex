@@ -284,32 +284,54 @@ spherical interpolation toward the teacher by fraction $\rho_\ell$. With the
 relational term, it is a one-step discretization of the coupled field, not an
 exact solution of the nonlinear trajectory.
 
-The Transformer produces the actual state $\mathbf{Z}^{(\ell+1)}$. The dynamics
-loss aligns it with the predicted state:
+The Transformer produces the actual state $\mathbf{Z}^{(\ell+1)}$. On the
+hypersphere, the actual movement made by the student from layer $\ell$ to
+$\ell+1$ is the tangent vector
 \begin{equation}
-    \mathcal{L}_{\mathrm{dyn}}
+    \mathbf{U}^{(\ell)}
     =
-    \frac{1}{L-1}
-    \sum_{\ell=1}^{L-1}
-    D_{\cos}\!\left(
-        \mathbf{Z}^{(\ell+1)},
-        \operatorname{sg}\!\left[
-            \widetilde{\mathbf{Z}}^{(\ell+1)}
-        \right]
-    \right),
-    \label{eq:dynamics-consistency-loss}
+    \operatorname{Log}_{\mathbf{Z}^{(\ell)}}
+    \!\left(\mathbf{Z}^{(\ell+1)}\right),
+    \label{eq:actual-velocity}
 \end{equation}
-where $\operatorname{sg}$ stops gradients through the predicted target and
+and the desired teacher-conditioned vector field at the same state is
 \begin{equation}
-    D_{\cos}(\mathbf{A},\mathbf{B})
+    \mathbf{V}^{(\ell)}
     =
+    \mathbf{V}\!\left(\mathbf{Z}^{(\ell)},\mathbf{T},\mathbf{G}_T\right)
+    =
+    -B\operatorname{grad}_{\mathbb{S}}
+    \mathcal{E}\!\left(\mathbf{Z}^{(\ell)};\mathbf{T},\mathbf{G}_T\right).
+    \label{eq:desired-velocity}
+\end{equation}
+The velocity loss asks the realized transition to point along the field:
+\begin{equation}
+    \mathcal{L}_{\mathrm{vel}}
+    =
+    \frac{1}{L-2}
+    \sum_{\ell=1}^{L-2}
     \frac{1}{B}
     \sum_{i=1}^{B}
-    (1-\mathbf{a}_i^\top\mathbf{b}_i).
+    \left[
+        1-\cos\!\left(
+            \mathbf{u}^{(\ell)}_i,
+            \operatorname{sg}\!\left[\mathbf{v}^{(\ell)}_i\right]
+        \right)
+    \right],
+    \label{eq:velocity-loss}
 \end{equation}
-Stop-gradient makes the prediction a fixed local target for the current forward
-pass. The loss therefore trains the realized layer transition without allowing
-both sides of the target to move together.
+where $\mathbf{u}^{(\ell)}_i$ and $\mathbf{v}^{(\ell)}_i$ are the rows of
+$\mathbf{U}^{(\ell)}$ and $\mathbf{V}^{(\ell)}$, $\cos(\cdot,\cdot)$ is the
+cosine between tangent vectors, and $\operatorname{sg}$ stops gradients through
+the field. Both vectors live in the tangent space of $\mathbf{Z}^{(\ell)}$, so
+the comparison is well defined. The cosine is scale-free: the positive warp
+$s(t)/R(t)$ and the step fraction $\rho_\ell$ change the length of the
+prescribed step but not its direction, so $\mathcal{L}_{\mathrm{vel}}$ trains
+\emph{where} each layer moves and leaves \emph{how far} to the Transformer.
+Stop-gradient makes the field a fixed local target for the current forward
+pass, so the loss cannot be lowered by moving the source state to reorient the
+field. The last transition $\ell=L-1$ is excluded because the endpoint
+objective below supervises it directly.
 
 \subsection{Training Objective}
 \label{sec:objective-properties}
@@ -325,11 +347,12 @@ The final layer must still satisfy the endpoint condition. We use
     \right).
     \label{eq:endpoint-objective}
 \end{equation}
-No earlier layer receives this direct target. In the instance-only case,
-$\rho_{L-1}=1$ makes the last dynamics target equal
-$\boldsymbol{\tau}_i$, so $\mathcal{L}_{\mathrm{end}}$ is the boundary
-condition of the same path. With relational guidance, it remains an explicit
-endpoint anchor.
+No earlier layer receives this direct target. In the instance-only case, the
+field at $\mathbf{Z}^{(L-1)}$ points along the geodesic to
+$\boldsymbol{\tau}_i$ and $\rho_{L-1}=1$ places its exact step on the teacher,
+so $\mathcal{L}_{\mathrm{end}}$ is the boundary condition of the same path and
+supervises the final transition that $\mathcal{L}_{\mathrm{vel}}$ leaves out.
+With relational guidance, it remains an explicit endpoint anchor.
 
 We also apply unsupervised contrastive learning at the output. For two dropout
 views $\mathbf{z}^{(L,a)}_i$ and $\mathbf{z}^{(L,b)}_i$,
@@ -355,16 +378,16 @@ training loss is
     =
     \lambda_{\mathrm{end}}\mathcal{L}_{\mathrm{end}}
     +
-    \lambda_{\mathrm{dyn}}\mathcal{L}_{\mathrm{dyn}}
+    \lambda_{\mathrm{vel}}\mathcal{L}_{\mathrm{vel}}
     +
     \lambda_{\mathrm{ctr}}\mathcal{L}_{\mathrm{ctr}}
     .
     \label{eq:total-training-objective}
 \end{equation}
-Here, $\lambda_{\mathrm{end}}$, $\lambda_{\mathrm{dyn}}$, and
+Here, $\lambda_{\mathrm{end}}$, $\lambda_{\mathrm{vel}}$, and
 $\lambda_{\mathrm{ctr}}$ weight endpoint, transition, and contrastive
 supervision. The potential $\mathcal{E}$ generates a direction; it is not an
-additional layer-wise loss. The term $\mathcal{L}_{\mathrm{dyn}}$ measures
+additional layer-wise loss. The term $\mathcal{L}_{\mathrm{vel}}$ measures
 whether the Transformer follows that direction.
 
 \paragraph{Properties of the ideal flow.}

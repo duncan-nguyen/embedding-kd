@@ -11,7 +11,8 @@ gradient gives the direction of semantic change, while a finite-horizon
 schedule determines how much of the remaining displacement each student layer
 should cover. GeoODE-KD does not insert a Neural ODE module or run a numerical
 solver; instead, it treats the existing Transformer layers as a discrete
-trajectory and trains every transition to follow an exponential-map update.
+trajectory and trains every intermediate transition to move along the
+teacher-conditioned vector field.
 The method uses only final teacher embeddings cached before training and leaves
 the inference architecture unchanged. Its ideal continuous flow preserves
 embedding norms and decreases the teacher-conditioned energy; without the

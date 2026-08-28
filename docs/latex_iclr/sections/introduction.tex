@@ -45,9 +45,9 @@ student layer a fraction of the displacement that remains before the output.
 
 GeoODE-KD does not replace Transformer blocks with a Neural ODE or train a
 separate velocity network. Instead, it reads the existing Transformer layers as
-a discrete trajectory. At depth $t_\ell$, the teacher-conditioned field and an
-exponential-map update predict the state expected at $t_{\ell+1}$. The next
-Transformer layer is trained to match this prediction. Intermediate layers are
+a discrete trajectory. At depth $t_\ell$, the teacher-conditioned field gives the direction in
+which the state should move toward $t_{\ell+1}$. The next Transformer layer
+is trained so that its realized update points along this field. Intermediate layers are
 therefore supervised by transitions,
 $\mathbf{Z}^{(\ell)}\rightarrow\mathbf{Z}^{(\ell+1)}$, rather than independent
 copies of the terminal condition,
@@ -76,6 +76,6 @@ Our contributions are threefold:
     at every student depth.
 
     \item We train the existing Transformer layers to follow these targets with
-    a dynamics-consistency objective that uses only cached teacher outputs and
+    a velocity-matching objective that uses only cached teacher outputs and
     adds no inference-time parameters.
 \end{itemize}

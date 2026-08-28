@@ -26,7 +26,7 @@ def test_geoode_method_selects_its_config():
     # The paper fixes alpha and the two main loss weights and tunes beta / lambda_ctr.
     assert config.alpha == 1.0
     assert config.lambda_end == 1.0
-    assert config.lambda_dyn == 1.0
+    assert config.lambda_vel == 1.0
     assert config.guidance_schedule == "linear"
 
 
@@ -82,10 +82,10 @@ def test_geoode_flags_are_rejected_for_other_methods():
 
 
 def test_geoode_config_round_trips_through_to_dict():
-    config = _config("--method", "geoode", "--lambda_dyn", "0.5")
+    config = _config("--method", "geoode", "--lambda_vel", "0.5")
 
     values = config.to_dict()
 
     assert values["distill_method"] == "geoode"
-    assert values["lambda_dyn"] == 0.5
+    assert values["lambda_vel"] == 0.5
     assert values["contrastive_view"] == "dropout"

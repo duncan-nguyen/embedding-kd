@@ -17,10 +17,10 @@ class GeoODEConfig(BaseConfig):
     alpha = 1.0
     beta = 1.0
 
-    # Objective weights, Eq. (38). lambda_end and lambda_dyn are fixed at 1 and
+    # Objective weights, Eq. (38). lambda_end and lambda_vel are fixed at 1 and
     # lambda_ctr is the one tuned on a validation split.
     lambda_end = 1.0
-    lambda_dyn = 1.0
+    lambda_vel = 1.0
     lambda_ctr = 0.1
     contrastive_temperature = 0.05
 

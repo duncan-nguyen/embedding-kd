@@ -205,7 +205,7 @@ def test_relational_energy_gradient_matches_autograd():
 
 
 
-def test_dynamics_loss_vanishes_when_layers_follow_the_flow():
+def test_velocity_loss_vanishes_when_layers_follow_the_flow():
     criterion = _criterion(alpha=1.0, beta=1.0, guidance_schedule="linear")
     T = _sphere(8, 16, seed=10)
     num_layers = 6
@@ -215,17 +215,17 @@ def test_dynamics_loss_vanishes_when_layers_follow_the_flow():
         t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
         states.append(criterion.euler_step(states[-1], T, t, t_next))
 
-    loss = criterion.dynamics_loss(states, T)
+    loss = criterion.velocity_loss(states, T)
 
     assert float(loss) == pytest.approx(0.0, abs=1e-12)
 
 
-def test_dynamics_loss_is_positive_for_an_unrelated_trajectory():
+def test_velocity_loss_is_positive_for_an_unrelated_trajectory():
     criterion = _criterion(alpha=1.0, beta=1.0)
     T = _sphere(8, 16, seed=12)
     states = [_sphere(8, 16, seed=13 + index) for index in range(5)]
 
-    loss = criterion.dynamics_loss(states, T)
+    loss = criterion.velocity_loss(states, T)
 
     assert float(loss) > 0.1
 
@@ -235,14 +235,24 @@ def test_stop_gradient_target_only_trains_the_next_layer():
     T = _sphere(4, 8, seed=20)
     states = [_sphere(4, 8, seed=21 + index).requires_grad_(True) for index in range(3)]
 
-    loss = criterion.dynamics_loss(states, T)
+    loss = criterion.velocity_loss(states, T)
     loss.backward()
 
-    # Z^(1) is only ever the *source* of a prediction, and sg[.] cuts that path.
-    assert states[0].grad is None or torch.allclose(
-        states[0].grad, torch.zeros_like(states[0])
-    )
+    # With L = 3 there is a single supervised transition, Z^(1) -> Z^(2). Its
+    # target Z^(2) is trained; Z^(1) receives gradient only through the realized
+    # update U^(1) = Log_{Z^(1)}(Z^(2)), never through the field, and Z^(3) is
+    # left to the endpoint loss.
     assert states[1].grad is not None and states[1].grad.abs().sum() > 0
+    assert states[2].grad is None or torch.allclose(
+        states[2].grad, torch.zeros_like(states[2])
+    )
+    grad_with_sg = states[0].grad.clone()
+
+    detached = _criterion(alpha=1.0, beta=1.0, stop_grad_target=False)
+    fresh = [s.detach().clone().requires_grad_(True) for s in states]
+    detached.velocity_loss(fresh, T).backward()
+    # sg[.] removes the path through the field, so the source gradient differs.
+    assert not torch.allclose(fresh[0].grad, grad_with_sg)
 
 
 def test_disabling_stop_gradient_propagates_into_the_source_layer():
@@ -250,7 +260,7 @@ def test_disabling_stop_gradient_propagates_into_the_source_layer():
     T = _sphere(4, 8, seed=30)
     states = [_sphere(4, 8, seed=31 + index).requires_grad_(True) for index in range(3)]
 
-    loss = criterion.dynamics_loss(states, T)
+    loss = criterion.velocity_loss(states, T)
     loss.backward()
 
     assert states[0].grad is not None and states[0].grad.abs().sum() > 0
@@ -258,7 +268,7 @@ def test_disabling_stop_gradient_propagates_into_the_source_layer():
 
 def test_forward_combines_the_three_weighted_terms():
     criterion = _criterion(
-        alpha=1.0, beta=1.0, lambda_end=0.7, lambda_dyn=2.0, lambda_ctr=0.3
+        alpha=1.0, beta=1.0, lambda_end=0.7, lambda_vel=2.0, lambda_ctr=0.3
     )
     batch, dim, tokens, layers = 4, 8, 5, 4
     generator = torch.Generator().manual_seed(40)
@@ -275,14 +285,14 @@ def test_forward_combines_the_three_weighted_terms():
     )
 
     expected = (
-        0.7 * metrics["loss_end"] + 2.0 * metrics["loss_dyn"] + 0.3 * metrics["loss_ctr"]
+        0.7 * metrics["loss_end"] + 2.0 * metrics["loss_vel"] + 0.3 * metrics["loss_ctr"]
     )
     assert float(total) == pytest.approx(expected, rel=1e-5)
     assert metrics["loss_ctr"] > 0.0
     assert set(metrics) >= {
         "loss_total",
         "loss_end",
-        "loss_dyn",
+        "loss_vel",
         "loss_ctr",
         "cos_first",
         "cos_final",
@@ -429,11 +439,11 @@ def test_depth_report_measures_a_flow_following_trajectory():
 
     assert report["num_layers"] == num_layers
     assert len(report["cos_teacher"]) == num_layers
-    assert len(report["dyn_residual"]) == num_layers - 1
+    assert len(report["vel_residual"]) == num_layers - 1
     # The trajectory *is* the discretised flow, so it follows the field exactly and
     # cannot raise the energy. The alignment is measured in the tangent space, so
     # it is exactly 1 however large the step.
-    assert report["mean_dyn_residual"] == pytest.approx(0.0, abs=1e-12)
+    assert report["mean_vel_residual"] == pytest.approx(0.0, abs=1e-9)
     assert report["mean_alignment"] == pytest.approx(1.0, abs=1e-9)
     for prescribed, realized in zip(report["field_norm"], report["step_norm"]):
         assert realized == pytest.approx(prescribed, rel=1e-8)
@@ -448,7 +458,7 @@ def test_depth_report_flags_a_trajectory_that_ignores_the_field():
 
     report = _report(criterion, states, T)
 
-    assert report["mean_dyn_residual"] > 0.1
+    assert report["mean_vel_residual"] > 0.1
     assert abs(report["mean_alignment"]) < 0.5
     assert report["energy_violations"] > 0
 

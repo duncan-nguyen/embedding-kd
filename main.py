@@ -140,10 +140,10 @@ def parse_args():
         help='GeoODE-KD: weight of the endpoint distillation loss'
     )
     parser.add_argument(
-        '--lambda_dyn',
+        '--lambda_vel',
         type=float,
         default=None,
-        help='GeoODE-KD: weight of the ODE consistency loss'
+        help='GeoODE-KD: weight of the velocity-matching loss'
     )
     parser.add_argument(
         '--lambda_ctr',
@@ -432,7 +432,7 @@ def get_config(method: str, args):
             'alpha',
             'beta',
             'lambda_end',
-            'lambda_dyn',
+            'lambda_vel',
             'lambda_ctr',
             'guidance_schedule',
             'guidance_power',
