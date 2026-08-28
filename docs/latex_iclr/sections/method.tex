@@ -294,19 +294,22 @@ $\ell+1$ is the tangent vector
     \!\left(\mathbf{Z}^{(\ell+1)}\right),
     \label{eq:actual-velocity}
 \end{equation}
-and the desired teacher-conditioned vector field at the same state is
+and the direction toward the teacher endpoint from the same state is
 \begin{equation}
     \mathbf{V}^{(\ell)}
     =
-    \mathbf{V}\!\left(\mathbf{Z}^{(\ell)},\mathbf{T},\mathbf{G}_T\right)
+    \operatorname{Log}_{\mathbf{Z}^{(\ell)}}
+    \!\left(\mathbf{T}\right),
+    \qquad
+    \mathbf{v}^{(\ell)}_i
     =
-    -B\operatorname{grad}_{\mathbb{S}}
-    \mathcal{E}\!\left(\mathbf{Z}^{(\ell)};\mathbf{T},\mathbf{G}_T\right).
+    \operatorname{Log}_{\mathbf{z}^{(\ell)}_i}(\boldsymbol{\tau}_i).
     \label{eq:desired-velocity}
 \end{equation}
-The velocity loss asks the realized transition to point along the field:
+The endpoint-guided velocity loss asks each realized transition to point along
+this direction:
 \begin{equation}
-    \mathcal{L}_{\mathrm{vel}}
+    \mathcal{L}_{\mathrm{evel}}
     =
     \frac{1}{L-1}
     \sum_{\ell=1}^{L-1}
@@ -315,25 +318,24 @@ The velocity loss asks the realized transition to point along the field:
     \left[
         1-\cos\!\left(
             \mathbf{u}^{(\ell)}_i,
-            \operatorname{sg}\!\left[\mathbf{v}^{(\ell)}_i\right]
+            \mathbf{v}^{(\ell)}_i
         \right)
     \right],
     \label{eq:velocity-loss}
 \end{equation}
 where $\mathbf{u}^{(\ell)}_i$ and $\mathbf{v}^{(\ell)}_i$ are the rows of
-$\mathbf{U}^{(\ell)}$ and $\mathbf{V}^{(\ell)}$, $\cos(\cdot,\cdot)$ is the
-cosine between tangent vectors, and $\operatorname{sg}$ stops gradients through
-the field. Both vectors live in the tangent space of $\mathbf{Z}^{(\ell)}$, so
-the comparison is well defined. The cosine is scale-free: the positive warp
-$s(t)/R(t)$ and the step fraction $\rho_\ell$ change the length of the
-prescribed step but not its direction, so $\mathcal{L}_{\mathrm{vel}}$ trains
-\emph{where} each layer moves and leaves \emph{how far} to the Transformer.
-Stop-gradient makes the field a fixed local target for the current forward
-pass, so the loss cannot be lowered by moving the source state to reorient the
-field. Every transition is covered, including the last one $\ell=L-1$ into the
-final layer: the endpoint objective below fixes \emph{where} that layer must
-land, while $\mathcal{L}_{\mathrm{vel}}$ asks that it be reached along the
-field rather than by an arbitrary detour.
+$\mathbf{U}^{(\ell)}$ and $\mathbf{V}^{(\ell)}$ and $\cos(\cdot,\cdot)$ is the
+cosine between tangent vectors. Both vectors live in the tangent space of
+$\mathbf{Z}^{(\ell)}$, so the comparison is well defined. The cosine is
+scale-free, so $\mathcal{L}_{\mathrm{evel}}$ encourages each student layer to
+move in the tangent direction toward the final teacher embedding without
+prescribing an intermediate target state or a step magnitude. Every
+transition is covered, including the last one $\ell=L-1$ into the final layer:
+the endpoint objective below fixes \emph{where} that layer must land, while
+$\mathcal{L}_{\mathrm{evel}}$ asks that it be reached along the geodesic
+rather than by an arbitrary detour. In practice the direction is computed from
+a detached $\mathbf{Z}^{(\ell)}$, so the loss cannot be lowered by moving the
+source state to reorient the target.
 
 \subsection{Training Objective}
 \label{sec:objective-properties}
@@ -349,13 +351,11 @@ The final layer must still satisfy the endpoint condition. We use
     \right).
     \label{eq:endpoint-objective}
 \end{equation}
-No earlier layer receives this direct target. In the instance-only case, the
-field at $\mathbf{Z}^{(L-1)}$ points along the geodesic to
-$\boldsymbol{\tau}_i$ and $\rho_{L-1}=1$ places its exact step on the teacher,
-so $\mathcal{L}_{\mathrm{end}}$ is the boundary condition of the same path:
-$\mathcal{L}_{\mathrm{vel}}$ orients the final transition and
+No earlier layer receives this direct target. The direction
+$\mathbf{v}^{(L-1)}_i$ points along the geodesic to $\boldsymbol{\tau}_i$, so
+$\mathcal{L}_{\mathrm{end}}$ is the boundary condition of the same path:
+$\mathcal{L}_{\mathrm{evel}}$ orients the final transition and
 $\mathcal{L}_{\mathrm{end}}$ fixes where it must stop.
-With relational guidance, it remains an explicit endpoint anchor.
 
 We also apply unsupervised contrastive learning at the output. For two dropout
 views $\mathbf{z}^{(L,a)}_i$ and $\mathbf{z}^{(L,b)}_i$,
@@ -381,17 +381,18 @@ training loss is
     =
     \lambda_{\mathrm{end}}\mathcal{L}_{\mathrm{end}}
     +
-    \lambda_{\mathrm{vel}}\mathcal{L}_{\mathrm{vel}}
+    \lambda_{\mathrm{evel}}\mathcal{L}_{\mathrm{evel}}
     +
     \lambda_{\mathrm{ctr}}\mathcal{L}_{\mathrm{ctr}}
     .
     \label{eq:total-training-objective}
 \end{equation}
-Here, $\lambda_{\mathrm{end}}$, $\lambda_{\mathrm{vel}}$, and
+Here, $\lambda_{\mathrm{end}}$, $\lambda_{\mathrm{evel}}$, and
 $\lambda_{\mathrm{ctr}}$ weight endpoint, transition, and contrastive
-supervision. The potential $\mathcal{E}$ generates a direction; it is not an
-additional layer-wise loss. The term $\mathcal{L}_{\mathrm{vel}}$ measures
-whether the Transformer follows that direction.
+supervision. The potential $\mathcal{E}$ and its flow describe the ideal
+trajectory and drive the depth diagnostics; neither is an additional
+layer-wise loss. The term $\mathcal{L}_{\mathrm{evel}}$ measures whether each
+Transformer layer moves along the geodesic toward the teacher endpoint.
 
 \paragraph{Properties of the ideal flow.}
 The construction gives three properties. First, the field is tangent to the

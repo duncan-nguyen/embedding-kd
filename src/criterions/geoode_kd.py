@@ -11,12 +11,13 @@ teacher's *native* Gram matrix (``teacher_gram``) whenever the caller supplies i
 the projection P_T then enters only the point-wise term. Its negative Riemannian gradient, run in the finite-horizon time warp
 s(t) / R(t) with R(t) = int_t^1 s, is a semantic vector field (Eq. 26) that reaches
 the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from layer
-``l`` predicts where layer ``l+1`` should land (Eq. 30). The velocity loss
-(Eq. 32) compares the *direction* of the realized layer update
-U^(l) = Log_{Z^(l)}(Z^(l+1)) with the field V^(l) = -B grad_S E(Z^(l), T) in the
-tangent space of Z^(l), over every transition l = 1..L-1, the last one into the
-final layer included. The final layer is additionally anchored on the teacher
-endpoint (Eq. 36), the boundary condition of the same flow.
+``l`` predicts where layer ``l+1`` should land (Eq. 30); that field drives the
+depth diagnostics. The training signal is the endpoint-guided velocity loss
+L_evel (Eq. 32): it compares the *direction* of the realized layer update
+U^(l) = Log_{Z^(l)}(Z^(l+1)) with the geodesic direction to the teacher
+V^(l) = Log_{Z^(l)}(tau) in the tangent space of Z^(l), over every transition
+l = 1..L-1, the last one into the final layer included. The final layer is
+additionally anchored on the teacher endpoint (Eq. 36).
 
 Nothing here is a module with weights: the criterion is teacher-conditioned geometry
 plus a stop-gradient target, so training adds no parameters and inference is exactly
@@ -59,7 +60,7 @@ class GeoODEKD(nn.Module):
         alpha: weight of the instance-level semantic energy inside the potential.
         beta: weight of the relational (Gram) energy inside the potential.
         lambda_end: weight of the endpoint distillation loss.
-        lambda_vel: weight of the velocity-matching loss.
+        lambda_vel: weight of the endpoint-guided velocity loss L_evel.
         lambda_ctr: weight of the contrastive regulariser at the final layer.
         contrastive_temperature: tau_c of Eq. (37).
         guidance_schedule: ``"linear"`` for s(t) = t (the paper default),
@@ -303,17 +304,22 @@ class GeoODEKD(nn.Module):
         teacher: torch.Tensor,
         teacher_gram: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Velocity matching, Eq. (32):
+        """Endpoint-guided velocity matching, L_evel:
 
-            L_vel = 1/(L-1) sum_{l=1}^{L-1} 1/B sum_i [1 - cos(U_i^(l), sg[V_i^(l)])]
+            L_evel = 1/(L-1) sum_{l=1}^{L-1} 1/B sum_i [1 - cos(U_i^(l), V_i^(l))]
 
         with U^(l) = Log_{Z^(l)}(Z^(l+1)) the realized tangent update and
-        V^(l) = V(Z^(l), T) the teacher-conditioned field. The cosine is scale-free,
-        so the depth warp s(t)/R(t) (a positive scalar) drops out: only the
-        direction of each transition is trained. Every transition is covered,
-        including the last one l = L-1 into the final layer, which
-        :meth:`endpoint_loss` additionally pins to the teacher.
+        V^(l) = Log_{Z^(l)}(tau) the direction toward the teacher endpoint from the
+        same state. Both live in the tangent space of Z^(l). The cosine is
+        scale-free, so no intermediate target state or step magnitude is
+        prescribed: every transition l = 1..L-1, the last one into the final layer
+        included, is only asked to point along the geodesic to the teacher.
+        ``teacher_gram`` is accepted for interface compatibility; the target
+        direction is instance-wise and does not use it. With ``stop_grad_target``
+        the direction is read off a detached Z^(l), so gradients reach Z^(l) only
+        through U^(l).
         """
+        del teacher_gram
         num_layers = len(states)
         if num_layers < 2:
             return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
@@ -322,14 +328,12 @@ class GeoODEKD(nn.Module):
         for index in range(num_layers - 1):
             current, actual = states[index], states[index + 1]
             if self.stop_grad_target:
-                # sg[.] of Eq. (32): the field is a fixed local target read off the
-                # current state; gradients reach Z^(l) only through U^(l).
                 with torch.no_grad():
-                    field = self.vector_field(current.detach(), teacher, teacher_gram)
+                    direction = self.log_map(current.detach(), teacher)
             else:
-                field = self.vector_field(current, teacher, teacher_gram)
+                direction = self.log_map(current, teacher)
             update = self.log_map(current, actual)
-            cosine = F.cosine_similarity(update, field, dim=-1, eps=self.eps_norm)
+            cosine = F.cosine_similarity(update, direction, dim=-1, eps=self.eps_norm)
             terms.append((1.0 - cosine).mean())
 
         return torch.stack(terms).mean()

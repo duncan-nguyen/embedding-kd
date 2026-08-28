@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex main"] 1787898891.11687 "main.aux" "main.bbl" "main" 1787898891.95824 0
+["bibtex main"] 1787898891.11687 "main.aux" "main.bbl" "main" 1787923943.84585 0
   "./references/references.bib" 1787834477.12657 4240 bdfe562d96a946cfa7b79b1b9d5cecab ""
   "./template/iclr2027_conference.bst" 1787823766.4663 26973 af983813ca1a1414954dbceae7baa2a1 ""
-  "main.aux" 1787898891.69152 14031 7e8f90635404c6816d17e0d38b83092f "pdflatex"
-  "tables/main_results.aux" 1787898891.64193 1937 07557649558e35163c6b06b0fdc21cc5 "pdflatex"
+  "main.aux" 1787923943.57019 14031 7e8f90635404c6816d17e0d38b83092f "pdflatex"
+  "tables/main_results.aux" 1787923943.51652 1937 07557649558e35163c6b06b0fdc21cc5 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1787898891.21408 "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" "main.pdf" "main" 1787898891.95844 0
+["pdflatex"] 1787923942.92478 "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" "main.pdf" "main" 1787923943.84606 0
   "/etc/texmf/web2c/texmf.cnf" 1773138757.194 475 c0e671620eb5563b2130f56340a5fde8 ""
   "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" 1787898703.65951 1210 efbaff16c7ac988f48dee7dd0abdff87 ""
   "/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc" 1165713224 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
@@ -129,23 +129,23 @@
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1773138815 8213355 5c73132d1f44e382582447bfc6ff5c5e ""
   "appendices/ablations.tex" 1787824767.51954 85 8aba7586b3d1d21cbaf92faf7e7226c2 ""
   "appendices/additional_results.tex" 1787824767.05554 82 bd9df7a81e77726e7c0ba96db0d88a29 ""
-  "appendices/derivations.tex" 1787898811.6828 12308 c3ccf10d44be29df35eb613bc9b2c73a ""
+  "appendices/derivations.tex" 1787923941.51171 12309 e42cf75c089297b22bfa7bdb830ded11 ""
   "appendices/evaluation.tex" 1787824766.58754 78 4517c14b30b21b264ad4a6c6021a4a0b ""
   "appendices/implementation.tex" 1787824766.14754 83 683666cb43e83c2aaee4df14223e47a4 ""
   "appendices/target_construction.tex" 1787824765.6069 270 5a7ed15ef50a3faf896c4513c7028412 ""
-  "main.aux" 1787898891.69152 14031 7e8f90635404c6816d17e0d38b83092f "pdflatex"
+  "main.aux" 1787923943.57019 14031 7e8f90635404c6816d17e0d38b83092f "pdflatex"
   "main.bbl" 1787898891.20324 4484 193f93b9e626ebfdf6a64a9d414a76e5 "bibtex main"
-  "main.out" 1787898891.69152 5451 a1d9fad2255de10c59e09c326f2b49c8 "pdflatex"
+  "main.out" 1787923943.57019 5451 a1d9fad2255de10c59e09c326f2b49c8 "pdflatex"
   "main.tex" 1787898703.65951 1210 efbaff16c7ac988f48dee7dd0abdff87 ""
   "sections/abstract.tex" 1787898864.99344 1459 db610bf454067b7ac52c7d23307a3237 ""
   "sections/conclusion.tex" 1787824764.46657 44 b0629f1731e82555da7c298cf107015a ""
   "sections/discussion.tex" 1787824764.03391 72 bc7ed265790ab72e0f39364d834ff14c ""
   "sections/experiments.tex" 1787838044.51183 169 2f8a12e5352e26d0aa18fa49a1909a17 ""
   "sections/introduction.tex" 1787898864.99344 4735 7974a52245ecdb7c6d2e18e4d0e1241a ""
-  "sections/method.tex" 1787898811.67902 15110 b33c862f0d3a9ea17286ad9acc54c7e9 ""
+  "sections/method.tex" 1787923929.89673 15146 dc7af29b1f666b3500db9f124442e4bf ""
   "sections/motivation.tex" 1787898703.65951 4519 1b69abb1203bef7fa2f12aa4521ba7ea ""
   "sections/statements.tex" 1787824764.85157 262 f9b106b3ebea835980865a54af8f6705 ""
-  "tables/main_results.aux" 1787898891.64193 1937 07557649558e35163c6b06b0fdc21cc5 "pdflatex"
+  "tables/main_results.aux" 1787923943.51652 1937 07557649558e35163c6b06b0fdc21cc5 "pdflatex"
   "tables/main_results.tex" 1787886657.7931 6531 ddd71ad9dd34726be3e5dadcba98e546 ""
   "template/iclr2027_conference.sty" 1787823766.53691 9025 1b4bb9c2e12c712c56f4eb1232b88dd6 ""
   "template/math_commands.tex" 1787823766.98412 12284 a71653715108dc62b66e3a0bde0307d8 ""

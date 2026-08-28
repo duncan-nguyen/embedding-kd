@@ -206,14 +206,17 @@ def test_relational_energy_gradient_matches_autograd():
 
 
 def test_velocity_loss_vanishes_when_layers_follow_the_flow():
+    # L_evel is instance-wise: a trajectory that walks the geodesic toward the
+    # teacher (beta=0 flow) has zero loss regardless of beta in the criterion.
     criterion = _criterion(alpha=1.0, beta=1.0, guidance_schedule="linear")
+    flow = _criterion(alpha=1.0, beta=0.0, guidance_schedule="linear")
     T = _sphere(8, 16, seed=10)
     num_layers = 6
 
     states = [_sphere(8, 16, seed=11)]
     for index in range(num_layers - 1):
         t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
-        states.append(criterion.euler_step(states[-1], T, t, t_next))
+        states.append(flow.euler_step(states[-1], T, t, t_next))
 
     loss = criterion.velocity_loss(states, T)
 
