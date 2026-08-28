@@ -238,14 +238,12 @@ def test_stop_gradient_target_only_trains_the_next_layer():
     loss = criterion.velocity_loss(states, T)
     loss.backward()
 
-    # With L = 3 there is a single supervised transition, Z^(1) -> Z^(2). Its
-    # target Z^(2) is trained; Z^(1) receives gradient only through the realized
-    # update U^(1) = Log_{Z^(1)}(Z^(2)), never through the field, and Z^(3) is
-    # left to the endpoint loss.
+    # With L = 3 both transitions are supervised, Z^(1) -> Z^(2) and
+    # Z^(2) -> Z^(3), so every layer receives gradient. Z^(1) receives it only
+    # through the realized update U^(1) = Log_{Z^(1)}(Z^(2)), never through the
+    # field.
     assert states[1].grad is not None and states[1].grad.abs().sum() > 0
-    assert states[2].grad is None or torch.allclose(
-        states[2].grad, torch.zeros_like(states[2])
-    )
+    assert states[2].grad is not None and states[2].grad.abs().sum() > 0
     grad_with_sg = states[0].grad.clone()
 
     detached = _criterion(alpha=1.0, beta=1.0, stop_grad_target=False)

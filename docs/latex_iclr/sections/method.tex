@@ -308,8 +308,8 @@ The velocity loss asks the realized transition to point along the field:
 \begin{equation}
     \mathcal{L}_{\mathrm{vel}}
     =
-    \frac{1}{L-2}
-    \sum_{\ell=1}^{L-2}
+    \frac{1}{L-1}
+    \sum_{\ell=1}^{L-1}
     \frac{1}{B}
     \sum_{i=1}^{B}
     \left[
@@ -330,8 +330,10 @@ prescribed step but not its direction, so $\mathcal{L}_{\mathrm{vel}}$ trains
 \emph{where} each layer moves and leaves \emph{how far} to the Transformer.
 Stop-gradient makes the field a fixed local target for the current forward
 pass, so the loss cannot be lowered by moving the source state to reorient the
-field. The last transition $\ell=L-1$ is excluded because the endpoint
-objective below supervises it directly.
+field. Every transition is covered, including the last one $\ell=L-1$ into the
+final layer: the endpoint objective below fixes \emph{where} that layer must
+land, while $\mathcal{L}_{\mathrm{vel}}$ asks that it be reached along the
+field rather than by an arbitrary detour.
 
 \subsection{Training Objective}
 \label{sec:objective-properties}
@@ -350,8 +352,9 @@ The final layer must still satisfy the endpoint condition. We use
 No earlier layer receives this direct target. In the instance-only case, the
 field at $\mathbf{Z}^{(L-1)}$ points along the geodesic to
 $\boldsymbol{\tau}_i$ and $\rho_{L-1}=1$ places its exact step on the teacher,
-so $\mathcal{L}_{\mathrm{end}}$ is the boundary condition of the same path and
-supervises the final transition that $\mathcal{L}_{\mathrm{vel}}$ leaves out.
+so $\mathcal{L}_{\mathrm{end}}$ is the boundary condition of the same path:
+$\mathcal{L}_{\mathrm{vel}}$ orients the final transition and
+$\mathcal{L}_{\mathrm{end}}$ fixes where it must stop.
 With relational guidance, it remains an explicit endpoint anchor.
 
 We also apply unsupervised contrastive learning at the output. For two dropout

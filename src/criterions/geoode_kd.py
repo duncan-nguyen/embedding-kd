@@ -14,9 +14,9 @@ the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from lay
 ``l`` predicts where layer ``l+1`` should land (Eq. 30). The velocity loss
 (Eq. 32) compares the *direction* of the realized layer update
 U^(l) = Log_{Z^(l)}(Z^(l+1)) with the field V^(l) = -B grad_S E(Z^(l), T) in the
-tangent space of Z^(l), over the intermediate transitions l = 1..L-2. Only the
-final layer is anchored on the teacher endpoint (Eq. 36), which is the boundary
-condition of the same flow and supervises the last transition.
+tangent space of Z^(l), over every transition l = 1..L-1, the last one into the
+final layer included. The final layer is additionally anchored on the teacher
+endpoint (Eq. 36), the boundary condition of the same flow.
 
 Nothing here is a module with weights: the criterion is teacher-conditioned geometry
 plus a stop-gradient target, so training adds no parameters and inference is exactly
@@ -305,20 +305,21 @@ class GeoODEKD(nn.Module):
     ) -> torch.Tensor:
         """Velocity matching, Eq. (32):
 
-            L_vel = 1/(L-2) sum_{l=1}^{L-2} 1/B sum_i [1 - cos(U_i^(l), sg[V_i^(l)])]
+            L_vel = 1/(L-1) sum_{l=1}^{L-1} 1/B sum_i [1 - cos(U_i^(l), sg[V_i^(l)])]
 
         with U^(l) = Log_{Z^(l)}(Z^(l+1)) the realized tangent update and
         V^(l) = V(Z^(l), T) the teacher-conditioned field. The cosine is scale-free,
         so the depth warp s(t)/R(t) (a positive scalar) drops out: only the
-        direction of each intermediate transition is trained. The final transition
-        l = L-1 is left to :meth:`endpoint_loss`.
+        direction of each transition is trained. Every transition is covered,
+        including the last one l = L-1 into the final layer, which
+        :meth:`endpoint_loss` additionally pins to the teacher.
         """
         num_layers = len(states)
-        if num_layers < 3:
+        if num_layers < 2:
             return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
         terms = []
-        for index in range(num_layers - 2):
+        for index in range(num_layers - 1):
             current, actual = states[index], states[index + 1]
             if self.stop_grad_target:
                 # sg[.] of Eq. (32): the field is a fixed local target read off the
