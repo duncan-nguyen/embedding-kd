@@ -1,5 +1,5 @@
 \begin{table}[t]
-    \caption{Main downstream results across two teacher--student configurations. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Within each configuration, the best result among distillation methods is shown in bold and the second-best result is underlined; Teacher and Student base are excluded from this ranking.}
+    \caption{Main downstream results across three teacher--student configurations. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Within each configuration, the best result among distillation methods is shown in bold and the second-best result is underlined; Teacher and Student base are excluded from this ranking.}
     \label{tab:main-results}
     \vspace{0.5em}
     \centering
@@ -95,7 +95,7 @@
         & 69.60 \\
         TALAS
         & \textbf{93.34}
-        & \textbf{74.45}
+        & \underline{74.45}
         & \textbf{72.70}
         & 86.16
         & \textbf{87.78}
@@ -106,18 +106,111 @@
         & \textbf{80.46} \\
         \midrule
         \textbf{GeoODE-KD}
-        & \underline{92.92}
-        & \underline{74.05}
-        & \underline{72.49}
-        & 85.89
-        & \underline{86.12}
-        & 66.60
-        & \textbf{80.78}
-        & \underline{76.01}
-        & \underline{81.23}
-        & \underline{79.57} \\
+        & \underline{93.22}
+        & \textbf{74.53}
+        & \underline{72.39}
+        & 85.92
+        & \underline{86.13}
+        & 67.01
+        & \textbf{81.17}
+        & \underline{75.58}
+        & \underline{81.27}
+        & \underline{79.69} \\
         \midrule
-        \multicolumn{11}{@{}c}{\textit{(b) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
+        \multicolumn{11}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
+        \midrule
+        Teacher
+        & 93.52
+        & 73.85
+        & 68.56
+        & 85.81
+        & 91.87
+        & 61.47
+        & 79.18
+        & 78.73
+        & 84.87
+        & 79.76 \\
+        Student base
+        & 81.84
+        & 47.70
+        & 71.67
+        & 79.67
+        & 65.06
+        & 60.89
+        & 49.46
+        & 26.76
+        & 24.12
+        & 56.35 \\
+        \midrule
+        Stella
+        & 86.62
+        & 71.08
+        & 58.57
+        & 83.63
+        & 75.85
+        & 69.38
+        & 70.87
+        & 63.08
+        & 67.88
+        & 71.89 \\
+        CDM
+        & 87.96
+        & 71.31
+        & 58.31
+        & 83.83
+        & 75.43
+        & \underline{69.58}
+        & 67.37
+        & 62.12
+        & 67.09
+        & 71.44 \\
+        DSKD
+        & 88.45
+        & 70.93
+        & 58.96
+        & 83.25
+        & 75.96
+        & 69.53
+        & 66.19
+        & 61.50
+        & 65.53
+        & 71.14 \\
+        EMO
+        & 87.61
+        & 71.19
+        & 59.27
+        & 82.90
+        & 75.03
+        & \textbf{69.69}
+        & 65.93
+        & 57.46
+        & 62.75
+        & 70.20 \\
+        TALAS
+        & \underline{90.14}
+        & \underline{74.91}
+        & \underline{63.50}
+        & \underline{86.76}
+        & \underline{81.27}
+        & 66.53
+        & \underline{76.31}
+        & \underline{67.66}
+        & \underline{78.18}
+        & \underline{76.14} \\
+        \midrule
+        \textbf{GeoODE-KD}
+        & \textbf{92.37}
+        & \textbf{76.70}
+        & \textbf{66.93}
+        & \textbf{86.96}
+        & \textbf{86.40}
+        & 63.53
+        & \textbf{78.84}
+        & \textbf{72.56}
+        & \textbf{80.32}
+        & \textbf{78.29} \\
+        \midrule
+        \multicolumn{11}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
         Teacher
         & 93.21
@@ -188,27 +281,27 @@
         & 68.54 \\
         TALAS
         & \underline{86.67}
-        & \textbf{72.41}
+        & \underline{72.41}
         & \underline{59.93}
-        & \textbf{84.75}
-        & \textbf{80.47}
+        & \underline{84.75}
+        & \underline{80.47}
         & 66.72
-        & \textbf{71.59}
-        & \textbf{69.80}
-        & \textbf{74.94}
-        & \textbf{74.14} \\
+        & \underline{71.59}
+        & \underline{69.80}
+        & \underline{74.94}
+        & \underline{74.14} \\
         \midrule
         \textbf{GeoODE-KD}
-        & \textbf{86.69}
-        & \underline{72.22}
-        & \textbf{60.12}
-        & \underline{83.53}
-        & \underline{80.13}
-        & 68.49
-        & \underline{71.30}
-        & \underline{66.43}
-        & \underline{72.43}
-        & \underline{73.48} \\
+        & \textbf{91.44}
+        & \textbf{74.24}
+        & \textbf{66.59}
+        & \textbf{85.28}
+        & \textbf{82.47}
+        & 67.03
+        & \textbf{77.19}
+        & \textbf{72.33}
+        & \textbf{77.71}
+        & \textbf{77.14} \\
         \bottomrule
     \end{tabular}
 \end{table}
