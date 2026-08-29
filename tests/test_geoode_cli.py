@@ -23,11 +23,13 @@ def test_geoode_method_selects_its_config():
 
     assert isinstance(config, GeoODEConfig)
     assert config.distill_method == "geoode"
-    # The paper fixes alpha and the two main loss weights and tunes beta / lambda_ctr.
+    # The default objective is L_end + L_ctr: the endpoint term at weight 1 plus the
+    # contrastive regulariser. Everything else in Eq. (38) is opt-in, so a run with
+    # no loss flags is the recipe rather than one of its ablations.
     assert config.alpha == 1.0
     assert config.lambda_end == 1.0
-    assert config.lambda_vel == 1.0
-    # The descent constraint is opt-in, so the default objective is unchanged.
+    assert config.lambda_ctr == 0.5
+    assert config.lambda_vel == 0.0
     assert config.lambda_desc == 0.0
     assert config.guidance_schedule == "linear"
 
@@ -64,6 +66,37 @@ def test_pca_subtract_mean_flag_is_tri_state():
     assert _config("--method", "geoode").pca_subtract_mean is GeoODEConfig.pca_subtract_mean
     assert _config("--method", "geoode", "--pca_subtract_mean").pca_subtract_mean is True
     assert _config("--method", "geoode", "--no-pca_subtract_mean").pca_subtract_mean is False
+
+
+def test_projection_type_flag_selects_the_subspace_arm():
+    assert _config("--method", "geoode").projection_type == "pca"
+    for arm in ("random", "random_gaussian"):
+        assert _config("--method", "geoode", "--projection_type", arm).projection_type == arm
+
+
+def test_projection_seed_flag_overrides_the_config():
+    assert _config("--method", "geoode").projection_seed == GeoODEConfig.projection_seed
+    assert _config("--method", "geoode", "--projection_seed", "7").projection_seed == 7
+
+
+def test_pca_center_fit_flag_is_tri_state():
+    assert _config("--method", "geoode").pca_center_fit is GeoODEConfig.pca_center_fit
+    assert _config("--method", "geoode", "--pca_center_fit").pca_center_fit is True
+    # The uncentered-SVD ablation.
+    assert _config("--method", "geoode", "--no-pca_center_fit").pca_center_fit is False
+
+
+def test_gauge_rotation_flag_selects_the_orientation_arm():
+    assert _config("--method", "geoode").gauge_rotation == "procrustes"
+    config = _config("--method", "geoode", "--gauge_rotation", "random")
+    assert config.gauge_rotation == "random"
+    # The random gauge is a control *for* the alignment, so it still applies one.
+    assert config.gauge_align is True
+
+
+def test_gauge_random_seed_flag_overrides_the_config():
+    assert _config("--method", "geoode").gauge_random_seed == GeoODEConfig.gauge_random_seed
+    assert _config("--method", "geoode", "--gauge_random_seed", "4").gauge_random_seed == 4
 
 
 def test_gauge_align_flag_is_tri_state():

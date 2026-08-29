@@ -159,6 +159,31 @@ def parse_args():
         help='GeoODE-KD: weight of the contrastive regularizer'
     )
     parser.add_argument(
+        '--projection_type',
+        choices=['pca', 'random', 'random_gaussian'],
+        default=None,
+        help='GeoODE-KD: how the d_S-dimensional teacher subspace is chosen. "pca" '
+             'is the paper\'s spectral map; "random" draws a Haar-random orthonormal '
+             'subspace and "random_gaussian" an unnormalised Johnson-Lindenstrauss '
+             'map -- the two data-independent controls for the Eckart-Young claim'
+    )
+    parser.add_argument(
+        '--projection_seed',
+        type=int,
+        default=None,
+        help='GeoODE-KD: draw index of the random teacher projection. Different '
+             'seeds are different draws of the same control, so their spread is the '
+             'null band the PCA map has to clear'
+    )
+    parser.add_argument(
+        '--pca_center_fit',
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help='GeoODE-KD: centre the cache before the SVD that picks the directions. '
+             '--no-pca_center_fit is the uncentered-SVD ablation, in which the '
+             'teacher mean vector may itself be the first retained direction'
+    )
+    parser.add_argument(
         '--pca_subtract_mean',
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -171,6 +196,21 @@ def parse_args():
         default=None,
         help='GeoODE-KD: Procrustes-align the PCA target coordinates to the untrained '
              'student (P_T = P_PCA R). --no-gauge_align is the ablation'
+    )
+    parser.add_argument(
+        '--gauge_rotation',
+        choices=['procrustes', 'random'],
+        default=None,
+        help='GeoODE-KD: which rotation --gauge_align applies. "procrustes" is the '
+             'informative gauge fitted to the student init; "random" is a '
+             'Haar-random rotation of identical cost, the control that separates '
+             '"the right orientation" from "an orientation"'
+    )
+    parser.add_argument(
+        '--gauge_random_seed',
+        type=int,
+        default=None,
+        help='GeoODE-KD: draw index of the random gauge rotation Q'
     )
     parser.add_argument(
         '--gauge_refit_every',
@@ -444,8 +484,13 @@ def get_config(method: str, args):
             'lambda_ctr',
             'guidance_schedule',
             'guidance_power',
+            'projection_type',
+            'projection_seed',
+            'pca_center_fit',
             'pca_subtract_mean',
             'gauge_align',
+            'gauge_rotation',
+            'gauge_random_seed',
             'gauge_refit_every',
             'relational_target',
         ),

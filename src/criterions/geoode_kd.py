@@ -12,15 +12,19 @@ the projection P_T then enters only the point-wise term. Its negative Riemannian
 s(t) / R(t) with R(t) = int_t^1 s, is a semantic vector field (Eq. 26) that reaches
 the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from layer
 ``l`` predicts where layer ``l+1`` should land (Eq. 30); that field drives the
-depth diagnostics. The training signal is the endpoint-guided velocity loss
-L_evel (Eq. 32): it compares the *direction* of the realized layer update
-U^(l) = Log_{Z^(l)}(Z^(l+1)) with the geodesic direction to the teacher
-V^(l) = Log_{Z^(l)}(tau) in the tangent space of Z^(l), over every transition
-l = 1..L-1, the last one into the final layer included. Because that loss only
-constrains the *direction* of a transition, a weak descent constraint
-L_desc-sem (Eq. 33) additionally asks the deep half of the transitions not to
-raise the teacher-conditioned semantic energy E_sem. The final layer is
-additionally anchored on the teacher endpoint (Eq. 36).
+depth diagnostics.
+
+The default objective is L_end + L_ctr: the final layer is anchored on the teacher
+endpoint (Eq. 36) and regularised by InfoNCE over two dropout views (Eq. 37).
+Nothing else in Eq. (38) is on unless its weight is raised, so a run with no loss
+flags is the recipe rather than one of its ablations. ``lambda_vel`` turns on the
+endpoint-guided velocity loss L_evel (Eq. 32): it compares the *direction* of the
+realized layer update U^(l) = Log_{Z^(l)}(Z^(l+1)) with the geodesic direction to
+the teacher V^(l) = Log_{Z^(l)}(tau) in the tangent space of Z^(l), over every
+transition l = 1..L-1, the last one into the final layer included. Because that
+loss only constrains the *direction* of a transition, ``lambda_desc`` adds a weak
+descent constraint L_desc-sem (Eq. 33) asking the deep half of the transitions not
+to raise the teacher-conditioned semantic energy E_sem.
 
 Nothing here is a module with weights: the criterion is teacher-conditioned geometry
 plus a stop-gradient target, so training adds no parameters and inference is exactly
@@ -63,10 +67,11 @@ class GeoODEKD(nn.Module):
         alpha: weight of the instance-level semantic energy inside the potential.
         beta: weight of the relational (Gram) energy inside the potential.
         lambda_end: weight of the endpoint distillation loss.
-        lambda_vel: weight of the endpoint-guided velocity loss L_evel.
+        lambda_vel: weight of the endpoint-guided velocity loss L_evel. Zero (the
+            default) leaves the objective at L_end + L_ctr; raising it is the
+            per-transition ablation.
         lambda_desc: weight of the weak semantic-descent constraint L_desc-sem.
-            Zero (the default) leaves the objective exactly as in Eq. (38) without
-            the descent term.
+            Zero (the default) leaves the objective without the descent term.
         lambda_ctr: weight of the contrastive regulariser at the final layer.
         contrastive_temperature: tau_c of Eq. (37).
         guidance_schedule: ``"linear"`` for s(t) = t (the paper default),
@@ -95,9 +100,9 @@ class GeoODEKD(nn.Module):
         alpha: float = 1.0,
         beta: float = 1.0,
         lambda_end: float = 1.0,
-        lambda_vel: float = 1.0,
+        lambda_vel: float = 0.0,
         lambda_desc: float = 0.0,
-        lambda_ctr: float = 0.1,
+        lambda_ctr: float = 0.5,
         contrastive_temperature: float = 0.05,
         guidance_schedule: str = "linear",
         guidance_power: float = 1.0,
@@ -633,9 +638,13 @@ class GeoODEKD(nn.Module):
                     f"{tuple(teacher_gram.shape)}"
                 )
             teacher_gram = teacher_gram.to(teacher.dtype)
+        # Both per-transition terms are computed at every weight, the default zero
+        # included: loss_vel is the diagnostic that says whether the trajectory
+        # follows the field and loss_desc whether the constraint would have bound,
+        # so a run of the default L_end + L_ctr objective still reports what the
+        # ablations would have measured. Each costs a handful of elementwise ops
+        # per transition on states the forward pass already produced.
         loss_vel = self.velocity_loss(states, teacher, teacher_gram)
-        # Computed even at lambda_desc = 0: it costs one energy per deep layer and is
-        # the diagnostic that says whether the constraint would have bound at all.
         loss_desc = self.descent_semantic_loss(states, teacher)
         loss_end = self.endpoint_loss(states[-1], teacher)
 

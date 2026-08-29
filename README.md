@@ -156,17 +156,35 @@ next to the checkpoints). The rotation is a closed-form statistic, not a
 parameter: it removes the arbitrary gauge of the PCA basis from the endpoint loss
 without touching the Gram matrix (`--no-gauge_align` is the ablation;
 `--gauge_refit_every N` re-estimates it against the current student every N
-epochs). The relational energy is measured against the teacher's *native* cosine
-matrix, which needs no projection at all (`--relational_target projected` is the
-ablation that uses the PCA-projected Gram instead). It then supervises each
-Transformer layer as one Riemannian Euler step of a teacher-conditioned flow
-instead of pushing every layer at the final teacher embedding. Its own flags are
-`--alpha`/`--beta` (the semantic and relational parts of the energy),
-`--lambda_end`/`--lambda_vel`/`--lambda_ctr` (the three loss weights),
-`--lambda_desc` (the optional weak descent constraint: the deep half of the
-transitions, `l >= ceil(L/2)`, is penalised only when it raises the semantic
-energy `E_sem`; `0` by default, and its residual is logged as `loss_desc` either
-way),
+epochs). Both factors of that map are claims, so both have a control. The
+subspace: `--projection_type random` draws a Haar-random subspace of the same
+rank and `random_gaussian` the Johnson-Lindenstrauss map that gives up
+orthonormality too, while `--no-pca_center_fit` is the uncentered-SVD arm in
+which the teacher's mean vector may itself be the first retained direction. The
+orientation: `--gauge_rotation random` applies a Haar-random rotation of exactly
+the Procrustes arm's cost, which is the control that matters, because the PCA
+basis is already an arbitrary gauge and so `--no-gauge_align` alone cannot
+separate "R is the right orientation" from "R is an orientation". The run prints
+and saves what its map actually did — retained energy against what a random
+subspace of that rank would retain, the student-target cosine before and after
+the rotation, and the participation ratio of the cross-covariance, which says in
+advance whether the gauge can matter at all (at PR ~ 1 it can only rotate one
+mean vector onto another). `scripts/run_target_map_ablation.py` runs the whole
+grid off one shared teacher cache and reads it back as a table. The relational
+energy is measured against the teacher's *native* cosine matrix, which needs no
+projection at all (`--relational_target projected` is the ablation that uses the
+PCA-projected Gram instead). The default objective is `L_end + L_ctr`: the final
+layer is anchored on those targets and regularised by InfoNCE over two dropout
+views (`--lambda_end 1`, `--lambda_ctr 0.5`), so a run with no loss flags is the
+recipe rather than one of its ablations. The per-transition terms are opt-in:
+`--lambda_vel` supervises each Transformer layer as one Riemannian Euler step of
+a teacher-conditioned flow instead of only pushing the final layer at the teacher
+embedding, and `--lambda_desc` adds the weak descent constraint on top of it (the
+deep half of the transitions, `l >= ceil(L/2)`, is penalised only when it raises
+the semantic energy `E_sem`). Both are `0` by default and both log their residual
+(`loss_vel`, `loss_desc`) either way, so a default run still reports what they
+would have measured. Its other flags are `--alpha`/`--beta` (the semantic and
+relational parts of the energy),
 `--guidance_schedule`/`--guidance_power` (the depth schedule s(t)) and
 `--student_pooling`. Training adds no parameters and inference is the plain
 student encoder.

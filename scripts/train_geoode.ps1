@@ -14,7 +14,7 @@ $EPOCHS = 5
 $LR = 2e-5
 $MAX_LENGTH = 256
 $BETA = 1.0
-$LAMBDA_CTR = 0.1
+$LAMBDA_CTR = 0.5
 $SAVE_DIR = "checkpoints/geoode"
 
 python ../main.py `

@@ -75,8 +75,11 @@ from src.loss import info_nce
 from src.pooling import mean_pooling, pool_sentence_embedding
 from src.teacher_projection import (
     fit_gauge_alignment,
+    fit_gauge_rotation,
     fit_pca_projection,
+    fit_teacher_projection,
     project_teacher_embeddings,
+    retained_energy,
 )
 
 # The distillation corpus (data/train_set/merged_3_data_5k_each.csv) is drawn from
@@ -789,10 +792,13 @@ class KnowledgeDistiller:
         student_dim = self.model_student.config.hidden_size
         teacher_dim = teacher_cls.shape[-1]
 
-        projection, mean = fit_pca_projection(
+        projection_type = getattr(cfg, "projection_type", "pca")
+        projection, mean = fit_teacher_projection(
             teacher_cls,
             out_dim=student_dim,
+            projection_type=projection_type,
             center=cfg.pca_center_fit,
+            seed=int(getattr(cfg, "projection_seed", 0)),
         )
         targets = project_teacher_embeddings(
             teacher_cls,
@@ -806,24 +812,36 @@ class KnowledgeDistiller:
         if teacher_dim <= student_dim:
             print(
                 f"Teacher dim {teacher_dim} <= student dim {student_dim}: "
-                "P_T is the identity, targets are only re-normalized"
+                f"P_T discards nothing ({projection_type} map, targets are "
+                "re-coordinatised and re-normalized)"
             )
         else:
             # Eckart-Young: among all rank-d_S linear maps, PCA retains the largest
             # share of the cached embedding energy, i.e. it is the linear map that
             # best preserves the Gram matrix E_geo is defined over. This number is
-            # what the paper reports for P_T.
-            cached = teacher_cls.to(torch.float32)
-            explained = float(
-                (cached @ projection).pow(2).sum() / cached.pow(2).sum().clamp(min=1e-12)
-            )
+            # what the paper reports for P_T, and it is also the number the random
+            # controls have to be read against: they span a d_S-subspace drawn
+            # without looking at the teacher, so they retain about d_S/d_T.
+            explained = retained_energy(teacher_cls, projection)
             print(
-                f"Fitted PCA teacher projection {teacher_dim} -> {student_dim} "
-                f"(retains {explained:.1%} of cached embedding energy)"
+                f"Fitted {projection_type} teacher projection {teacher_dim} -> "
+                f"{student_dim} (retains {explained:.1%} of cached embedding "
+                f"energy; a random subspace retains ~{student_dim / teacher_dim:.1%})"
             )
 
         rotation = None
         gauge_stats = None
+        gauge_mode = getattr(cfg, "gauge_rotation", "procrustes")
+        refit_every = int(getattr(cfg, "gauge_refit_every", 0) or 0)
+        if gauge_mode == "random" and refit_every > 0:
+            # The refit is an alternating exact minimisation over O(d_S) and is only
+            # a descent step for the Procrustes gauge. Re-drawing a random rotation
+            # every epoch is a different experiment; refusing the combination keeps
+            # the two from being confused in the logs.
+            raise ValueError(
+                "gauge_refit_every > 0 is only defined for gauge_rotation="
+                "'procrustes'; the random gauge has nothing to refit"
+            )
         if getattr(cfg, "gauge_align", False):
             if texts is None:
                 raise ValueError("gauge_align requires the corpus texts")
@@ -839,20 +857,40 @@ class KnowledgeDistiller:
                 student_init = self._student_initial_embeddings(
                     [texts[i] for i in index.tolist()]
                 )
-                rotation, gauge_stats = fit_gauge_alignment(targets[index], student_init)
-                # Kept for the optional per-epoch re-estimation of R (alternating
-                # minimisation of the gauge-invariant endpoint discrepancy).
-                self._gauge_state = {
-                    "targets_pca": targets.clone(),
-                    "index": index,
-                    "texts": [texts[i] for i in index.tolist()],
-                    "history": [gauge_stats],
-                }
+                rotation, gauge_stats = fit_gauge_rotation(
+                    targets[index],
+                    student_init,
+                    mode=gauge_mode,
+                    seed=int(getattr(cfg, "gauge_random_seed", 0)),
+                )
+                if gauge_mode == "procrustes":
+                    # Kept for the optional per-epoch re-estimation of R (alternating
+                    # minimisation of the gauge-invariant endpoint discrepancy).
+                    self._gauge_state = {
+                        "targets_pca": targets.clone(),
+                        "index": index,
+                        "texts": [texts[i] for i in index.tolist()],
+                        "history": [gauge_stats],
+                    }
                 targets = F.normalize(targets @ rotation, dim=-1, eps=cfg.eps_norm)
+                reference = (
+                    ""
+                    if gauge_mode == "procrustes"
+                    else f" (Procrustes would reach {gauge_stats['cos_procrustes']:+.3f})"
+                )
                 print(
-                    "Fitted Procrustes gauge alignment R on "
+                    f"Fitted {gauge_mode} gauge rotation on "
                     f"{gauge_stats['samples']} sentences: mean student-target cosine "
-                    f"{gauge_stats['cos_before']:+.3f} -> {gauge_stats['cos_after']:+.3f}"
+                    f"{gauge_stats['cos_before']:+.3f} -> "
+                    f"{gauge_stats['cos_after']:+.3f}{reference}"
+                )
+                # PR ~ 1 means the cross-covariance is rank-one and the gauge can
+                # only match the two mean vectors, so a null R ablation on this pair
+                # is predicted rather than surprising.
+                print(
+                    "Cross-covariance participation ratio "
+                    f"{gauge_stats['participation_ratio']:.2f} of {student_dim} "
+                    f"(top singular share {gauge_stats['top_singular_share']:.3f})"
                 )
 
         if cfg.save_dir:
@@ -865,10 +903,16 @@ class KnowledgeDistiller:
                     "teacher_model_name": cfg.teacher_model_name,
                     "student_dim": student_dim,
                     "teacher_dim": teacher_dim,
+                    "projection_type": projection_type,
+                    "projection_seed": int(getattr(cfg, "projection_seed", 0)),
                     "pca_center_fit": cfg.pca_center_fit,
                     "pca_subtract_mean": cfg.pca_subtract_mean,
                     "explained_energy": explained,
-                    "gauge_rotation": rotation,
+                    "gauge_align": bool(getattr(cfg, "gauge_align", False)),
+                    "gauge_rotation": gauge_mode,
+                    "gauge_random_seed": int(getattr(cfg, "gauge_random_seed", 0)),
+                    # The matrix itself, so a saved run can be replayed exactly.
+                    "gauge_matrix": rotation,
                     "gauge_stats": gauge_stats,
                 },
                 projection_path,
@@ -913,7 +957,7 @@ class KnowledgeDistiller:
             path = os.path.join(self.config.save_dir, "teacher_projection.pt")
             if os.path.exists(path):
                 saved = torch.load(path, map_location="cpu")
-                saved["gauge_rotation"] = rotation
+                saved["gauge_matrix"] = rotation
                 saved["gauge_history"] = state["history"]
                 torch.save(saved, path)
 
