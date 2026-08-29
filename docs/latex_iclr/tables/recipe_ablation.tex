@@ -1,0 +1,23 @@
+% One row per element of the recipe. Emitted as analysis/table3_recipe_ablation.csv.
+\begin{table}[t]
+\centering
+\caption{\textbf{Recipe ablation: one design choice at a time.} Pair (c), the
+interface held at ours unless the row changes it, mean $\pm$ std over three
+seeds. ``Within noise'' means inside the seed band of the first row.}
+\label{tab:recipe-ablation}
+\small
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Row & Predicted & cos gap $\downarrow$ & Eff.\ rank & Avg.\ $\uparrow$ \\
+\midrule
+Ours & --- & \ph{--} & \ph{--} & \ph{--} \\
+\midrule
+Cosine $\rightarrow$ squared error & below ours & \ph{--} & \ph{--} & \ph{--} \\
+No contrastive term & lower rank and score & \ph{--} & \ph{--} & \ph{--} \\
+$+$ Gram term & within noise & \ph{--} & \ph{--} & \ph{--} \\
+No gauge (subspace only) & within noise & \ph{--} & \ph{--} & \ph{--} \\
+Gauge refit every epoch & within noise & \ph{--} & \ph{--} & \ph{--} \\
+No teacher (floor) & floor & \ph{--} & \ph{--} & \ph{--} \\
+\bottomrule
+\end{tabular}
+\end{table}

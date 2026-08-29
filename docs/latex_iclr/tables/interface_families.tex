@@ -1,0 +1,25 @@
+% One arm per interface family. Numbers are emitted by the audit notebook as
+% analysis/table2_interface_families.csv.
+\begin{table}[t]
+\centering
+\caption{\textbf{The interface decides.} One arm per interface family; same
+objective, corpus, initialisation and hyperparameters, only the interface
+changes. Pair (c), mean $\pm$ std over three seeds; random arms additionally
+averaged over three Haar draws. \emph{Distortion} is the angular distortion of
+the target against the full teacher, \emph{cos gap} is
+$1-\langle\mathbf{z},\boldsymbol{\tau}\rangle$ at the end of training, and
+\emph{eff.\ rank} the effective rank of the student's final embeddings.}
+\label{tab:interface-families}
+\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Interface & Retained energy & Distortion $\downarrow$ & cos gap $\downarrow$ & Eff.\ rank & Avg.\ $\uparrow$ \\
+\midrule
+Fixed principal subspace (ours) & \ph{--} & \ph{--} & \ph{--} & \ph{--} & \ph{--} \\
+Fixed random subspace & \ph{--} & \ph{--} & \ph{--} & \ph{--} & \ph{--} \\
+Learned teacher $\rightarrow$ student & --- & \ph{--} & \ph{--} & \ph{--} & \ph{--} \\
+Learned student $\rightarrow$ teacher & --- & --- & \ph{--} & \ph{--} & \ph{--} \\
+Per-step orthogonal re-alignment & \ph{--} & \ph{--} & \ph{--} & \ph{--} & \ph{--} \\
+\bottomrule
+\end{tabular}
+\end{table}

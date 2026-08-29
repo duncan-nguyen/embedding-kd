@@ -16,7 +16,7 @@ Why this sells at ICLR: (i) it reverses the direction the field is taking in 202
 
 Deadlines: abstract 2026-09-18, full 2026-09-25 (AoE). 9 pages, ≥3 seeds on every claim, mandatory AI-use disclosure.
 
-**Page budget (main text):** 3 tables (Table 1 main results, Table 2 interface families, Table 3 recipe ablation) and 3 figures (Figure 1 what a rank-$d_S$ image keeps, Figure 2 dissociation, Figure 3 geometry inheritance). Appendix: Table A1 student-init geometry, A2 inheritance metrics, A3 gauge, A4 Table 2 on the other two pairs, A5 sanity variants, appendix version of Table 1; Figures A1 gauge, A2 UMAP (illustrative).
+**Page budget (main text):** 3 tables (Table 1 main results, Table 2 interface families, Table 3 recipe ablation) and 3 figures (Figure 1 what a rank-$d_S$ image keeps, Figure 2 dissociation, Figure 3 geometry inheritance). Appendix: Table A1 student-init geometry, A2 inheritance metrics, A3 gauge, A4 Table 2 on the other two pairs, A5 sanity variants, appendix version of Table 1; Figures A1 gauge, A2 geometry-inheritance visual: Gram heatmaps under the teacher ordering + kNN-retention map on the teacher layout.
 
 ---
 
@@ -157,7 +157,7 @@ The hard part of cross-dimensional embedding distillation is the geometry of the
 A. Proofs (Props. 1–4; renormalisation lemma; JL constants).
 B. Target construction; student-init geometry (Table A1); gauge experiments (Figure A1, Table A3).
 C. Appendix version of Table 1 (per-task ± std, matched-protocol rows); Table 2 on the other two pairs (Table A4); sanity variants (Table A5).
-D. Geometry-inheritance metrics: definitions, probe set, probe-size sweep for k-NN (Table A2); UMAP illustration (Figure A2).
+D. Geometry-inheritance metrics: definitions, probe set, probe-size sweep for k-NN (Table A2); Figure A2 — Gram heatmaps of the same sentences ordered by the teacher, and a retention map (teacher 2-D layout, colour = per-sentence kNN@10 overlap); both rotation-invariant, no cross-space transform.
 E. Matched-hyperparameter protocol vs TALAS.
 F. AI-use disclosure.
 

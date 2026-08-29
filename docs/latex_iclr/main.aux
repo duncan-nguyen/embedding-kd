@@ -2,180 +2,38 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
-\citation{hinton2015distilling,reimers2020multilingual}
-\citation{xu2023distillcse,zhang2024jasper}
-\citation{truong2025emo}
-\citation{li2025ese,talas}
+\citation{schonemann1966procrustes}
+\citation{jing2022collapse,gao2021simcse}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \newlabel{sec:introduction}{{1}{1}{Introduction}{section.1}{}}
-\citation{chen2018neuralode,li2022odetransformer}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Related Work}{2}{section.2}\protected@file@percent }
-\newlabel{sec:motivation}{{2}{2}{Background and Related Work}{section.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Static Embedding Distillation}{2}{subsection.2.1}\protected@file@percent }
-\newlabel{sec:static-state-matching}{{2.1}{2}{Static Embedding Distillation}{subsection.2.1}{}}
-\newlabel{eq:endpoint-schematic}{{1}{2}{Static Embedding Distillation}{equation.2.1}{}}
-\newlabel{eq:static-layer-matching}{{2}{2}{Static Embedding Distillation}{equation.2.2}{}}
-\citation{reimers2020multilingual}
-\citation{xu2023distillcse,zhang2024jasper}
-\citation{truong2025emo}
-\citation{li2025ese,talas}
-\citation{chen2018neuralode,li2022odetransformer}
-\citation{huang2023diffkd,lipman2023flow,chen2024riemannian,shao2024fmkt}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Depth as Semantic Time}{3}{subsection.2.2}\protected@file@percent }
-\newlabel{sec:semantic-time}{{2.2}{3}{Depth as Semantic Time}{subsection.2.2}{}}
-\newlabel{eq:semantic-time}{{3}{3}{Depth as Semantic Time}{equation.2.3}{}}
-\newlabel{eq:general-semantic-flow}{{4}{3}{Depth as Semantic Time}{equation.2.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Related Distillation Paradigms}{3}{subsection.2.3}\protected@file@percent }
-\newlabel{sec:related-paradigms}{{2.3}{3}{Related Distillation Paradigms}{subsection.2.3}{}}
-\@writefile{toc}{\contentsline {paragraph}{Sentence-embedding distillation.}{3}{section*.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Layer-wise and geometric transfer.}{3}{section*.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Continuous-depth and flow-based transfer.}{3}{section*.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}GeoODE-KD: From Teacher Embeddings to Semantic Dynamics}{3}{section.3}\protected@file@percent }
-\newlabel{sec:geoode}{{3}{3}{GeoODE-KD: From Teacher Embeddings to Semantic Dynamics}{section.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Teacher Target Construction}{3}{subsection.3.1}\protected@file@percent }
-\newlabel{sec:teacher-space}{{3.1}{3}{Teacher Target Construction}{subsection.3.1}{}}
-\citation{schonemann1966procrustes}
-\newlabel{eq:native-teacher}{{6}{4}{Teacher Target Construction}{equation.3.6}{}}
-\newlabel{eq:gauge-alignment}{{7}{4}{Teacher Target Construction}{equation.3.7}{}}
-\newlabel{eq:projected-teacher}{{8}{4}{Teacher Target Construction}{equation.3.8}{}}
-\newlabel{eq:student-layer-embedding}{{9}{4}{Teacher Target Construction}{equation.3.9}{}}
-\newlabel{eq:native-teacher-gram}{{10}{4}{Teacher Target Construction}{equation.3.10}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Teacher-Conditioned Vector Field}{4}{subsection.3.2}\protected@file@percent }
-\newlabel{sec:vector-field}{{3.2}{4}{Teacher-Conditioned Vector Field}{subsection.3.2}{}}
-\newlabel{eq:semantic-potential}{{12}{4}{Teacher-Conditioned Vector Field}{equation.3.12}{}}
-\newlabel{eq:geometric-potential}{{13}{4}{Teacher-Conditioned Vector Field}{equation.3.13}{}}
-\newlabel{eq:teacher-potential}{{14}{4}{Teacher-Conditioned Vector Field}{equation.3.14}{}}
-\newlabel{eq:tangent-projection}{{15}{5}{Teacher-Conditioned Vector Field}{equation.3.15}{}}
-\newlabel{eq:sphere-log-map}{{16}{5}{Teacher-Conditioned Vector Field}{equation.3.16}{}}
-\newlabel{eq:semantic-vector-direction}{{17}{5}{Teacher-Conditioned Vector Field}{equation.3.17}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Finite-Horizon Depth Schedule}{5}{subsection.3.3}\protected@file@percent }
-\newlabel{sec:finite-horizon}{{3.3}{5}{Finite-Horizon Depth Schedule}{subsection.3.3}{}}
-\newlabel{eq:remaining-guidance}{{18}{5}{Finite-Horizon Depth Schedule}{equation.3.18}{}}
-\newlabel{eq:finite-horizon-flow}{{19}{5}{Finite-Horizon Depth Schedule}{equation.3.19}{}}
-\newlabel{eq:closed-form-contraction}{{20}{5}{Finite-Horizon Depth Schedule}{equation.3.20}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Layer-Wise Flow Supervision}{5}{subsection.3.4}\protected@file@percent }
-\newlabel{sec:flow-integrator}{{3.4}{5}{Layer-Wise Flow Supervision}{subsection.3.4}{}}
-\newlabel{eq:finite-step-fraction}{{21}{5}{Layer-Wise Flow Supervision}{equation.3.21}{}}
-\newlabel{eq:flow-predicted-state}{{22}{5}{Layer-Wise Flow Supervision}{equation.3.22}{}}
-\newlabel{eq:sphere-exp-map}{{23}{5}{Layer-Wise Flow Supervision}{equation.3.23}{}}
-\newlabel{eq:actual-velocity}{{24}{6}{Layer-Wise Flow Supervision}{equation.3.24}{}}
-\newlabel{eq:desired-velocity}{{25}{6}{Layer-Wise Flow Supervision}{equation.3.25}{}}
-\newlabel{eq:velocity-loss}{{26}{6}{Layer-Wise Flow Supervision}{equation.3.26}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Training Objective}{6}{subsection.3.5}\protected@file@percent }
-\newlabel{sec:objective-properties}{{3.5}{6}{Training Objective}{subsection.3.5}{}}
-\newlabel{eq:endpoint-objective}{{27}{6}{Training Objective}{equation.3.27}{}}
-\newlabel{eq:contrastive-objective}{{28}{6}{Training Objective}{equation.3.28}{}}
-\newlabel{eq:total-training-objective}{{29}{6}{Training Objective}{equation.3.29}{}}
-\@writefile{toc}{\contentsline {paragraph}{Properties of the ideal flow.}{6}{section*.4}\protected@file@percent }
-\newlabel{eq:energy-descent}{{30}{6}{Properties of the ideal flow}{equation.3.30}{}}
-\citation{zhang2024jasper}
-\citation{truong2025emo}
-\citation{talas}
-\@writefile{toc}{\contentsline {paragraph}{Training and inference.}{7}{section*.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{7}{section.4}\protected@file@percent }
-\newlabel{sec:experiments}{{4}{7}{Experiments}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Setup}{7}{subsection.4.1}\protected@file@percent }
-\newlabel{sec:exp-setup}{{4.1}{7}{Setup}{subsection.4.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{Teacher--student pairs.}{7}{section*.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Training corpus.}{7}{section*.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Optimization.}{7}{section*.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Reported configuration.}{7}{section*.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Baselines.}{7}{section*.10}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Evaluation.}{7}{section*.11}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Main downstream results across three teacher--student configurations. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Within each configuration, the best result among distillation methods is shown in bold and the second-best result is underlined; Teacher and Student base are excluded from this ranking. All distilled students are trained on the same 102{,}361 unlabeled sentences; the GeoODE-KD rows use the endpoint and contrastive terms ($\lambda _{\mathrm  {end}}=1$, $\lambda _{\mathrm  {ctr}}=0.5$, $\lambda _{\mathrm  {evel}}=0$). Avg.\ is the unweighted mean of the nine benchmark scores.}}{8}{table.1}\protected@file@percent }
-\newlabel{tab:main-results}{{1}{8}{Main downstream results across three teacher--student configurations. Classification datasets are evaluated with F1, pair-classification datasets with average precision (AP), and semantic textual similarity datasets with Spearman correlation. Higher is better. Within each configuration, the best result among distillation methods is shown in bold and the second-best result is underlined; Teacher and Student base are excluded from this ranking. All distilled students are trained on the same 102{,}361 unlabeled sentences; the GeoODE-KD rows use the endpoint and contrastive terms ($\lambda _{\mathrm {end}}=1$, $\lambda _{\mathrm {ctr}}=0.5$, $\lambda _{\mathrm {evel}}=0$). Avg.\ is the unweighted mean of the nine benchmark scores}{table.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Main Results}{8}{subsection.4.2}\protected@file@percent }
-\newlabel{sec:main-results}{{4.2}{8}{Main Results}{subsection.4.2}{}}
-\@writefile{toc}{\contentsline {paragraph}{Overlap between the corpus and two test splits.}{8}{section*.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{1}{section.2}\protected@file@percent }
+\newlabel{sec:related-work}{{2}{1}{Related Work}{section.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Method}{1}{section.3}\protected@file@percent }
+\newlabel{sec:method}{{3}{1}{Method}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Teacher Targets}{1}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:method-targets}{{3.1}{1}{Teacher Targets}{subsection.3.1}{}}
+\newlabel{eq:gauge-alignment}{{1}{1}{Teacher Targets}{equation.3.1}{}}
+\newlabel{eq:target}{{2}{1}{Teacher Targets}{equation.3.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Objective}{1}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:method-objective}{{3.2}{1}{Objective}{subsection.3.2}{}}
+\newlabel{eq:objective}{{3}{1}{Objective}{equation.3.3}{}}
 \bibdata{references/references}
-\bibcite{chen2024riemannian}{{1}{2024}{{Chen \& Lipman}}{{Chen and Lipman}}}
-\bibcite{chen2018neuralode}{{2}{2018}{{Chen et~al.}}{{Chen, Rubanova, Bettencourt, and Duvenaud}}}
-\bibcite{talas}{{3}{2026}{{Dao et~al.}}{{Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and Le}}}
-\bibcite{hinton2015distilling}{{4}{2015}{{Hinton et~al.}}{{Hinton, Vinyals, and Dean}}}
-\bibcite{huang2023diffkd}{{5}{2023}{{Huang et~al.}}{{Huang, Zhang, Zheng, You, Wang, Qian, and Xu}}}
-\bibcite{li2022odetransformer}{{6}{2022}{{Li et~al.}}{{Li, Du, Zhou, Jing, Zhou, Zeng, Xiao, Zhu, Liu, and Zhang}}}
-\bibcite{li2025ese}{{7}{2025}{{Li et~al.}}{{Li, Li, Li, Xie, and Li}}}
-\bibcite{lipman2023flow}{{8}{2023}{{Lipman et~al.}}{{Lipman, Chen, Ben-Hamu, Nickel, and Le}}}
-\bibcite{reimers2020multilingual}{{9}{2020}{{Reimers \& Gurevych}}{{Reimers and Gurevych}}}
-\bibcite{schonemann1966procrustes}{{10}{1966}{{Sch{\"o}nemann}}{{}}}
-\bibcite{shao2024fmkt}{{11}{2024}{{Shao et~al.}}{{Shao, Shen, Gong, Chen, and Dai}}}
-\bibcite{truong2025emo}{{12}{2025}{{Truong et~al.}}{{Truong, Vu, Vu, Nguyen, Ngo~Van, Nguyen, and Le}}}
-\bibcite{xu2023distillcse}{{13}{2023}{{Xu et~al.}}{{Xu, Shao, Chen, and Liu}}}
-\bibcite{zhang2024jasper}{{14}{2024}{{Zhang et~al.}}{{Zhang, Li, Zeng, and Wang}}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion and Limitations}{9}{section.5}\protected@file@percent }
-\newlabel{sec:discussion-limitations}{{5}{9}{Discussion and Limitations}{section.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{9}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{9}{Conclusion}{section.6}{}}
+\bibcite{gao2021simcse}{{1}{2021}{{Gao et~al.}}{{Gao, Yao, and Chen}}}
+\bibcite{jing2022collapse}{{2}{2022}{{Jing et~al.}}{{Jing, Vincent, LeCun, and Tian}}}
+\bibcite{schonemann1966procrustes}{{3}{1966}{{Sch{\"o}nemann}}{{}}}
 \bibstyle{template/iclr2027_conference}
-\@writefile{toc}{\contentsline {section}{\numberline {A}Mathematical Derivations and Proofs}{10}{appendix.A}\protected@file@percent }
-\newlabel{app:derivations}{{A}{10}{Mathematical Derivations and Proofs}{appendix.A}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {A.1}Riemannian Geometry and Vector Field Derivations}{10}{subsection.A.1}\protected@file@percent }
-\newlabel{app:riemannian-derivations}{{A.1}{10}{Riemannian Geometry and Vector Field Derivations}{subsection.A.1}{}}
-\newlabel{eq:app-product-tangent}{{32}{10}{Riemannian Geometry and Vector Field Derivations}{equation.A.32}{}}
-\newlabel{eq:app-batch-projection}{{33}{10}{Riemannian Geometry and Vector Field Derivations}{equation.A.33}{}}
-\@writefile{toc}{\contentsline {paragraph}{Point-wise semantic gradient.}{10}{section*.17}\protected@file@percent }
-\newlabel{eq:app-semantic-single-gradient}{{35}{10}{Point-wise semantic gradient}{equation.A.35}{}}
-\newlabel{eq:app-semantic-batch-gradient}{{36}{10}{Point-wise semantic gradient}{equation.A.36}{}}
-\newlabel{eq:app-log-map-norm}{{37}{10}{Point-wise semantic gradient}{equation.A.37}{}}
-\@writefile{toc}{\contentsline {paragraph}{Relational gradient.}{10}{section*.18}\protected@file@percent }
-\newlabel{eq:app-relational-differential}{{39}{10}{Relational gradient}{equation.A.39}{}}
-\newlabel{eq:app-relational-gradient}{{40}{10}{Relational gradient}{equation.A.40}{}}
-\newlabel{eq:app-total-riemannian-gradient}{{41}{10}{Relational gradient}{equation.A.41}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {A.2}Finite-Horizon Flow Derivation}{11}{subsection.A.2}\protected@file@percent }
-\newlabel{app:finite-horizon-derivation}{{A.2}{11}{Finite-Horizon Flow Derivation}{subsection.A.2}{}}
-\newlabel{eq:app-auxiliary-flow}{{42}{11}{Finite-Horizon Flow Derivation}{equation.A.42}{}}
-\newlabel{eq:app-time-change}{{43}{11}{Finite-Horizon Flow Derivation}{equation.A.43}{}}
-\newlabel{eq:app-warped-time}{{45}{11}{Finite-Horizon Flow Derivation}{equation.A.45}{}}
-\@writefile{toc}{\contentsline {paragraph}{Schedules.}{11}{section*.19}\protected@file@percent }
-\newlabel{eq:app-power-remaining-mass}{{47}{11}{Schedules}{equation.A.47}{}}
-\@writefile{toc}{\contentsline {paragraph}{Discrete step fraction.}{11}{section*.20}\protected@file@percent }
-\newlabel{eq:app-warped-layer-interval}{{48}{11}{Discrete step fraction}{equation.A.48}{}}
-\newlabel{eq:app-step-fraction}{{49}{11}{Discrete step fraction}{equation.A.49}{}}
-\newlabel{eq:app-linear-step-fraction}{{50}{11}{Discrete step fraction}{equation.A.50}{}}
-\newlabel{eq:app-exp-map-norm}{{51}{11}{Discrete step fraction}{equation.A.51}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {A.3}Proofs of the Flow Properties}{12}{subsection.A.3}\protected@file@percent }
-\newlabel{app:proofs}{{A.3}{12}{Proofs of the Flow Properties}{subsection.A.3}{}}
-\@writefile{toc}{\contentsline {paragraph}{Proposition 1 (norm preservation).}{12}{section*.21}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Proof.}{12}{section*.22}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Proposition 2 (energy descent).}{12}{section*.23}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Proof.}{12}{section*.24}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Corollary 1 (point-wise geodesic contraction).}{12}{section*.25}\protected@file@percent }
-\newlabel{eq:app-pointwise-contraction}{{54}{12}{Corollary 1 (point-wise geodesic contraction)}{equation.A.54}{}}
-\@writefile{toc}{\contentsline {paragraph}{Proof.}{12}{section*.26}\protected@file@percent }
-\newlabel{eq:app-first-layer-contraction}{{57}{12}{Proof}{equation.A.57}{}}
-\newlabel{eq:app-cosine-monotonicity}{{58}{12}{Proof}{equation.A.58}{}}
-\@writefile{toc}{\contentsline {paragraph}{Corollary 2 (exact sampled profile).}{13}{section*.27}\protected@file@percent }
-\newlabel{eq:app-slerp-distance}{{60}{13}{Corollary 2 (exact sampled profile)}{equation.A.60}{}}
-\newlabel{eq:app-discrete-contraction}{{61}{13}{Corollary 2 (exact sampled profile)}{equation.A.61}{}}
-\@writefile{toc}{\contentsline {paragraph}{Scope of the guarantees.}{13}{section*.28}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {B}Target Construction and Gauge Alignment}{13}{appendix.B}\protected@file@percent }
-\newlabel{app:target-construction}{{B}{13}{Target Construction and Gauge Alignment}{appendix.B}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.1}PCA Initialization}{13}{subsection.B.1}\protected@file@percent }
-\newlabel{app:pca}{{B.1}{13}{PCA Initialization}{subsection.B.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.2}Gram-Consistent Target Fitting}{13}{subsection.B.2}\protected@file@percent }
-\newlabel{app:gram-fitting}{{B.2}{13}{Gram-Consistent Target Fitting}{subsection.B.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.3}Orthogonal Gauge Alignment}{13}{subsection.B.3}\protected@file@percent }
-\newlabel{app:gauge-alignment}{{B.3}{13}{Orthogonal Gauge Alignment}{subsection.B.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {C}Training Algorithm and Implementation Details}{13}{appendix.C}\protected@file@percent }
-\newlabel{app:implementation}{{C}{13}{Training Algorithm and Implementation Details}{appendix.C}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {C.1}Hyperparameters}{13}{subsection.C.1}\protected@file@percent }
-\newlabel{app:hyperparameters}{{C.1}{13}{Hyperparameters}{subsection.C.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {C.2}Cost}{13}{subsection.C.2}\protected@file@percent }
-\newlabel{app:cost}{{C.2}{13}{Cost}{subsection.C.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {C.3}Hyperparameter matching across methods}{13}{subsection.C.3}\protected@file@percent }
-\newlabel{app:hp-matching}{{C.3}{13}{Hyperparameter matching across methods}{subsection.C.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {D}Datasets, Baselines, and Evaluation Protocol}{13}{appendix.D}\protected@file@percent }
-\newlabel{app:evaluation}{{D}{13}{Datasets, Baselines, and Evaluation Protocol}{appendix.D}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {D.1}Benchmarks}{13}{subsection.D.1}\protected@file@percent }
-\newlabel{app:benchmarks}{{D.1}{13}{Benchmarks}{subsection.D.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Hyperparameters of the reported runs. The objective block gives the configuration used for every GeoODE-KD row in Table~\ref {tab:main-results}.}}{14}{table.2}\protected@file@percent }
-\newlabel{tab:hyperparameters}{{2}{14}{Hyperparameters of the reported runs. The objective block gives the configuration used for every GeoODE-KD row in Table~\ref {tab:main-results}}{table.2}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Evaluation benchmarks. The probe column gives the number of examples used to fit the logistic-regression classifier; pair and STS benchmarks need no fitting. Corpus is the number of sentences the benchmark contributes to the 102{,}361-sentence distillation corpus.}}{14}{table.3}\protected@file@percent }
-\newlabel{tab:benchmarks}{{3}{14}{Evaluation benchmarks. The probe column gives the number of examples used to fit the logistic-regression classifier; pair and STS benchmarks need no fitting. Corpus is the number of sentences the benchmark contributes to the 102{,}361-sentence distillation corpus}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {D.2}Protocol}{14}{subsection.D.2}\protected@file@percent }
-\newlabel{app:protocol}{{D.2}{14}{Protocol}{subsection.D.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {E}Additional Results and Depth Diagnostics}{15}{appendix.E}\protected@file@percent }
-\newlabel{app:additional-results}{{E}{15}{Additional Results and Depth Diagnostics}{appendix.E}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {F}Extended Ablations and Sensitivity Analysis}{15}{appendix.F}\protected@file@percent }
-\newlabel{app:extended-ablations}{{F}{15}{Extended Ablations and Sensitivity Analysis}{appendix.F}{}}
-\gdef \@abspage@last{15}
+\@writefile{toc}{\contentsline {paragraph}{What the method does not contain.}{2}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{2}{section.4}\protected@file@percent }
+\newlabel{sec:experiments}{{4}{2}{Experiments}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Setup}{2}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:exp-setup}{{4.1}{2}{Setup}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Teacher--student pairs.}{2}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Training corpus.}{2}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Evaluation.}{2}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Analysis}{2}{section.5}\protected@file@percent }
+\newlabel{sec:analysis}{{5}{2}{Analysis}{section.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{2}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{2}{Conclusion}{section.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces  Experimental results on nine datasets. Avg.\ is the unweighted mean of the nine benchmark scores.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:main-results}{{1}{3}{Experimental results on nine datasets. Avg.\ is the unweighted mean of the nine benchmark scores}{table.1}{}}
+\gdef \@abspage@last{3}

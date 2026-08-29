@@ -52,10 +52,12 @@ class GeoODEKD(nn.Module):
         lambda_ctr: weight of the contrastive regulariser L_ctr (Eq. 37).
         contrastive_temperature: tau_c of Eq. (37).
         endpoint_loss: ``"cosine"`` is Eq. (36). ``"mse"`` is the
-            sentence-transformers (<= v5.4) distillation baseline: mean squared error
+            sentence-transformers (<= v5.4) distillation baseline: squared error
             between the *unnormalised* pooled final state and the projected teacher
             target exactly as delivered (the distiller then skips the final norm(.)
-            of Eq. 8). It is a baseline, not part of the recipe.
+            of Eq. 8), summed over dimensions and averaged over the batch so that it
+            sits on the scale of the cosine term. It is a baseline, not part of the
+            recipe.
         target_projector: optional trainable map standing where the frozen ``P_T``
             would be (:class:`src.target_projector.LearnedTargetProjector`). It is
             the learned-projector *baseline*, not part of the recipe: given one, the
@@ -139,10 +141,15 @@ class GeoODEKD(nn.Module):
         """Squared-error endpoint of the sentence-transformers baseline.
 
         Both arguments are read as they come: no normalisation on either side, so
-        the student is also asked to reproduce the target's norm. Mean over all
-        elements, as ``nn.MSELoss`` does.
+        the student is also asked to reproduce the target's norm. The reduction is
+        the per-sample squared distance ``||z_i - tau_i||^2`` averaged over the
+        batch (``d_S x nn.MSELoss``), not the mean over all elements: on the sphere
+        ``||z - tau||^2 = 2 (1 - cos)``, so this keeps the term on the same scale as
+        the cosine endpoint and ``lambda_ctr`` means the same thing in both rows of
+        the recipe ablation. With ``nn.MSELoss``'s element mean the term is ``d_S``
+        times smaller and the InfoNCE regulariser silently takes over the run.
         """
-        return F.mse_loss(raw_final_state, teacher)
+        return ((raw_final_state - teacher) ** 2).sum(dim=-1).mean()
 
     @staticmethod
     def batch_procrustes(final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:

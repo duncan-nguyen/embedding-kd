@@ -49,50 +49,6 @@
   year   = {2026}
 }
 
-@inproceedings{chen2018neuralode,
-  title     = {Neural Ordinary Differential Equations},
-  author    = {Chen, Ricky T. Q. and Rubanova, Yulia and Bettencourt, Jesse and Duvenaud, David},
-  booktitle = {Advances in Neural Information Processing Systems},
-  volume    = {31},
-  year      = {2018}
-}
-
-@inproceedings{li2022odetransformer,
-  title     = {{ODE} Transformer: An Ordinary Differential Equation-Inspired Model for Sequence Generation},
-  author    = {Li, Bei and Du, Quan and Zhou, Tao and Jing, Yi and Zhou, Shuhan and Zeng, Xin and Xiao, Tong and Zhu, Jingbo and Liu, Xuebo and Zhang, Min},
-  booktitle = {Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics},
-  pages     = {8335--8351},
-  year      = {2022}
-}
-
-@inproceedings{lipman2023flow,
-  title     = {Flow Matching for Generative Modeling},
-  author    = {Lipman, Yaron and Chen, Ricky T. Q. and Ben-Hamu, Heli and Nickel, Maximilian and Le, Matthew},
-  booktitle = {International Conference on Learning Representations},
-  year      = {2023}
-}
-
-@inproceedings{huang2023diffkd,
-  title     = {Knowledge Diffusion for Distillation},
-  author    = {Huang, Tao and Zhang, Yuan and Zheng, Mingkai and You, Shan and Wang, Fei and Qian, Chen and Xu, Chang},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2023}
-}
-
-@article{shao2024fmkt,
-  title   = {Precise Knowledge Transfer via Flow Matching},
-  author  = {Shao, Shitong and Shen, Zhiqiang and Gong, Linrui and Chen, Huanran and Dai, Xu},
-  journal = {arXiv preprint arXiv:2402.02012},
-  year    = {2024}
-}
-
-@inproceedings{chen2024riemannian,
-  title     = {Flow Matching on General Geometries},
-  author    = {Chen, Ricky T. Q. and Lipman, Yaron},
-  booktitle = {International Conference on Learning Representations},
-  year      = {2024}
-}
-
 @article{schonemann1966procrustes,
   title   = {A Generalized Solution of the Orthogonal {P}rocrustes Problem},
   author  = {Sch{\"o}nemann, Peter H.},
@@ -101,4 +57,262 @@
   number  = {1},
   pages   = {1--10},
   year    = {1966}
+}
+
+% =====================================================================
+% Entries added for the interface analysis. Every arXiv identifier below
+% was verified against its abstract page; author lists and venues marked
+% "% VERIFY" were taken from search results rather than from the paper
+% itself and must be checked before the camera-ready version.
+% =====================================================================
+
+% --- 2025-2026 embedding-distillation systems ------------------------
+@misc{leaf,
+  title        = {{LEAF}: Knowledge Distillation of Text Embedding Models with Teacher-Aligned Representations},
+  author       = {Vujanic, Robin and Rueckstiess, Thomas},
+  howpublished = {arXiv:2509.12539},
+  year         = {2025}
+}
+@inproceedings{hpd,
+  title     = {Compressing Sentence Representation for Semantic Retrieval via Homomorphic Projective Distillation},
+  author    = {Zhao, Xuandong and Yu, Zhiguo and Wu, Ming and Li, Lei},
+  booktitle = {Findings of the Association for Computational Linguistics: ACL 2022},
+  year      = {2022}
+}
+% VERIFY author list against arXiv:2506.04624.
+@inproceedings{wada2025static,
+  title     = {Static Word Embeddings for Sentence Semantic Representation},
+  author    = {Wada, Takashi and others},
+  booktitle = {Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing},
+  year      = {2025}
+}
+
+% --- projectors, shortcuts, frozen coordinate systems ----------------
+% VERIFY author list against arXiv:2509.25253.
+@misc{bhattarai2025shortcut,
+  title        = {On the Limitations of Projected Feature Matching in Knowledge Distillation},
+  author       = {Bhattarai, Binod and others},
+  howpublished = {arXiv:2509.25253},
+  year         = {2025}
+}
+@inproceedings{miles2024projector,
+  title     = {Understanding the Role of the Projector in Knowledge Distillation},
+  author    = {Miles, Roy and Mikolajczyk, Krystian},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  year      = {2024}
+}
+% VERIFY author list against arXiv:2310.17183.
+@misc{chen2023projector,
+  title        = {On the Effects of Projectors in Knowledge Distillation},
+  author       = {Chen, Yudong and others},
+  howpublished = {arXiv:2310.17183},
+  year         = {2023}
+}
+@inproceedings{vkd2024,
+  title     = {{VkD}: Improving Knowledge Distillation Using Orthogonal Projections},
+  author    = {Miles, Roy and Elezi, Ismail and Deng, Jiankang},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year      = {2024}
+}
+% VERIFY author list against arXiv:2412.09388.
+@inproceedings{tcs,
+  title     = {All You Need in Knowledge Distillation Is a Tailored Coordinate System},
+  author    = {Zhou, Junjie and Zhu, Ke and Wu, Jianxin},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  year      = {2025}
+}
+% VERIFY author list against arXiv:2409.20449.
+@misc{lelp,
+  title        = {Low-Rank Knowledge Distillation with Linear Embedding Label Projection},
+  author       = {Loo, Noel and others},
+  howpublished = {arXiv:2409.20449},
+  year         = {2024}
+}
+% VERIFY author list and venue against arXiv:2607.03572.
+@misc{han2026equivalence,
+  title        = {Teacher Supervision over Representation Equivalence Classes},
+  author       = {Han, Xu and others},
+  howpublished = {arXiv:2607.03572},
+  year         = {2026}
+}
+
+% --- relational distillation -----------------------------------------
+@inproceedings{park2019rkd,
+  title     = {Relational Knowledge Distillation},
+  author    = {Park, Wonpyo and Kim, Dongju and Lu, Yan and Cho, Minsu},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year      = {2019}
+}
+@inproceedings{tung2019similarity,
+  title     = {Similarity-Preserving Knowledge Distillation},
+  author    = {Tung, Frederick and Mori, Greg},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  year      = {2019}
+}
+@inproceedings{tian2020crd,
+  title     = {Contrastive Representation Distillation},
+  author    = {Tian, Yonglong and Krishnan, Dilip and Isola, Phillip},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2020}
+}
+% VERIFY author list against arXiv:2409.13939.
+@inproceedings{spacesimilarity2024,
+  title     = {Understanding the Role of Space Similarity in Feature Distillation},
+  author    = {Miles, Roy and others},
+  booktitle = {Proceedings of the European Conference on Computer Vision},
+  year      = {2024}
+}
+% VERIFY author list against arXiv:2502.20760.
+@inproceedings{vrm2025,
+  title     = {{VRM}: Knowledge Distillation via Virtual Relation Matching},
+  author    = {Jiang, Weijia and others},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  year      = {2025}
+}
+
+% --- representation similarity ---------------------------------------
+@inproceedings{kornblith2019cka,
+  title     = {Similarity of Neural Network Representations Revisited},
+  author    = {Kornblith, Simon and Norouzi, Mohammad and Lee, Honglak and Hinton, Geoffrey},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2019}
+}
+@inproceedings{williams2021shape,
+  title     = {Generalized Shape Metrics on Neural Representations},
+  author    = {Williams, Alex H. and Kunz, Erin and Kornblith, Simon and Linderman, Scott W.},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2021}
+}
+% VERIFY author list against arXiv:2510.13406.
+@misc{maystre2025procrustes,
+  title        = {Bounds on the Procrustes Alignment of Approximately Isometric Embeddings},
+  author       = {Maystre, Lucas and others},
+  howpublished = {arXiv:2510.13406},
+  year         = {2025}
+}
+
+% --- geometry of embedding spaces ------------------------------------
+@inproceedings{ethayarajh2019contextual,
+  title     = {How Contextual Are Contextualized Word Representations? Comparing the Geometry of {BERT}, {ELMo}, and {GPT-2} Embeddings},
+  author    = {Ethayarajh, Kawin},
+  booktitle = {Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing},
+  year      = {2019}
+}
+@inproceedings{godey2024anisotropy,
+  title     = {Anisotropy Is Inherent to Self-Attention in Transformers},
+  author    = {Godey, Nathan and de la Clergerie, {\'E}ric and Sagot, Beno{\^i}t},
+  booktitle = {Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics},
+  year      = {2024}
+}
+@inproceedings{mu2018allbutthetop,
+  title     = {All-but-the-Top: Simple and Effective Postprocessing for Word Representations},
+  author    = {Mu, Jiaqi and Viswanath, Pramod},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2018}
+}
+@misc{su2021whitening,
+  title        = {Whitening Sentence Representations for Better Semantics and Faster Retrieval},
+  author       = {Su, Jianlin and Cao, Jiarun and Liu, Weijie and Ou, Yangyiwen},
+  howpublished = {arXiv:2103.15316},
+  year         = {2021}
+}
+@inproceedings{jing2022collapse,
+  title     = {Understanding Dimensional Collapse in Contrastive Self-Supervised Learning},
+  author    = {Jing, Li and Vincent, Pascal and LeCun, Yann and Tian, Yuandong},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2022}
+}
+@inproceedings{gao2021simcse,
+  title     = {{SimCSE}: Simple Contrastive Learning of Sentence Embeddings},
+  author    = {Gao, Tianyu and Yao, Xingcheng and Chen, Danqi},
+  booktitle = {Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+  year      = {2021}
+}
+@inproceedings{tsukagoshi2025redundancy,
+  title     = {Which Dimensions of Prompt-Based Text Embeddings Actually Matter?},
+  author    = {Tsukagoshi, Hayato and Sasano, Ryohei},
+  booktitle = {Findings of the Association for Computational Linguistics: ACL 2025},
+  year      = {2025}
+}
+% VERIFY author list against arXiv:2606.01074.
+@misc{kisako2026compress,
+  title        = {Compressing Text Embeddings: Dimensionality Reduction Meets Quantization},
+  author       = {Kisako, Yuki and others},
+  howpublished = {arXiv:2606.01074},
+  year         = {2026}
+}
+% VERIFY author list against arXiv:2602.20433.
+@misc{kulkarni2026rank,
+  title        = {Effective Rank Tracks Training Configuration, Not Model Quality},
+  author       = {Kulkarni, Atharva and others},
+  howpublished = {arXiv:2602.20433},
+  year         = {2026}
+}
+% VERIFY author list against arXiv:2509.01606.
+@misc{nastase2025geometry,
+  title        = {Is Embedding Geometry Predictive of Task Performance?},
+  author       = {Nastase, Vivi and Merlo, Paola},
+  howpublished = {arXiv:2509.01606},
+  year         = {2025}
+}
+@inproceedings{huh2024platonic,
+  title     = {The Platonic Representation Hypothesis},
+  author    = {Huh, Minyoung and Cheung, Brian and Wang, Tongzhou and Isola, Phillip},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2024}
+}
+% VERIFY author list against arXiv:2505.12540.
+@misc{jha2025vec2vec,
+  title        = {Harnessing the Universal Geometry of Embeddings},
+  author       = {Jha, Rishi and others},
+  howpublished = {arXiv:2505.12540},
+  year         = {2025}
+}
+% VERIFY author list against arXiv:2605.22202.
+@misc{structureretention2026,
+  title        = {Structure Retention Predicts Embedding Model Performance},
+  author       = {{Anonymous}},
+  howpublished = {arXiv:2605.22202},
+  year         = {2026}
+}
+% VERIFY author list against arXiv:2604.18572.
+@misc{platoscave2026,
+  title        = {Back into Plato's Cave: Representational Alignment at Scale},
+  author       = {{Anonymous}},
+  howpublished = {arXiv:2604.18572},
+  year         = {2026}
+}
+
+% --- layer selection --------------------------------------------------
+@inproceedings{ko2023revisiting,
+  title     = {Revisiting Intermediate Layer Distillation for Compressing Language Models: An Overfitting Perspective},
+  author    = {Ko, Jongwoo and Park, Seungjoon and Jeong, Minchan and Hong, Sukjin and Ahn, Euijai and Chang, Du-Seong and Yun, Se-Young},
+  booktitle = {Findings of the Association for Computational Linguistics: EACL 2023},
+  year      = {2023}
+}
+% VERIFY author list against arXiv:2502.04499.
+@misc{kim2025layerselection,
+  title        = {The Layer-Selection Strategy Does Not Matter (Much) in Intermediate-Layer Distillation},
+  author       = {{Anonymous}},
+  howpublished = {arXiv:2502.04499},
+  year         = {2025}
+}
+
+% --- random projection ------------------------------------------------
+@article{johnson1984extensions,
+  title   = {Extensions of {L}ipschitz Mappings into a {H}ilbert Space},
+  author  = {Johnson, William B. and Lindenstrauss, Joram},
+  journal = {Contemporary Mathematics},
+  volume  = {26},
+  pages   = {189--206},
+  year    = {1984}
+}
+@article{dasgupta2003elementary,
+  title   = {An Elementary Proof of a Theorem of {J}ohnson and {L}indenstrauss},
+  author  = {Dasgupta, Sanjoy and Gupta, Anupam},
+  journal = {Random Structures \& Algorithms},
+  volume  = {22},
+  number  = {1},
+  pages   = {60--65},
+  year    = {2003}
 }

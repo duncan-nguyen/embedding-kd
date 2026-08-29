@@ -140,7 +140,9 @@ def parse_args():
         help='GeoODE-KD: form of the endpoint term. "cosine" is the recipe; "mse" is '
              'the sentence-transformers <= v5.4 baseline (squared error between the '
              'unnormalised student state and the projected, un-renormalised teacher '
-             'target). Combine with --lambda_ctr 0 --no-gauge_align for PCA + MSE. '
+             'target; per-sample sum over dimensions, batch mean, so it is on the '
+             'scale of the cosine term). Combine with --lambda_ctr 0 --no-gauge_align '
+             'for the pure PCA + MSE recipe. '
              '"procrustes" re-solves an orthogonal alignment of the batch every step '
              '(per-step re-alignment control)'
     )

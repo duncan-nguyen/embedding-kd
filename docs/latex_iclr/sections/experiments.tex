@@ -13,55 +13,15 @@ BERT-base (109M, $d_S=768$, 12 layers), the capacity-gap setting;
 MiniLMv2-L6-H768 (66M, $d_S=768$, 6 layers), a different teacher family;
 (c) Qwen3-Embedding-0.6B ($d_T=1024$, last-token pooling) $\rightarrow$
 MiniLMv2-L6-H384 (22M, $d_S=384$, 6 layers), the compact-student setting.
-In every pair $d_T>d_S$, so the fixed map $P_T=P_{\mathrm{PCA}}R^\star$ of
-Eq.~\ref{eq:projected-teacher} is required.
 
 \paragraph{Training corpus.}
 All methods are distilled on the same corpus of \textbf{102{,}361 unlabeled
 sentences}, sampled once from the training splits of the nine evaluation
-benchmarks (SciTail 23{,}795; Tweet 23{,}726; Emotion 15{,}956; STS-B 9{,}196;
-Banking77 9{,}003; MRPC 7{,}052; WiC 6{,}333; SICK 4{,}802; STS12 2{,}498) and
+benchmarks (SciTail; Tweet; Emotion; STS-B;
+Banking77; MRPC; WiC; SICK; STS12) and
 fixed across every run in Table~\ref{tab:main-results}. Only raw text is read:
 no label, pair annotation, or similarity score enters any objective, so the
-training signal is unsupervised apart from the teacher. The teacher is run once
-over the corpus before training and its $102{,}361\times d_T$ normalized output
-embeddings are cached; no teacher hidden state, attention map, or forward pass
-is used during optimization.
-
-\paragraph{Optimization.}
-Students are trained for 5 epochs with AdamW under mixed precision, a cosine
-schedule with $6\%$ warmup decaying to $2\times10^{-6}$, a maximum sequence
-length of 256 tokens, and seed 42. Pooling is CLS at every depth, which matches
-the pooling used by the evaluation code, so the supervised endpoint is exactly
-the embedding that is scored. Per-pair learning rates and batch sizes are given
-in Appendix~\ref{app:implementation}.
-
-\paragraph{Reported configuration.}
-The rows labeled GeoODE-KD in Table~\ref{tab:main-results} use the endpoint and
-contrastive terms of Eq.~\ref{eq:total-training-objective} with
-$\lambda_{\mathrm{end}}=1$, $\lambda_{\mathrm{ctr}}=0.5$, and
-$\lambda_{\mathrm{evel}}=0$; the contrastive temperature is $\tau_c=0.05$ and
-the second view is an independent dropout mask. The target map is fitted once
-before training --- PCA to $d_S$ on the cache, then the Procrustes rotation
-$R^\star$ of Eq.~\ref{eq:gauge-alignment} estimated on 16{,}384 corpus
-sentences against the untrained student --- and both factors are frozen for the
-whole run. $\lambda_{\mathrm{ctr}}$ is therefore the only tuned weight, and no
-parameter is added to the student at any point.
-% TODO: report the lambda_evel > 0 configuration here or in the ablation
-% appendix once its runs on all three pairs are complete.
-
-\paragraph{Baselines.}
-We compare against Stella-style multi-dimension output distillation
-\citep{zhang2024jasper}, EMO's optimal-transport embedding objective
-\citep{truong2025emo}, TALAS multi-layer teacher anchoring \citep{talas}, and
-two cross-tokenizer transfer methods, CDM (contextual dynamic mapping) and DSKD
-(dual-space knowledge distillation).
-% TODO: add bib entries for CDM and DSKD.
-Each baseline follows its own published recipe, including TALAS's SAM
-optimizer, which we leave in place rather than substituting AdamW. The
-\emph{Teacher} row scores the teacher embeddings directly and the \emph{Student
-base} row scores the student checkpoint before distillation; both bound the
-range a distillation method can move within.
+training signal is unsupervised apart from the teacher.
 
 \paragraph{Evaluation.}
 We score frozen student embeddings on nine benchmarks in three families. For
@@ -74,37 +34,3 @@ mean of the nine primary scores. Appendix~\ref{app:evaluation} gives the split
 sizes and the threshold protocol.
 
 \input{tables/main_results}
-
-\subsection{Main Results}
-\label{sec:main-results}
-
-Table~\ref{tab:main-results} reports the three configurations. On both MiniLM
-students the method is the strongest of the six on the average and on eight of
-nine individual benchmarks (all but WiC): it reaches \textbf{78.29} against
-76.14 for TALAS on pair (b) ($+2.15$) and \textbf{77.14} against 74.14 on pair (c) ($+3.00$), while
-the best non-anchoring baseline stays near 71.9 and 69.2 respectively. On pair
-(a), the capacity-gap setting, it reaches 79.69 and places second behind TALAS
-(80.46, $-0.77$) while remaining $2.34$ points above the strongest remaining
-baseline. Relative to the teacher, the distilled students recover $98.1\%$,
-$98.2\%$, and $97.3\%$ of the teacher average on (a), (b), and (c), starting
-from student checkpoints at $54.36$, $56.35$, and $52.60$.
-
-The per-task pattern is consistent across pairs. The gains concentrate on STS
-and on the classification probes --- on pair (c), $+5.60$ SICK, $+2.53$ STS12,
-and $+2.77$ STS-B over TALAS, with $+4.77$ Banking77 and $+6.66$ Emotion --- and
-the one family where the method does not lead is WiC, where the
-projection-based baselines score $68.5$--$69.8$ against $63.5$--$67.0$ here.
-The same trade-off appears in pair (a), where the residual gap to TALAS comes
-almost entirely from STS12 ($-1.76$) and STS-B ($-2.30$); on SICK and Tweet the
-ordering reverses.
-
-\paragraph{Overlap between the corpus and two test splits.}
-Because the corpus is sampled from benchmark training splits, some test
-sentences recur in it as raw text: measured by exact match, $74.5\%$ of SICK
-test sentences and $21.2\%$ of STS-B test sentences appear in the corpus, while
-the remaining seven splits are at or below $9\%$ and STS12 is clean. No labels
-are involved, but the two affected scores partly measure teacher agreement on
-memorized text. Dropping SICK and STS-B leaves the conclusions unchanged: the
-seven-task average on pair (c) is $77.05$ for our configuration against $74.39$
-for TALAS ($+2.66$), on pair (b) $77.92$ against $75.82$ ($+2.10$), and on pair
-(a) $79.25$ against $79.98$ ($-0.73$).

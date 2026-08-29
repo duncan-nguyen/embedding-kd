@@ -11,12 +11,19 @@
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{booktabs}
 \usepackage{multirow}
-\usepackage{algorithm}
-\usepackage{algpseudocode}
 \usepackage{hyperref}
 \usepackage{url}
 
-\title{GeoODE-KD: Distilling Sentence Embeddings as Teacher-Guided Geometric Dynamics}
+% Numbers still waiting on a run print in brackets and in bold, so an unfilled
+% cell is impossible to miss in the compiled PDF.
+\newcommand{\ph}[1]{\textbf{[#1]}}
+% Sections that are still an outline print their plan as a short italic list, so
+% scaffolding is never mistaken for prose.
+\newenvironment{outline}%
+  {\begingroup\small\itshape\begin{itemize}\setlength{\itemsep}{1pt}}%
+  {\end{itemize}\endgroup}
+
+\title{Aligned, Not Adapted: What a Student Inherits from Its Teacher's Geometry}
 
 % Authors must remain hidden while \iclrfinalcopy is commented out.
 \author{Anonymous Authors}
@@ -29,23 +36,13 @@
 
 \input{sections/abstract}
 \input{sections/introduction}
-\input{sections/motivation}
+\input{sections/related_work}
 \input{sections/method}
 \input{sections/experiments}
-\input{sections/discussion}
+\input{sections/analysis}
 \input{sections/conclusion}
-\input{sections/statements}
 
 \bibliography{references/references}
 \bibliographystyle{template/iclr2027_conference}
-
-\appendix
-
-\input{appendices/derivations}
-\input{appendices/target_construction}
-\input{appendices/implementation}
-\input{appendices/evaluation}
-\input{appendices/additional_results}
-\input{appendices/ablations}
 
 \end{document}

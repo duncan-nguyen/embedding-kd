@@ -263,8 +263,10 @@ def test_both_active_weights_move_the_objective():
 
 
 def test_mse_endpoint_regresses_the_raw_state_onto_the_raw_target():
-    """The MSE baseline reads both sides unnormalised and is nn.MSELoss over all
-    elements; the cosine diagnostics keep reporting on the normalised copies."""
+    """The MSE baseline reads both sides unnormalised; the reduction is the
+    per-sample squared distance averaged over the batch (d_S x nn.MSELoss), so the
+    term is on the scale of the cosine endpoint; the cosine diagnostics keep
+    reporting on the normalised copies."""
     criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0, endpoint_loss="mse")
     batch, dim, tokens, layers = 3, 6, 4, 2
     generator = torch.Generator().manual_seed(7)
@@ -276,7 +278,8 @@ def test_mse_endpoint_regresses_the_raw_state_onto_the_raw_target():
     total, metrics = criterion(hidden_states=hidden_states, teacher=teacher)
 
     raw_final = hidden_states[-1][:, 0, :]
-    expected = torch.nn.functional.mse_loss(raw_final, teacher)
+    expected = ((raw_final - teacher) ** 2).sum(dim=-1).mean()
+    assert float(expected) == pytest.approx(dim * float(torch.nn.functional.mse_loss(raw_final, teacher)), rel=1e-5)
     assert float(total) == pytest.approx(float(expected), rel=1e-5)
     assert metrics["loss_end"] == pytest.approx(float(expected), rel=1e-5)
     unit_final = torch.nn.functional.normalize(raw_final, dim=-1)
