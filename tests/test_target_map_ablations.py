@@ -411,7 +411,6 @@ def test_every_planned_cell_parses_into_the_arm_it_names(grid):
         if gauge == "random":
             assert config.gauge_random_seed == cell["draw"]
         # The objective is held fixed across the grid: only the map varies.
-        assert config.lambda_vel == args.lambda_vel
         assert config.lambda_ctr == args.lambda_ctr
 
 
@@ -517,7 +516,7 @@ def _run_notebook_setup(tmp_path, **overrides):
     """Execute the config / command-building / ablation-plan cells only.
 
     Cells 2 and 3 clone the repo and check the GPU, so what they define is stubbed
-    instead. Nothing here trains: cell 4 and cell 9 only build command lists.
+    instead. Nothing here trains: cell 4 and cell 8 only build command lists.
     """
     namespace = {"__name__": "__nb__"}
     exec(_notebook_cell("# 1. "), namespace)
@@ -537,7 +536,7 @@ def _run_notebook_setup(tmp_path, **overrides):
         }
     )
     exec(_notebook_cell("# 4. "), namespace)
-    exec(_notebook_cell("# 9. "), namespace)
+    exec(_notebook_cell("# 8. "), namespace)
     return namespace
 
 
@@ -588,7 +587,6 @@ def test_the_notebook_holds_the_objective_fixed_across_the_grid(tmp_path, capsys
 
     for command in namespace["ABLATION_COMMANDS"].values():
         config = _config_from(command)
-        assert config.lambda_vel == namespace["ABLATION_LAMBDA_VEL"]
         assert config.lambda_ctr == namespace["ABLATION_LAMBDA_CTR"]
 
 

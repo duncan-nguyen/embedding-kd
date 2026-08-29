@@ -79,7 +79,6 @@ from src.target_projector import LearnedTargetProjector
 from src.teacher_projection import (
     fit_gauge_alignment,
     fit_gauge_rotation,
-    fit_pca_projection,
     fit_teacher_projection,
     project_teacher_embeddings,
     retained_energy,
@@ -166,12 +165,6 @@ class KnowledgeDistiller:
         self.current_epoch = 0
         self.current_step = 0
         self._saved_checkpoint_epochs = set()
-        # Per-depth diagnostics are sampled during the epoch and flushed once at the
-        # end of it, like step_records: one file write per epoch, not one per step.
-        self._depth_records: list[dict] = []
-        self._depth_projection = None
-        self.depth_probe = None
-        self.depth_log_every = max(0, int(getattr(config, "depth_log_every", 0)))
         # Set before setup_training, which fills it in for the methods that need it.
         self.proj_s2t = None
         self.setup_seed(config.seed)
@@ -239,22 +232,14 @@ class KnowledgeDistiller:
                     eps=config.eps_norm,
                 )
             self.criterion = GeoODEKD(
-                alpha=config.alpha,
-                beta=config.beta,
                 lambda_end=config.lambda_end,
-                lambda_vel=config.lambda_vel,
-                lambda_desc=config.lambda_desc,
                 lambda_ctr=config.lambda_ctr,
                 contrastive_temperature=config.contrastive_temperature,
-                guidance_schedule=config.guidance_schedule,
-                guidance_power=config.guidance_power,
                 pooling=config.student_pooling,
                 include_embedding_layer=config.include_embedding_layer,
-                stop_grad_target=config.stop_grad_target,
                 eps_norm=config.eps_norm,
                 target_projector=target_projector,
             ).to(self.device_s)
-            self.depth_probe = self.criterion
             if target_projector is not None:
                 # GeoODEKD owns no other parameters, so this param group is exactly
                 # the projector. The scheduler is rebuilt because a group added after
@@ -275,10 +260,7 @@ class KnowledgeDistiller:
                 )
             print(
                 "GeoODE-KD criterion initialized: "
-                f"alpha={config.alpha}, beta={config.beta}, "
-                f"lambda_end={config.lambda_end}, lambda_vel={config.lambda_vel}, "
-                f"lambda_desc={config.lambda_desc}, "
-                f"lambda_ctr={config.lambda_ctr}, schedule={config.guidance_schedule}"
+                f"lambda_end={config.lambda_end}, lambda_ctr={config.lambda_ctr}"
             )
         elif config.distill_method == "rkd":
             # RKD holds no parameters either: both of its potentials are invariant
@@ -309,28 +291,6 @@ class KnowledgeDistiller:
             )
         else:
             self.criterion = None
-
-        # The depth diagnostics are parameter-free geometry, so any method with
-        # per-layer hidden states and a batch teacher embedding can be measured with
-        # the same probe. TALAS and RKD are measured too: the paper compares GeoODE-KD
-        # against exactly that static multi-layer anchoring and against a relational
-        # constraint on the final layer alone, and neither comparison can be checked
-        # from a GeoODE-only run.
-        if self.depth_probe is None and self.depth_log_every > 0:
-            if config.distill_method in ("talas", "rkd"):
-                self.depth_probe = GeoODEKD(
-                    alpha=1.0,
-                    beta=1.0,
-                    pooling=getattr(config, "student_pooling", "cls"),
-                    eps_norm=getattr(config, "eps_norm", 1e-12),
-                ).to(self.device_s)
-                print("Depth diagnostics probe enabled (alpha=1, beta=1)")
-            else:
-                # Online-teacher methods have no cached corpus to fit P_T on.
-                print(
-                    f"Depth diagnostics are not available for method "
-                    f"{config.distill_method!r}; skipping"
-                )
 
         # Metrics tracking
         self.step_times = []
@@ -718,53 +678,14 @@ class KnowledgeDistiller:
                     f"rows but training data has {len(df)} rows. Remove or regenerate {cache_path}."
                 )
 
-            teacher_native = None
             if cfg.distill_method == "geoode":
-                learned_arm = (
-                    getattr(cfg, "projection_type", "pca") in LEARNED_PROJECTIONS
-                )
-                if (
-                    getattr(cfg, "relational_target", "native") == "native"
-                    and not learned_arm
-                ):
-                    # E_geo is measured against the teacher's own cosine matrix:
-                    # Gram matrices are dimension-free, so P_T only has to enter
-                    # the point-wise term. Half precision keeps 100k x 2560 small.
-                    # A learned arm needs no second copy: its targets already *are*
-                    # the native teacher embeddings, so the Gram is read off those.
-                    teacher_native = F.normalize(
-                        teacher_cls_list.to(torch.float32), dim=-1
-                    ).to(torch.float16)
                 teacher_cls_list = self._project_teacher_targets(
                     teacher_cls_list, df["premise"].astype(str).tolist()
                 )
-            elif self.depth_log_every > 0:
-                # Diagnostics only: the training targets stay in the teacher space,
-                # but the depth profile has to be measured in the student's. A
-                # diagnostic must never take the training run down with it, so a
-                # failure here disables the diagnostic instead of propagating.
-                try:
-                    self._depth_projection, _ = fit_pca_projection(
-                        teacher_cls_list,
-                        out_dim=self.model_student.config.hidden_size,
-                        center=True,
-                    )
-                except Exception as error:  # noqa: BLE001
-                    self.depth_log_every = 0
-                    print(f"Depth diagnostics disabled: {error}")
-                else:
-                    print(
-                        "Fitted a diagnostics-only PCA teacher projection "
-                        f"{teacher_cls_list.shape[-1]} -> "
-                        f"{self.model_student.config.hidden_size}"
-                    )
-
-            if cfg.distill_method == "geoode":
                 # The gauge refit rewrites the targets in place between epochs; the
                 # persistent DataLoader workers only see that through shared memory.
                 teacher_cls_list = teacher_cls_list.contiguous().share_memory_()
             self.teacher_cls_all = teacher_cls_list
-            self.teacher_native_all = teacher_native
 
             # Free teacher model to save GPU memory (teacher not needed after caching)
             del self.model_teacher
@@ -773,9 +694,7 @@ class KnowledgeDistiller:
                 torch.cuda.empty_cache()
             print("Teacher model freed from GPU memory")
 
-            self.train_ds = TextPairWithTeacher(
-                df, cfg.task_type, teacher_cls_list, teacher_native
-            )
+            self.train_ds = TextPairWithTeacher(df, cfg.task_type, teacher_cls_list)
             self.collate_fn = DualTokenizerCollateWithTeacher(
                 self.tok_student, cfg.task_type, cfg.max_length
             )
@@ -905,7 +824,7 @@ class KnowledgeDistiller:
         else:
             # Eckart-Young: among all rank-d_S linear maps, PCA retains the largest
             # share of the cached embedding energy, i.e. it is the linear map that
-            # best preserves the Gram matrix E_geo is defined over. This number is
+            # best preserves the teacher's Gram matrix. This number is
             # what the paper reports for P_T, and it is also the number the random
             # controls have to be read against: they span a d_S-subspace drawn
             # without looking at the teacher, so they retain about d_S/d_T.
@@ -1085,7 +1004,7 @@ class KnowledgeDistiller:
 
         With the student fixed this is the exact minimiser over O(d_S) of the
         endpoint discrepancy, and with R fixed the optimiser lowers it in theta, so
-        the alternation descends min_{theta, R} E_sem(Z_theta, T R) monotonically.
+        the alternation descends min_{theta, R} L_end(Z_theta, T R) monotonically.
         R is orthogonal, so the targets' Gram matrix is untouched: only the gauge
         moves, never the geometry.
         """
@@ -1117,51 +1036,6 @@ class KnowledgeDistiller:
                 saved["gauge_matrix"] = rotation
                 saved["gauge_history"] = state["history"]
                 torch.save(saved, path)
-
-    def _should_log_depth(self, step: int) -> bool:
-        if self.depth_log_every <= 0 or self.depth_probe is None:
-            return False
-        return step == 0 or (step + 1) % self.depth_log_every == 0
-
-    def _depth_teacher_targets(self, teacher_cls: torch.Tensor) -> torch.Tensor:
-        """Teacher targets on the student's hypersphere, for diagnostics."""
-        targets = teacher_cls.float()
-        projection = self._depth_projection
-        if projection is not None:
-            if targets.shape[-1] != projection.shape[0]:
-                raise ValueError(
-                    f"depth projection expects {projection.shape[0]}-dimensional "
-                    f"teacher embeddings but the batch carries {targets.shape[-1]}; "
-                    "the projection is fitted only for methods whose training targets "
-                    "stay in the teacher space"
-                )
-            targets = targets @ projection.to(targets.device, targets.dtype)
-        return F.normalize(targets, p=2, dim=-1, eps=1e-12)
-
-    @torch.no_grad()
-    def _record_depth(
-        self,
-        hidden_states,
-        attention_mask: torch.Tensor | None,
-        teacher_cls: torch.Tensor,
-        batch_size: int,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> None:
-        """Sample one per-depth report and buffer it for the end of the epoch."""
-        states = self.depth_probe.layer_states(hidden_states, attention_mask)
-        report = self.depth_probe.depth_report(
-            states, self._depth_teacher_targets(teacher_cls), teacher_gram
-        )
-        self._depth_records.append(
-            {
-                "method": self.config.distill_method,
-                "epoch": self.current_epoch + 1,
-                "global_step": self.global_step,
-                "step": self.current_step,
-                "batch_size": int(batch_size),
-                **report,
-            }
-        )
 
     def _build_scheduler(self):
         cfg = self.config
@@ -1477,14 +1351,6 @@ class KnowledgeDistiller:
             self.scaler.update()
             self.scheduler.step()
 
-            if self._should_log_depth(self.current_step):
-                self._record_depth(
-                    s_out1_2.hidden_states,
-                    batch_s["attention_mask1_stu"],
-                    teacher_cls,
-                    batch_s["input_ids1_stu"].size(0),
-                )
-
             # Clean up
             del s_out1, s_out2, s_out1_2, s_out2_2
             del student_outputs, student_outputs_2
@@ -1496,16 +1362,10 @@ class KnowledgeDistiller:
             for k, v in batch.items():
                 if not torch.is_tensor(v):
                     continue
-                if k.endswith("_stu") or k in ("labels", "teacher_cls", "teacher_native"):
+                if k.endswith("_stu") or k in ("labels", "teacher_cls"):
                     batch_s[k] = v.to(self.device_s, non_blocking=True)
 
             self.optimizer.zero_grad(set_to_none=True)
-
-            # Native teacher cosine matrix for the relational energy (Eq. 18).
-            teacher_gram = None
-            if "teacher_native" in batch_s:
-                native = batch_s["teacher_native"].float()
-                teacher_gram = native @ native.transpose(0, 1)
 
             with autocast("cuda", enabled=torch.cuda.is_available()):
                 teacher_cls = batch_s["teacher_cls"]
@@ -1551,7 +1411,6 @@ class KnowledgeDistiller:
                     teacher=teacher_cls,
                     attention_mask=attention_mask,
                     second_view=second_view,
-                    teacher_gram=teacher_gram,
                 )
                 loss = loss.float()
 
@@ -1559,15 +1418,6 @@ class KnowledgeDistiller:
             self.scaler.step(self.optimizer)
             self.scaler.update()
             self.scheduler.step()
-
-            if self._should_log_depth(self.current_step):
-                self._record_depth(
-                    s_out.hidden_states,
-                    attention_mask,
-                    teacher_cls,
-                    input_ids.size(0),
-                    teacher_gram,
-                )
 
             return loss, metrics
 
@@ -1580,7 +1430,6 @@ class KnowledgeDistiller:
                     batch_s[k] = v.to(self.device_s, non_blocking=True)
 
             self.optimizer.zero_grad(set_to_none=True)
-            log_depth = self._should_log_depth(self.current_step)
 
             with autocast("cuda", enabled=torch.cuda.is_available()):
                 teacher_cls = batch_s["teacher_cls"]
@@ -1590,7 +1439,7 @@ class KnowledgeDistiller:
                 s_out = self.model_student(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
-                    output_hidden_states=log_depth,
+                    output_hidden_states=False,
                     return_dict=True,
                 )
                 student_cls = self._pool_student(
@@ -1618,14 +1467,6 @@ class KnowledgeDistiller:
             self.scaler.step(self.optimizer)
             self.scaler.update()
             self.scheduler.step()
-
-            if log_depth:
-                self._record_depth(
-                    s_out.hidden_states,
-                    attention_mask,
-                    teacher_cls,
-                    input_ids.size(0),
-                )
 
             return loss, metrics
 
@@ -2067,7 +1908,6 @@ class KnowledgeDistiller:
 
         print(f"Done train_epoch {epoch + 1}")
         self.log_step_records(step_records)
-        depth_summary = self.log_depth_records()
         epoch_means = {
             key: value / max(1, n_items) for key, value in metric_totals.items()
         }
@@ -2092,18 +1932,6 @@ class KnowledgeDistiller:
             "peak_memory_mb": peak_memory_mb,
             **epoch_means,
         }
-        if depth_summary is not None:
-            self.last_epoch_metrics["depth"] = depth_summary
-            if getattr(self, "use_wandb", False) and WANDB_AVAILABLE:
-                payload = self._flatten_metrics("depth", depth_summary)
-                payload.update(
-                    {
-                        f"depth/{key}_l{index + 1}": value
-                        for key in ("cos_teacher", "gram_gap", "energy")
-                        for index, value in enumerate(depth_summary[key])
-                    }
-                )
-                wandb.log(payload, step=self.global_step)
         return avg_loss
 
     def save_checkpoint(self, epoch: int, metrics: dict | None = None):
@@ -2445,123 +2273,6 @@ class KnowledgeDistiller:
                 json.dumps(record, default=float, sort_keys=True) + "\n"
                 for record in records
             )
-
-    def log_depth_records(self) -> dict[str, Any] | None:
-        """Flush the epoch's per-depth samples to `depth_metrics.jsonl` and summarise.
-
-        Kept out of step_metrics.jsonl on purpose: these rows are per-layer curves
-        sampled every `depth_log_every` steps, so they have a different shape and a
-        different cadence from the per-step scalars.
-        """
-        records, self._depth_records = self._depth_records, []
-        if not records:
-            return None
-
-        if self.config.save_dir:
-            os.makedirs(self.config.save_dir, exist_ok=True)
-            path = os.path.join(self.config.save_dir, "depth_metrics.jsonl")
-            with open(path, "a", encoding="utf-8") as handle:
-                handle.writelines(
-                    json.dumps(record, default=float, sort_keys=True) + "\n"
-                    for record in records
-                )
-
-        curves = (
-            "cos_teacher",
-            "gram_gap",
-            "energy",
-            "sem_energy",
-            "vel_residual",
-            "desc_residual",
-            "field_norm",
-            "step_norm",
-            "direction_alignment",
-        )
-        skip = {"method", "epoch", "global_step", "step", "batch_size", "layers"}
-        summary: dict[str, Any] = {"samples": len(records)}
-        for key in curves:
-            columns = zip(*(record[key] for record in records))
-            summary[key] = [sum(column) / len(records) for column in columns]
-        for key, value in records[0].items():
-            if key in skip or key in curves or not isinstance(value, (int, float)):
-                continue
-            summary[key] = sum(record[key] for record in records) / len(records)
-
-        self.print_depth_profile(summary)
-        return summary
-
-    @staticmethod
-    def print_depth_profile(summary: dict[str, Any]) -> None:
-        """Print the depth profile the paper's hypotheses are stated over."""
-        headers = (
-            "layer",
-            "cos(teacher)",
-            "gram gap",
-            "energy",
-            "vel resid",
-            "align",
-            "|dz|",
-            "|dt*F|",
-        )
-        cosines = summary["cos_teacher"]
-        rows = []
-        for index, cosine in enumerate(cosines):
-            transition = index if index < len(summary["vel_residual"]) else None
-            rows.append(
-                (
-                    str(index + 1),
-                    f"{cosine:.4f}",
-                    f"{summary['gram_gap'][index]:.4f}",
-                    f"{summary['energy'][index]:.4f}",
-                    "-"
-                    if transition is None
-                    else f"{summary['vel_residual'][transition]:.4f}",
-                    "-"
-                    if transition is None
-                    else f"{summary['direction_alignment'][transition]:+.3f}",
-                    "-"
-                    if transition is None
-                    else f"{summary['step_norm'][transition]:.4f}",
-                    "-"
-                    if transition is None
-                    else f"{summary['field_norm'][transition]:.5f}",
-                )
-            )
-
-        widths = [
-            max([len(headers[i]), *(len(row[i]) for row in rows)])
-            for i in range(len(headers))
-        ]
-        separator = "-+-".join("-" * width for width in widths)
-        print(f"\nDepth profile (mean over {summary['samples']} sampled batches)")
-        print(" | ".join(headers[i].ljust(widths[i]) for i in range(len(headers))))
-        print(separator)
-        for row in rows:
-            print(" | ".join(row[i].ljust(widths[i]) for i in range(len(row))))
-        # The rows are the curves; these are the claims the curves are supposed to
-        # support, so they are printed next to them rather than left to the reader.
-        print(
-            f"cos {summary['cos_first']:.4f} -> {summary['cos_final']:.4f} "
-            f"(gain {summary['cos_gain']:+.4f}, non-monotone at "
-            f"{summary['cos_violations']:.1f}/{len(cosines) - 1} depths, "
-            f"curvature {summary['cos_curvature']:.4f})"
-        )
-        print(
-            f"gram gap {summary['gram_gap_first']:.4f} -> "
-            f"{summary['gram_gap_final']:.4f} "
-            f"(contraction {summary['gram_gap_contraction']:+.4f}, non-monotone at "
-            f"{summary['gram_violations']:.1f}/{len(cosines) - 1} depths)"
-        )
-        print(
-            f"energy {summary['energy_first']:.4f} -> {summary['energy_final']:.4f} "
-            f"(rises at {summary['energy_violations']:.1f}/{len(cosines) - 1} depths; "
-            "Prop. 2 forbids this for the ideal flow)"
-        )
-        print(
-            f"mean alignment {summary['mean_alignment']:+.3f}  "
-            f"anisotropy student {summary['student_anisotropy']:.4f} vs teacher "
-            f"{summary['teacher_anisotropy']:.4f}\n"
-        )
 
     def log_experiment_record(self, record: dict[str, Any]):
         if not self.config.save_dir:

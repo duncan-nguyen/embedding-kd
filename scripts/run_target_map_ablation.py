@@ -199,22 +199,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--max_length", type=int, default=256)
-    parser.add_argument(
-        "--lambda_vel",
-        type=float,
-        default=0.0,
-        help="objective weight; zero is the method's default, i.e. the L_end + L_ctr "
-             "objective, with the per-transition velocity term off",
-    )
     parser.add_argument("--lambda_ctr", type=float, default=0.5)
-    parser.add_argument("--beta", type=float, default=None)
     parser.add_argument("--num_workers", type=int, default=2)
-    parser.add_argument(
-        "--depth_log_every",
-        type=int,
-        default=0,
-        help="per-depth diagnostics are not what this grid measures, so they are off",
-    )
     parser.add_argument(
         "--no_retrieval",
         action="store_true",
@@ -335,11 +321,9 @@ def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
         "--save_every", str(args.epochs),
         "--lr", str(args.lr),
         "--max_length", str(args.max_length),
-        "--lambda_vel", str(args.lambda_vel),
         "--lambda_ctr", str(args.lambda_ctr),
         "--seed", str(cell["seed"]),
         "--num_workers", str(args.num_workers),
-        "--depth_log_every", str(args.depth_log_every),
         # No per-epoch evaluation: the grid is read off the final test row, and the
         # pair thresholds are swept there, so no extra pass is needed.
         "--eval_every", "0",
@@ -348,8 +332,6 @@ def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
         "--save_dir", str(root / cell["name"]),
         "--no_wandb",
     ]
-    if args.beta is not None:
-        command.extend(["--beta", str(args.beta)])
     if args.no_retrieval:
         command.append("--no_eval_retrieval")
     command.extend(arm_flags(cell["settings"]))

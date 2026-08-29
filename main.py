@@ -122,35 +122,10 @@ def parse_args():
         help='DTW KD loss weight'
     )
     parser.add_argument(
-        '--alpha',
-        type=float,
-        default=None,
-        help='GeoODE-KD: weight of the instance-level semantic energy'
-    )
-    parser.add_argument(
-        '--beta',
-        type=float,
-        default=None,
-        help='GeoODE-KD: weight of the relational geometric energy'
-    )
-    parser.add_argument(
         '--lambda_end',
         type=float,
         default=None,
         help='GeoODE-KD: weight of the endpoint distillation loss'
-    )
-    parser.add_argument(
-        '--lambda_vel',
-        type=float,
-        default=None,
-        help='GeoODE-KD: weight of the velocity-matching loss'
-    )
-    parser.add_argument(
-        '--lambda_desc',
-        type=float,
-        default=None,
-        help='GeoODE-KD: weight of the weak semantic-descent constraint on the deep '
-             'half of the layer transitions (0 disables it)'
     )
     parser.add_argument(
         '--lambda_ctr',
@@ -224,25 +199,6 @@ def parse_args():
              'epochs (0 = keep the initial gauge)'
     )
     parser.add_argument(
-        '--relational_target',
-        choices=['native', 'projected'],
-        default=None,
-        help='GeoODE-KD: Gram matrix for the relational energy: the teacher\'s native '
-             'cosine matrix, or that of the projected targets (ablation)'
-    )
-    parser.add_argument(
-        '--guidance_schedule',
-        choices=['linear', 'power', 'constant'],
-        default=None,
-        help='GeoODE-KD: depth-dependent guidance schedule s(t)'
-    )
-    parser.add_argument(
-        '--guidance_power',
-        type=float,
-        default=None,
-        help='GeoODE-KD: exponent p of the power guidance schedule s(t)=t^p'
-    )
-    parser.add_argument(
         '--w_dist',
         type=float,
         default=None,
@@ -308,12 +264,6 @@ def parse_args():
         help='Run the per-epoch evaluation every N epochs (0 disables it; only the final test '
              'evaluation runs, preceded by one validation pass when the pair thresholds '
              'are calibrated on validation)'
-    )
-    parser.add_argument(
-        '--depth_log_every',
-        type=int,
-        default=None,
-        help='Sample per-depth diagnostics every N steps (0 disables; talas/geoode/rkd only)'
     )
     parser.add_argument(
         '--task_type',
@@ -480,23 +430,13 @@ def get_config(method: str, args):
         if args.eval_every < 0:
             raise ValueError("--eval_every must be zero or positive")
         config.eval_every = args.eval_every
-    if args.depth_log_every is not None:
-        if args.depth_log_every < 0:
-            raise ValueError("--depth_log_every must be zero or positive")
-        config.depth_log_every = args.depth_log_every
 
     apply_method_flags(
         config,
         args,
         (
-            'alpha',
-            'beta',
             'lambda_end',
-            'lambda_vel',
-            'lambda_desc',
             'lambda_ctr',
-            'guidance_schedule',
-            'guidance_power',
             'projection_type',
             'projection_seed',
             'pca_center_fit',
@@ -505,7 +445,6 @@ def get_config(method: str, args):
             'gauge_rotation',
             'gauge_random_seed',
             'gauge_refit_every',
-            'relational_target',
         ),
         'geoode method',
     )

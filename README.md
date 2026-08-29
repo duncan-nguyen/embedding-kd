@@ -92,7 +92,7 @@ under `config/`, which supplies the defaults that the CLI flags then override:
 | `--method` | Config | Objective |
 | --- | --- | --- |
 | `talas` | `config/talas_config.py` | Teacher-anchor KD on cached teacher embeddings, with a structural term and SAM |
-| `geoode` | `config/geoode_config.py` | GeoODE-KD: student layers trained as Euler steps of a teacher-guided flow on the hypersphere |
+| `geoode` | `config/geoode_config.py` | GeoODE-KD: endpoint distillation onto a frozen PCA+Procrustes teacher map, with an InfoNCE regulariser |
 | `cdm` | `config/cdm_config.py` | Contextual dynamic mapping across the two tokenizers |
 | `dskd` | `config/dskd_config.py` | Dual-space KD with a learned projection |
 | `emo` | `config/emo_config.py` | Optimal-transport embedding distillation |
@@ -123,8 +123,8 @@ Teacher/student pairs that have been checked against every method:
 | `Qwen/Qwen3-Embedding-4B` (2560-d) | `google-bert/bert-base-uncased` (768-d, 12 layers) | `--teacher_pooling last_token --teacher_special_token Ġ` |
 
 Nothing in the objectives is sized to a particular pair: projection heads read
-both widths from the model configs, GeoODE-KD's flow has as many steps as the
-student has Transformer layers, and TALAS anchors the last `last_layer_idx` of
+both widths from the model configs, GeoODE-KD's teacher map is fitted to whatever
+the two widths are, and TALAS anchors the last `last_layer_idx` of
 however many hidden states the student returns. `test_mdd.ipynb` selects one of
 the three pairs with its `PAIR` variable and passes the flags above.
 
@@ -145,8 +145,8 @@ fitted between them and no parameters added, exactly like `geoode`. Its flags ar
 `--w_dist`/`--w_angle` (the paper's 25 and 50) and `--normalize_student`, which
 measures the student's relations on the unit sphere the normalised teacher cache
 and every cosine benchmark already live on (`--no-normalize_student` is the
-raw-Euclidean ablation). It constrains the final layer only, which is what makes
-it the relational counterpart to GeoODE-KD's per-layer flow.
+raw-Euclidean ablation). It constrains the final layer only, like `geoode`, which is what makes it the
+relational counterpart to `geoode`'s point-wise endpoint term.
 
 `geoode` implements `docs/ode_embedding_kd.pdf`. It reduces the cached teacher
 embeddings to the student dimension with a PCA map fitted on the cache itself,
@@ -176,40 +176,13 @@ subspace of that rank would retain, the student-target cosine before and after
 the rotation, and the participation ratio of the cross-covariance, which says in
 advance whether the gauge can matter at all (at PR ~ 1 it can only rotate one
 mean vector onto another). `scripts/run_target_map_ablation.py` runs the whole
-grid off one shared teacher cache and reads it back as a table. The relational
-energy is measured against the teacher's *native* cosine matrix, which needs no
-projection at all (`--relational_target projected` is the ablation that uses the
-PCA-projected Gram instead). The default objective is `L_end + L_ctr`: the final
-layer is anchored on those targets and regularised by InfoNCE over two dropout
-views (`--lambda_end 1`, `--lambda_ctr 0.5`), so a run with no loss flags is the
-recipe rather than one of its ablations. The per-transition terms are opt-in:
-`--lambda_vel` supervises each Transformer layer as one Riemannian Euler step of
-a teacher-conditioned flow instead of only pushing the final layer at the teacher
-embedding, and `--lambda_desc` adds the weak descent constraint on top of it (the
-deep half of the transitions, `l >= ceil(L/2)`, is penalised only when it raises
-the semantic energy `E_sem`). Both are `0` by default and both log their residual
-(`loss_vel`, `loss_desc`) either way, so a default run still reports what they
-would have measured. Its other flags are `--alpha`/`--beta` (the semantic and
-relational parts of the energy),
-`--guidance_schedule`/`--guidance_power` (the depth schedule s(t)) and
-`--student_pooling`. Training adds no parameters and inference is the plain
-student encoder.
-
-The flow is the finite-horizon form of the paper's energy: the semantic term is
-the squared geodesic distance to the teacher, so its negative Riemannian gradient
-is the sphere's log map, and the field is run in the time warp `s(t) / R(t)` with
-`R(t) = int_t^1 s`. Under that warp the instance-only flow contracts the geodesic
-distance as `d(t) = d(0) R(t) / R(0)` and reaches the teacher exactly at `t = 1`
-(a plain gradient flow only gets there as `t -> inf`, which is why an earlier
-draft saw teacher cosine stay flat through depth and jump in the last two layers).
-The per-layer target is therefore `Exp_Z(rho_l V)` with
-`rho_l = 1 - R(t_{l+1}) / R(t_l)`, which with `beta = 0` is the spherical
-interpolation slerp(Z, T; rho_l); the last `rho` is 1, so `L_end` is the boundary
-condition of the same flow rather than a competing loss. The field is taken from
-the per-sample energy (`B` times the batch mean the paper writes) so its speed
-does not depend on batch size. `depth_metrics.jsonl` records `field_norm` next to
-`step_norm` and the closed-form `predicted_geodesic_distance` next to the
-realized one, so how closely the student tracks the flow stays visible.
+grid off one shared teacher cache and reads it back as a table. The objective is
+`L_end + L_ctr` and nothing else: the final layer is anchored on those targets and
+regularised by InfoNCE over two dropout views (`--lambda_end 1`,
+`--lambda_ctr 0.5`). Only the endpoint is supervised — no term reads the
+intermediate layers, so what the lower stack does with depth is left to the
+encoder. Its other flag is `--student_pooling`. Training adds no parameters and
+inference is the plain student encoder.
 
 Training is single-process. Two visible CUDA devices place the student on
 `cuda:0` and the teacher on `cuda:1`; one device puts both on `cuda:0`.
@@ -273,39 +246,7 @@ Training and benchmark metrics are written to:
 ```text
 models/talas/qwen3_4b_to_bert_base/metrics.jsonl     # one record per epoch
 models/talas/qwen3_4b_to_bert_base/step_metrics.jsonl # one record per optimizer step
-models/talas/qwen3_4b_to_bert_base/depth_metrics.jsonl # per-layer profile, sampled
 ```
-
-## Depth Diagnostics
-
-`talas`, `geoode` and `rkd` additionally sample a per-layer profile every
-`--depth_log_every` steps (default 50, `0` disables) and append it to
-`depth_metrics.jsonl`. A compact table is printed at the end of every epoch. All
-three are measured with the same parameter-free probe, so their profiles are
-directly comparable — which is the point, since GeoODE-KD's central claim is
-about how the depth profile differs from static multi-layer anchoring and from a
-relational constraint on the final layer alone. `simcse` has no teacher
-embedding to profile a depth against, so the diagnostic is off for it.
-
-Each record holds, for one batch: teacher cosine, relational (Gram) gap and
-energy at every depth; the ODE consistency residual, the prescribed step size
-`|dt*F|`, the realized step size `|dz|` and their direction alignment at every
-transition; plus counts of depths where a curve moves the wrong way. The last
-group matters most for reading a run: the residual alone is small whenever the
-layers barely move, and only `|dz|` next to `|dt*F|` and the alignment separate
-"follows the teacher's direction" from "ignores a negligible field".
-
-After training, turn the JSONL into figures and a summary table:
-
-```bash
-python3 scripts/plot_depth_diagnostics.py runs/<stamp>/geoode runs/<stamp>/talas
-```
-
-Passing several runs (or one parent directory) overlays their final epochs into
-`comparison_depth_*.png`; each run also gets its own per-epoch curves,
-`*_depth_progress.png` over training steps, `*_loss_components.png`, plus
-`depth_summary.csv` and `depth_curves.csv`. Cell 8 of `test_mdd.ipynb` runs this
-step and displays the figures inline.
 
 Validation is evaluated and printed after every epoch. Test is evaluated and
 printed once after training. The Colab notebook exports the two splits

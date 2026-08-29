@@ -1,45 +1,29 @@
-"""GeoODE-KD: distilling sentence embeddings as teacher-guided geometric dynamics.
+"""GeoODE-KD: endpoint distillation of sentence embeddings against a frozen teacher map.
 
-The student's own Transformer layers are read as discrete integration steps of a
-continuous flow on the unit hypersphere. The teacher supplies a potential
+The objective is L_end + L_ctr (Eq. 38): the student's final layer is anchored on
+the teacher endpoint (Eq. 36) and regularised by InfoNCE over two dropout views
+(Eq. 37). Nothing else is in it.
 
-    E(Z, T) = alpha * E_sem(Z, T) + beta * E_geo(Z, T)                     (Eq. 20)
+    L_total = lambda_end * L_end + lambda_ctr * L_ctr
 
-with E_sem the mean *squared geodesic distance* to the teacher and E_geo the batch
-Gram gap. Cosine structure is dimension-free, so E_geo is measured against the
-teacher's *native* Gram matrix (``teacher_gram``) whenever the caller supplies it;
-the projection P_T then enters only the point-wise term. Its negative Riemannian gradient, run in the finite-horizon time warp
-s(t) / R(t) with R(t) = int_t^1 s, is a semantic vector field (Eq. 26) that reaches
-the teacher exactly at t = 1 (Corollary 1). One exact step of that flow from layer
-``l`` predicts where layer ``l+1`` should land (Eq. 30); that field drives the
-depth diagnostics.
+The teacher targets arrive already mapped into the student's dimension by the
+frozen ``P_T = P_PCA R`` of Eq. (8) and are read under a stop-gradient, so the
+supervision is a fixed point on the unit hypersphere rather than a moving one.
 
-The default objective is L_end + L_ctr: the final layer is anchored on the teacher
-endpoint (Eq. 36) and regularised by InfoNCE over two dropout views (Eq. 37).
-Nothing else in Eq. (38) is on unless its weight is raised, so a run with no loss
-flags is the recipe rather than one of its ablations. ``lambda_vel`` turns on the
-endpoint-guided velocity loss L_evel (Eq. 32): it compares the *direction* of the
-realized layer update U^(l) = Log_{Z^(l)}(Z^(l+1)) with the geodesic direction to
-the teacher V^(l) = Log_{Z^(l)}(tau) in the tangent space of Z^(l), over every
-transition l = 1..L-1, the last one into the final layer included. Because that
-loss only constrains the *direction* of a transition, ``lambda_desc`` adds a weak
-descent constraint L_desc-sem (Eq. 33) asking the deep half of the transitions not
-to raise the teacher-conditioned semantic energy E_sem.
-
-Nothing here is a module with weights: the criterion is teacher-conditioned geometry
-plus a stop-gradient target, so training adds no parameters and inference is exactly
-the unmodified student encoder.
+Nothing here is a module with weights: training adds no parameters and inference
+is exactly the unmodified student encoder. The single exception is the opt-in
+``target_projector`` baseline, which puts a *trainable* map where the frozen P_T
+would be; its parameters exist during training only and are what that baseline is
+meant to test.
 """
 
 from __future__ import annotations
 
-import itertools
-import math
 from collections.abc import Iterable, Sequence
 
 import torch
-import torch.nn.functional as F
 from torch import nn
+import torch.nn.functional as F
 
 from src.loss import info_nce
 from src.pooling import mean_pooling
@@ -61,89 +45,45 @@ def _pool(
 
 
 class GeoODEKD(nn.Module):
-    """Teacher-guided geometric dynamics objective (Eq. 38).
+    """Endpoint distillation with a contrastive regulariser (Eq. 38).
 
     Args:
-        alpha: weight of the instance-level semantic energy inside the potential.
-        beta: weight of the relational (Gram) energy inside the potential.
-        lambda_end: weight of the endpoint distillation loss.
-        lambda_vel: weight of the endpoint-guided velocity loss L_evel. Zero (the
-            default) leaves the objective at L_end + L_ctr; raising it is the
-            per-transition ablation.
-        lambda_desc: weight of the weak semantic-descent constraint L_desc-sem.
-            Zero (the default) leaves the objective without the descent term.
-        lambda_ctr: weight of the contrastive regulariser at the final layer.
+        lambda_end: weight of the endpoint distillation loss L_end (Eq. 36).
+        lambda_ctr: weight of the contrastive regulariser L_ctr (Eq. 37).
         contrastive_temperature: tau_c of Eq. (37).
-        guidance_schedule: ``"linear"`` for s(t) = t (the paper default),
-            ``"power"`` for s(t) = t^p, ``"constant"`` for s(t) = 1.
-        guidance_power: p of the ``"power"`` schedule.
         target_projector: optional trainable map standing where the frozen ``P_T``
             would be (:class:`src.target_projector.LearnedTargetProjector`). It is
             the learned-projector *baseline*, not part of the recipe: given one, the
-            teacher and the student trajectory are brought into a shared space by
+            teacher and the student's final state are brought into a shared space by
             it, and its parameters are trained with the student. ``None`` (the
             default) means the targets arrive already mapped and frozen.
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
-            Off by default: the paper's L states are the L Transformer layers.
-        stop_grad_target: apply sg[.] to the field V^(l) (Eq. 32) and to the
-            earlier-layer energy E_sem(Z^(l), T) of the descent constraint (Eq. 33),
-            so neither term can be lowered by degrading the state it is measured
-            from. Turning it off is the full-gradient-dynamics ablation named in
-            Section 3.5.
-
-    Per-layer diagnostics are not part of the returned training metrics; they are
-    produced on demand by :meth:`depth_report`, which the distiller samples on its own
-    cadence and writes to ``depth_metrics.jsonl``.
+            Off by default: the paper's L states are the L Transformer layers. Only
+            the final state carries loss; this decides which state ``cos_first``
+            reports.
     """
-
-    # arccos has an unbounded derivative at +-1; the clamp keeps Log_z well defined
-    # and its gradient finite when a state coincides with (or opposes) its target.
-    _COS_CLAMP = 1.0 - 1e-6
 
     def __init__(
         self,
-        alpha: float = 1.0,
-        beta: float = 1.0,
         lambda_end: float = 1.0,
-        lambda_vel: float = 0.0,
-        lambda_desc: float = 0.0,
         lambda_ctr: float = 0.5,
         contrastive_temperature: float = 0.05,
-        guidance_schedule: str = "linear",
-        guidance_power: float = 1.0,
         pooling: str = "cls",
         include_embedding_layer: bool = False,
-        stop_grad_target: bool = True,
         eps_norm: float = 1e-12,
         target_projector: nn.Module | None = None,
     ):
         super().__init__()
-        if guidance_schedule not in {"linear", "power", "constant"}:
-            raise ValueError(
-                f"Unsupported guidance_schedule={guidance_schedule!r}; "
-                "expected 'linear', 'power' or 'constant'"
-            )
-        if alpha < 0 or beta < 0:
-            raise ValueError("alpha and beta must be non-negative (Eq. 20)")
-        if lambda_desc < 0:
-            raise ValueError("lambda_desc must be non-negative (Eq. 33)")
-        if guidance_schedule == "power" and guidance_power <= -1.0:
-            raise ValueError("guidance_power must exceed -1 so that int_0^1 s is finite")
+        if lambda_end < 0 or lambda_ctr < 0:
+            raise ValueError("lambda_end and lambda_ctr must be non-negative (Eq. 38)")
 
-        self.alpha = float(alpha)
-        self.beta = float(beta)
         self.lambda_end = float(lambda_end)
-        self.lambda_vel = float(lambda_vel)
-        self.lambda_desc = float(lambda_desc)
         self.lambda_ctr = float(lambda_ctr)
         self.contrastive_temperature = float(contrastive_temperature)
         self.target_projector = target_projector
-        self.guidance_schedule = guidance_schedule
-        self.guidance_power = float(guidance_power)
         self.pooling = pooling
         self.include_embedding_layer = bool(include_embedding_layer)
-        self.stop_grad_target = bool(stop_grad_target)
         self.eps_norm = float(eps_norm)
 
     # ------------------------------------------------------------------ geometry
@@ -151,170 +91,6 @@ class GeoODEKD(nn.Module):
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """norm(.) of Eq. (9), applied row-wise."""
         return F.normalize(x, p=2, dim=-1, eps=self.eps_norm)
-
-    @staticmethod
-    def tangent_project(Z: torch.Tensor, U: torch.Tensor) -> torch.Tensor:
-        """Pi_Z of Eq. (22), applied row-wise: U - (z^T u) z."""
-        return U - (Z * U).sum(dim=-1, keepdim=True) * Z
-
-    @staticmethod
-    def geodesic_distance(Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
-        """d_g(z_i, tau_i) = arccos(z_i^T tau_i), the great-circle distance (Eq. 17)."""
-        return torch.arccos((Z * T).sum(dim=-1).clamp(-1.0, 1.0))
-
-    def log_map(self, Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
-        """Log_Z(T) of Eq. (23), row-wise: the tangent vector at z pointing along the
-        geodesic to tau, with length d_g(z, tau).
-
-        Log_z(tau) = d_g / sin(d_g) * Pi_z(tau). It is the negative Riemannian
-        gradient of the squared geodesic distance 1/2 d_g^2, and d_g / sin(d_g) -> 1
-        as tau -> z.
-        """
-        cosine = (Z * T).sum(dim=-1).clamp(-self._COS_CLAMP, self._COS_CLAMP)
-        theta = torch.arccos(cosine)
-        scale = theta / torch.sin(theta)
-        return scale.unsqueeze(-1) * self.tangent_project(Z, T)
-
-    @staticmethod
-    def exp_map(Z: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
-        """Exp_Z(V) of Eq. (31), row-wise: follow the geodesic from z with initial
-        velocity v for unit time. Closed form on the sphere:
-
-        Exp_z(v) = cos(|v|) z + sin(|v|) v / |v|,
-
-        which is exactly on the sphere for every tangent v (Proposition 1) and
-        satisfies Exp_z(Log_z(tau)) = tau.
-        """
-        norm = V.norm(dim=-1, keepdim=True)
-        # sin(n)/n written through torch.sinc, so n = 0 is handled exactly.
-        return torch.cos(norm) * Z + torch.sinc(norm / math.pi) * V
-
-    def retract(self, Z: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
-        """First-order retraction RowNorm(Z + V): the cheap approximation to
-        :meth:`exp_map` that the earlier draft used. Kept for the discretisation
-        ablation; the flow itself uses the exact exponential map."""
-        return self.normalize(Z + V)
-
-    def guidance(self, t: float) -> float:
-        """s(t) of Eq. (28) and its ablations."""
-        if self.guidance_schedule == "constant":
-            return 1.0
-        if self.guidance_schedule == "linear":
-            return float(t)
-        return float(t) ** self.guidance_power
-
-    def guidance_mass(self, t: float) -> float:
-        """R(t) = int_t^1 s(u) du of Eq. (27): the guidance still to be spent after
-        depth t. R(1) = 0, and R(0) is the total guidance of the whole trajectory."""
-        if self.guidance_schedule == "constant":
-            return 1.0 - float(t)
-        p = 1.0 if self.guidance_schedule == "linear" else self.guidance_power
-        return (1.0 - float(t) ** (p + 1.0)) / (p + 1.0)
-
-    def step_fraction(self, t: float, t_next: float) -> float:
-        """rho of Eq. (30): the fraction of the remaining geodesic to the target that
-        the flow covers between depths t and t_next,
-
-            rho(t, t_next) = 1 - R(t_next) / R(t),
-
-        i.e. the exact integral of the time warp s / R over [t, t_next]. It equals 1
-        on the last interval (t_next = 1), so the final prediction is the target.
-        """
-        if not 0.0 <= t < t_next <= 1.0:
-            raise ValueError(f"expected 0 <= t < t_next <= 1, got t={t}, t_next={t_next}")
-        remaining = self.guidance_mass(t)
-        if remaining <= 0.0:
-            return 1.0
-        return 1.0 - self.guidance_mass(t_next) / remaining
-
-    @staticmethod
-    def teacher_gram(T: torch.Tensor, teacher_gram: torch.Tensor | None) -> torch.Tensor:
-        """G_T of Eq. (18): the native teacher Gram when given, else that of the
-        projected targets."""
-        if teacher_gram is not None:
-            return teacher_gram.to(T.dtype)
-        return T @ T.transpose(0, 1)
-
-    def semantic_energy(self, Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
-        """E_sem(Z, T) of Eq. (17): the batch-mean squared geodesic distance to the
-        teacher, 1/(2B) sum_i d_g(z_i, tau_i)^2.
-
-        The cosine is clamped by ``_COS_CLAMP`` rather than by +-1 so the term stays
-        differentiable: d/dcos of arccos(cos)^2/2 is -arccos/sqrt(1 - cos^2), which is
-        finite in the limit but evaluates to nan at cos = +-1 exactly. The clamp costs
-        at most 1e-6 rad of the reported distance.
-        """
-        cosine = (Z * T).sum(dim=-1).clamp(-self._COS_CLAMP, self._COS_CLAMP)
-        return 0.5 * torch.arccos(cosine).pow(2).mean()
-
-    def energy(
-        self,
-        Z: torch.Tensor,
-        T: torch.Tensor,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Teacher-conditioned potential of Eq. (20).
-
-        Returns ``(E, E_sem, E_geo)`` with the two components before their weights.
-        ``teacher_gram`` is the teacher's native ``[B, B]`` cosine matrix; without it
-        the Gram of the projected targets is used.
-
-        Reported in the paper's batch-mean form so the numbers stay comparable across
-        batch sizes; :meth:`vector_field` differentiates ``B`` times this, which is
-        the same flow at a batch-size-independent speed.
-        """
-        batch = Z.shape[0]
-        e_sem = self.semantic_energy(Z, T)  # Eq. 17
-        gram_gap = Z @ Z.transpose(0, 1) - self.teacher_gram(T, teacher_gram)
-        e_geo = gram_gap.pow(2).sum() / (batch * batch)  # Eq. 19
-        return self.alpha * e_sem + self.beta * e_geo, e_sem, e_geo
-
-    def vector_field(
-        self,
-        Z: torch.Tensor,
-        T: torch.Tensor,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """V(Z, T) of Eq. (25): the tangent negative gradient of the potential, before
-        the depth-dependent time warp.
-
-            V = alpha * Log_Z(T) - (4 beta / B) * Pi_Z[(Z Z^T - T T^T) Z]
-
-        Taken from the *per-sample* energy, i.e. ``B`` times Eq. (20): the
-        paper's batch-mean energy would give a field that slows down with batch
-        size, while the direction is identical. The full field of Eq. (26) is
-        s(t) / R(t) * V; the warp is integrated exactly by :meth:`step_fraction`
-        rather than evaluated pointwise, so it never appears here.
-        """
-        batch = Z.shape[0]
-        gram_gap = Z @ Z.transpose(0, 1) - self.teacher_gram(T, teacher_gram)
-        relational = self.tangent_project(Z, gram_gap @ Z)
-        return self.alpha * self.log_map(Z, T) - (4.0 * self.beta / batch) * relational
-
-    def flow_step(
-        self,
-        Z: torch.Tensor,
-        T: torch.Tensor,
-        rho: float,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """Move a fraction ``rho`` of the prescribed tangent displacement along the
-        geodesic: Exp_Z(rho * V(Z, T)). With beta = 0 this is exactly the spherical
-        interpolation slerp(z, tau; rho), so rho = 1 lands on the teacher."""
-        return self.exp_map(Z, rho * self.vector_field(Z, T, teacher_gram))
-
-    def euler_step(
-        self,
-        Z: torch.Tensor,
-        T: torch.Tensor,
-        t: float,
-        t_next: float,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """One step of the discretised flow from depth t to t_next, Eq. (30)."""
-        return self.flow_step(Z, T, self.step_fraction(t, t_next), teacher_gram)
-
-    # ------------------------------------------------------------------ losses
 
     def layer_states(
         self,
@@ -331,104 +107,7 @@ class GeoODEKD(nn.Module):
             for state in states
         ]
 
-    @staticmethod
-    def _depth(index: int, num_layers: int) -> float:
-        """t_l = l / L of Eq. (14) for the 0-based state ``index`` (l = index + 1)."""
-        return (index + 1) / num_layers
-
-    def velocity_loss(
-        self,
-        states: Sequence[torch.Tensor],
-        teacher: torch.Tensor,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """Endpoint-guided velocity matching, L_evel:
-
-            L_evel = 1/(L-1) sum_{l=1}^{L-1} 1/B sum_i [1 - cos(U_i^(l), V_i^(l))]
-
-        with U^(l) = Log_{Z^(l)}(Z^(l+1)) the realized tangent update and
-        V^(l) = Log_{Z^(l)}(tau) the direction toward the teacher endpoint from the
-        same state. Both live in the tangent space of Z^(l). The cosine is
-        scale-free, so no intermediate target state or step magnitude is
-        prescribed: every transition l = 1..L-1, the last one into the final layer
-        included, is only asked to point along the geodesic to the teacher.
-        ``teacher_gram`` is accepted for interface compatibility; the target
-        direction is instance-wise and does not use it. With ``stop_grad_target``
-        the direction is read off a detached Z^(l), so gradients reach Z^(l) only
-        through U^(l).
-        """
-        del teacher_gram
-        num_layers = len(states)
-        if num_layers < 2:
-            return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
-
-        terms = []
-        for index in range(num_layers - 1):
-            current, actual = states[index], states[index + 1]
-            if self.stop_grad_target:
-                with torch.no_grad():
-                    direction = self.log_map(current.detach(), teacher)
-            else:
-                direction = self.log_map(current, teacher)
-            update = self.log_map(current, actual)
-            cosine = F.cosine_similarity(update, direction, dim=-1, eps=self.eps_norm)
-            terms.append((1.0 - cosine).mean())
-
-        return torch.stack(terms).mean()
-
-    @staticmethod
-    def descent_layers(num_layers: int) -> range:
-        """A = {ceil(L/2), ..., L-1} of Eq. (33), the 1-based source layers of the
-        constrained transitions: the deep half of the trajectory.
-
-        Empty when a single depth is supervised. The shallow half is left alone on
-        purpose - early layers still build lexical structure, and requiring them to
-        already lower the teacher energy would reinstate the layer-wise anchoring
-        that the flow replaces.
-        """
-        if num_layers < 2:
-            return range(0)
-        return range(-(-num_layers // 2), num_layers)
-
-    def descent_semantic_loss(
-        self, states: Sequence[torch.Tensor], teacher: torch.Tensor
-    ) -> torch.Tensor:
-        """Weak descent constraint on the teacher-conditioned semantic energy:
-
-            L_desc-sem = 1/|A| sum_{l in A} [E_sem(Z^(l+1), T) - E_sem(Z^(l), T)]_+,
-            A = {ceil(L/2), ..., L-1}.
-
-        L_evel constrains only the direction of a transition, so a layer can point
-        the right way and still make no progress toward the teacher (or move
-        backwards while a later layer repairs it). The hinge adds the missing
-        magnitude-side condition without prescribing a target state: a deep layer
-        pays nothing as long as it does not *increase* E_sem, and the term is exactly
-        zero on any trajectory whose deep half already descends - Proposition 2 says
-        the ideal flow is such a trajectory, so this is a constraint on the
-        discretisation, not a second endpoint loss.
-
-        With ``stop_grad_target`` the predecessor's energy is a detached reference,
-        so the hinge can only be lowered by improving Z^(l+1), never by pushing
-        Z^(l) away from the teacher.
-        """
-        layers = self.descent_layers(len(states))
-        if len(layers) == 0:
-            return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
-
-        # Each state in the window is both the target of one transition and the
-        # reference of the next, so the energies are computed once and reused.
-        energies = {
-            index: self.semantic_energy(states[index], teacher)
-            for index in range(layers.start - 1, len(states))
-        }
-        terms = []
-        for layer in layers:
-            reference = energies[layer - 1]
-            if self.stop_grad_target:
-                reference = reference.detach()
-            terms.append(F.relu(energies[layer] - reference))
-
-        return torch.stack(terms).mean()
+    # ------------------------------------------------------------------ losses
 
     def endpoint_loss(
         self, final_state: torch.Tensor, teacher: torch.Tensor
@@ -443,173 +122,6 @@ class GeoODEKD(nn.Module):
         loss, _ = info_nce(view_a, view_b, temperature=self.contrastive_temperature)
         return loss
 
-    # ------------------------------------------------------------------ analysis
-
-    @staticmethod
-    def _mean_offdiagonal_cosine(Z: torch.Tensor) -> float:
-        """Mean pairwise cosine excluding the diagonal: a batch anisotropy proxy.
-
-        The paper keeps a contrastive term because pure imitation can inherit the
-        teacher's concentration; this is the number that shows whether it did.
-        """
-        batch = Z.shape[0]
-        if batch < 2:
-            return 0.0
-        gram = Z @ Z.transpose(0, 1)
-        total = gram.sum() - gram.diagonal().sum()
-        return float(total / (batch * (batch - 1)))
-
-    @torch.no_grad()
-    def depth_report(
-        self,
-        states: Sequence[torch.Tensor],
-        teacher: torch.Tensor,
-        teacher_gram: torch.Tensor | None = None,
-    ) -> dict[str, object]:
-        """Per-depth diagnostics for post-hoc analysis of one batch.
-
-        The paper's research hypothesis is stated over quantities that the training
-        loss never reports: how the teacher discrepancy and the relational gap evolve
-        *across depth*, and whether the student's actual layer transition follows the
-        prescribed field. All of it is measured here, on the realized trajectory:
-
-        With a learned target projector the trajectory and the teacher are brought
-        into its comparison space first, so the curves mean the same thing for a
-        learned map as for a frozen one.
-
-        - ``cos_teacher`` / ``geodesic_distance`` / ``gram_gap`` / ``energy``: the
-          profile of Eqs. (17), (19) and (20) at every depth. Hypotheses 1 and 2 are
-          claims about these curves.
-        - ``predicted_geodesic_distance``: Corollary 1's closed form
-          d(t_l) = d(t_1) R(t_l) / R(t_1), the profile the instance-only flow would
-          trace from the same first layer. It reaches zero at the last layer, and the
-          gap to ``geodesic_distance`` is how far the student is from the flow.
-        - ``energy_violations``: depths where the realized trajectory *raises* the
-          energy. Proposition 2 guarantees descent for the ideal continuous flow, so
-          this counts how far the discrete student is from realizing it.
-        - ``sem_energy`` and ``desc_residual``: the semantic energy E_sem at every
-          depth, and the per-transition hinge [E_sem(Z^(l+1)) - E_sem(Z^(l))]_+ of
-          Eq. (33) over the deep half A. ``desc_residual`` is reported for the
-          transitions the constraint covers, so a positive entry is a depth where
-          the student moves away from the teacher in the region the constraint
-          governs.
-        - ``vel_residual``: the per-transition term of Eq. (32),
-          1 - cos(U, V) in the tangent space, i.e. where along depth the velocity
-          loss is actually being paid. Reported for every transition, including
-          the last one that the training loss leaves to the endpoint term.
-        - ``field_norm`` vs ``step_norm``: the geodesic length the flow prescribes
-          for the transition next to the geodesic length the layer actually moved.
-          A tiny ``vel_residual`` means little if the prescribed step is negligible,
-          and this pair is what separates the two.
-        - ``direction_alignment``: cosine, in the tangent space of the current
-          layer, between Log of the actual update and the prescribed tangent
-          displacement. Scale-free, so unlike the loss it says whether the student
-          moves *where* the teacher points, not just *how far*.
-        """
-        teacher = self.normalize(teacher.to(states[-1].dtype))
-        if self.target_projector is not None:
-            states, teacher = self.target_projector.align(states, teacher)
-        num_layers = len(states)
-
-        cos_teacher, distance, gram_gap, energy, sem_energy = [], [], [], [], []
-        if teacher_gram is not None:
-            teacher_gram = teacher_gram.to(states[-1].dtype)
-        for state in states:
-            total, sem, geo = self.energy(state, teacher, teacher_gram)
-            cos_teacher.append(float((state * teacher).sum(dim=-1).mean()))
-            distance.append(float(self.geodesic_distance(state, teacher).mean()))
-            gram_gap.append(float(geo))
-            sem_energy.append(float(sem))
-            energy.append(float(total))
-
-        descent_layers = list(self.descent_layers(num_layers))
-        desc_residual = [
-            max(0.0, sem_energy[layer] - sem_energy[layer - 1])
-            for layer in descent_layers
-        ]
-
-        first_mass = self.guidance_mass(self._depth(0, num_layers))
-        predicted_distance = [
-            distance[0] * self.guidance_mass(self._depth(index, num_layers)) / first_mass
-            if first_mass > 0.0
-            else 0.0
-            for index in range(num_layers)
-        ]
-
-        vel_residual, field_norm, step_norm, alignment = [], [], [], []
-        for index in range(num_layers - 1):
-            t = self._depth(index, num_layers)
-            t_next = self._depth(index + 1, num_layers)
-            current, actual = states[index], states[index + 1]
-            field = self.step_fraction(t, t_next) * self.vector_field(
-                current, teacher, teacher_gram
-            )
-            update = self.log_map(current, actual)
-            cosine = float(
-                F.cosine_similarity(update, field, dim=-1, eps=self.eps_norm).mean()
-            )
-            vel_residual.append(1.0 - cosine)
-            field_norm.append(float(field.norm(dim=-1).mean()))
-            step_norm.append(float(update.norm(dim=-1).mean()))
-            alignment.append(cosine)
-
-        def _violations(values: list[float], should_decrease: bool) -> int:
-            pairs = itertools.pairwise(values)
-            if should_decrease:
-                return sum(1 for earlier, later in pairs if later > earlier)
-            return sum(1 for earlier, later in pairs if later < earlier)
-
-        # Hypothesis 1 says the discrepancy should fall *smoothly*, so a curvature
-        # measure is reported next to the endpoints: a curve that drops all at once
-        # in the last layer is a different outcome from one that drops gradually.
-        curvature = [
-            abs(cos_teacher[i + 1] - 2.0 * cos_teacher[i] + cos_teacher[i - 1])
-            for i in range(1, num_layers - 1)
-        ]
-
-        return {
-            "num_layers": num_layers,
-            "alpha": self.alpha,
-            "beta": self.beta,
-            "layers": list(range(1, num_layers + 1)),
-            "cos_teacher": cos_teacher,
-            "geodesic_distance": distance,
-            "predicted_geodesic_distance": predicted_distance,
-            "gram_gap": gram_gap,
-            "sem_energy": sem_energy,
-            "energy": energy,
-            "descent_layers": descent_layers,
-            "desc_residual": desc_residual,
-            "vel_residual": vel_residual,
-            "field_norm": field_norm,
-            "step_norm": step_norm,
-            "direction_alignment": alignment,
-            "cos_first": cos_teacher[0],
-            "cos_final": cos_teacher[-1],
-            "cos_gain": cos_teacher[-1] - cos_teacher[0],
-            "cos_curvature": sum(curvature) / len(curvature) if curvature else 0.0,
-            "cos_violations": _violations(cos_teacher, should_decrease=False),
-            "gram_gap_first": gram_gap[0],
-            "gram_gap_final": gram_gap[-1],
-            "gram_gap_contraction": gram_gap[0] - gram_gap[-1],
-            "gram_violations": _violations(gram_gap, should_decrease=True),
-            "energy_first": energy[0],
-            "energy_final": energy[-1],
-            "energy_violations": _violations(energy, should_decrease=True),
-            "mean_vel_residual": sum(vel_residual) / len(vel_residual)
-            if vel_residual
-            else 0.0,
-            "mean_desc_residual": sum(desc_residual) / len(desc_residual)
-            if desc_residual
-            else 0.0,
-            "desc_violations": sum(1 for value in desc_residual if value > 0.0),
-            "mean_alignment": sum(alignment) / len(alignment) if alignment else 0.0,
-            "mean_field_norm": sum(field_norm) / len(field_norm) if field_norm else 0.0,
-            "mean_step_norm": sum(step_norm) / len(step_norm) if step_norm else 0.0,
-            "student_anisotropy": self._mean_offdiagonal_cosine(states[-1]),
-            "teacher_anisotropy": self._mean_offdiagonal_cosine(teacher),
-        }
-
     # ------------------------------------------------------------------ forward
 
     def forward(
@@ -618,7 +130,6 @@ class GeoODEKD(nn.Module):
         teacher: torch.Tensor,
         attention_mask: torch.Tensor | None = None,
         second_view: torch.Tensor | None = None,
-        teacher_gram: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute L_total of Eq. (38).
 
@@ -630,8 +141,6 @@ class GeoODEKD(nn.Module):
             attention_mask: student attention mask, needed for mean pooling.
             second_view: pooled (unnormalised) final representation of a second
                 dropout view, used only for the contrastive term.
-            teacher_gram: the teacher's native ``[B, B]`` cosine matrix for the
-                relational energy; defaults to the Gram of the projected targets.
         """
         states = self.layer_states(hidden_states, attention_mask)
         if not states:
@@ -640,7 +149,7 @@ class GeoODEKD(nn.Module):
         teacher = self.normalize(teacher.to(states[-1].dtype))
         # The contrastive term is a statement about the student's *own* space, so it
         # keeps reading the unmapped final state even when a learned projector moves
-        # everything else into a shared comparison space.
+        # the endpoint comparison into a shared space.
         student_view = states[-1]
         if self.target_projector is not None:
             states, teacher = self.target_projector.align(states, teacher)
@@ -651,21 +160,6 @@ class GeoODEKD(nn.Module):
                 "must be projected into the student dimension before training"
             )
 
-        if teacher_gram is not None:
-            if teacher_gram.shape != (teacher.shape[0], teacher.shape[0]):
-                raise ValueError(
-                    f"teacher_gram must be [B, B] = {(teacher.shape[0],) * 2}, got "
-                    f"{tuple(teacher_gram.shape)}"
-                )
-            teacher_gram = teacher_gram.to(teacher.dtype)
-        # Both per-transition terms are computed at every weight, the default zero
-        # included: loss_vel is the diagnostic that says whether the trajectory
-        # follows the field and loss_desc whether the constraint would have bound,
-        # so a run of the default L_end + L_ctr objective still reports what the
-        # ablations would have measured. Each costs a handful of elementwise ops
-        # per transition on states the forward pass already produced.
-        loss_vel = self.velocity_loss(states, teacher, teacher_gram)
-        loss_desc = self.descent_semantic_loss(states, teacher)
         loss_end = self.endpoint_loss(states[-1], teacher)
 
         if self.lambda_ctr > 0.0 and second_view is not None:
@@ -675,30 +169,17 @@ class GeoODEKD(nn.Module):
         else:
             loss_ctr = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
-        total = (
-            self.lambda_end * loss_end
-            + self.lambda_vel * loss_vel
-            + self.lambda_desc * loss_desc
-            + self.lambda_ctr * loss_ctr
-        )
+        total = self.lambda_end * loss_end + self.lambda_ctr * loss_ctr
 
         with torch.no_grad():
-            energy_first, _, geo_first = self.energy(states[0], teacher, teacher_gram)
-            energy_last, _, geo_last = self.energy(states[-1], teacher, teacher_gram)
             metrics = {
                 "loss_total": float(total.detach()),
                 "loss_end": float(loss_end.detach()),
-                "loss_vel": float(loss_vel.detach()),
-                "loss_desc": float(loss_desc.detach()),
                 "loss_ctr": float(loss_ctr.detach()),
-                # The hypothesis is that both discrepancies contract with depth, so
-                # the shallow and final values are logged as a pair.
+                # Only the final layer is supervised; the shallow cosine is logged
+                # next to it as a free sanity check on the untouched lower stack.
                 "cos_first": float((states[0] * teacher).sum(dim=-1).mean()),
                 "cos_final": float((states[-1] * teacher).sum(dim=-1).mean()),
-                "gram_gap_first": float(geo_first),
-                "gram_gap_final": float(geo_last),
-                "energy_first": float(energy_first),
-                "energy_final": float(energy_last),
             }
 
         return total, metrics

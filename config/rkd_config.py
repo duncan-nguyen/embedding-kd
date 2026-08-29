@@ -44,10 +44,6 @@ class RKDConfig(BaseConfig):
     normalize_cache = True
     cache_dtype = "float32"
 
-    # Measured with the same probe and cadence as TALAS and GeoODE-KD so the three
-    # depth profiles are directly comparable. RKD constrains the last layer only,
-    # which is exactly the profile the comparison is about.
-    depth_log_every = 50
 
     save_dir = "checkpoints/rkd"
 

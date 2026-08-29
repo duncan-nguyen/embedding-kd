@@ -11,11 +11,6 @@ class DualTokenizerCollateWithTeacher:
         columns = list(zip(*batch))
         samples, teacher_cls = columns[0], columns[1]
         teacher_cls = torch.stack(teacher_cls, dim=0)  # [B, d_t]
-        # Optional third column: the teacher's native embedding, carried so the
-        # relational energy can be measured against the unprojected Gram matrix.
-        teacher_native = (
-            torch.stack(columns[2], dim=0) if len(columns) > 2 else None
-        )
 
         if self.task == "single_cls":
             s1s, ys = zip(*samples)
@@ -29,8 +24,6 @@ class DualTokenizerCollateWithTeacher:
                 "teacher_cls": teacher_cls,
                 "labels": torch.tensor(ys, dtype=torch.long),
             }
-            if teacher_native is not None:
-                out["teacher_native"] = teacher_native
             if "token_type_ids" in s_enc:
                 out["token_type_ids_stu"] = s_enc["token_type_ids"]
             return out
@@ -54,8 +47,6 @@ class DualTokenizerCollateWithTeacher:
             "special_tokens_mask2_stu": s2_enc["special_tokens_mask"],
             "teacher_cls": teacher_cls,
         }
-        if teacher_native is not None:
-            out["teacher_native"] = teacher_native
 
         if "token_type_ids" in s1_enc:
             out["token_type_ids1_stu"] = s1_enc["token_type_ids"]
@@ -70,11 +61,9 @@ class TextPairWithTeacher(Dataset):
         df: pd.DataFrame,
         task: str,
         teacher_cls: torch.Tensor,
-        teacher_native: torch.Tensor | None = None,
     ):
         self.task = task
         self.teacher_cls = teacher_cls   # [N, d_t]
-        self.teacher_native = teacher_native  # optional [N, d_T], unprojected
 
         if task == "single_cls":
             self.samples = [(t, int(y)) for t, y in zip(df["text"].astype(str),
@@ -92,6 +81,4 @@ class TextPairWithTeacher(Dataset):
     def __getitem__(self, idx):
         item = self.samples[idx]
         tcls = self.teacher_cls[idx]   # lấy đúng teacher CLS của sample này
-        if self.teacher_native is not None:
-            return item, tcls, self.teacher_native[idx]
         return item, tcls

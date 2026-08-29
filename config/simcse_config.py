@@ -33,8 +33,6 @@ class SimCSEConfig(BaseConfig):
     learning_rate = 2e-5
     min_lr = 2e-6
 
-    # No teacher embedding exists to profile the student's depth against.
-    depth_log_every = 0
 
     save_dir = "checkpoints/simcse"
 

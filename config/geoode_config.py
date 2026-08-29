@@ -2,7 +2,7 @@ from .base_config import BaseConfig
 
 
 class GeoODEConfig(BaseConfig):
-    """GeoODE-KD: teacher-guided geometric dynamics distillation."""
+    """GeoODE-KD: endpoint distillation against a frozen teacher map (L_end + L_ctr)."""
 
     distill_method = "geoode"
 
@@ -13,37 +13,17 @@ class GeoODEConfig(BaseConfig):
     student_special_token = "##"
     teacher_special_token = "G"
 
-    # Semantic potential, Eq. (20). The paper fixes alpha = 1 and tunes beta.
-    alpha = 1.0
-    beta = 1.0
-
-    # Objective weights, Eq. (38). The default objective is L_end + L_ctr: the
-    # endpoint term at weight 1 and the contrastive regulariser at the weight tuned
-    # on a validation split. The per-transition velocity term is off by default
-    # (--lambda_vel > 0 turns it on) -- it is an ablation, not part of the recipe.
+    # Objective weights, Eq. (38). The objective is L_end + L_ctr: the endpoint term
+    # at weight 1 and the contrastive regulariser at the weight tuned on a
+    # validation split. Nothing else is in it.
     lambda_end = 1.0
-    lambda_vel = 0.0
-    # Weak semantic-descent constraint, Eq. (33): the deep half of the transitions
-    # is penalised only when it *raises* E_sem. Off by default so the objective
-    # stays the one the reported runs used; --lambda_desc turns it on.
-    lambda_desc = 0.0
     lambda_ctr = 0.5
     contrastive_temperature = 0.05
-
-    # Depth-dependent guidance s(t), Eq. (28): "linear" (t), "power" (t^p), "constant".
-    guidance_schedule = "linear"
-    guidance_power = 1.0
 
     # Pool(.) of Eq. (7) applied at every depth. "cls" matches the pooling the
     # evaluation code uses, so the supervised endpoint is the embedding that is scored.
     student_pooling = "cls"
     include_embedding_layer = False
-    stop_grad_target = True
-
-    # Sample the per-depth diagnostics every N optimizer steps (0 disables them).
-    # They are what the paper's hypotheses are stated over, and at this cadence the
-    # extra cost is one parameter-free pass over the layers per ~50 steps.
-    depth_log_every = 50
 
     # Second view for the contrastive term, Eq. (37): "dropout" runs the same text
     # twice under independent dropout masks (the paper's choice); "pair" reuses the
@@ -51,11 +31,6 @@ class GeoODEConfig(BaseConfig):
     contrastive_view = "dropout"
 
     eps_norm = 1e-12
-
-    # Gram matrix the relational energy E_geo is measured against, Eq. (18):
-    # "native" uses the teacher's own cosine matrix (no projection loss),
-    # "projected" the Gram of the P_T-projected targets (ablation).
-    relational_target = "native"
 
     # Fixed teacher dimensionality reduction P_T = P_PCA R, Eq. (8).
     # --- factor 1: which d_S-dimensional subspace of the teacher to keep ---

@@ -58,8 +58,6 @@ def test_simcse_method_selects_its_config():
     # Unsupervised SimCSE: two dropout views at tau = 0.05.
     assert config.simcse_view == "dropout"
     assert config.temperature == 0.05
-    # There is no teacher embedding to profile the student's depth against.
-    assert config.depth_log_every == 0
 
 
 def test_simcse_view_flag_overrides_the_config():

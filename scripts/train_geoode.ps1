@@ -13,7 +13,7 @@ $BATCH_SIZE = 32
 $EPOCHS = 5
 $LR = 2e-5
 $MAX_LENGTH = 256
-$BETA = 1.0
+$LAMBDA_END = 1.0
 $LAMBDA_CTR = 0.5
 $SAVE_DIR = "checkpoints/geoode"
 
@@ -26,6 +26,6 @@ python ../main.py `
     --epochs $EPOCHS `
     --lr $LR `
     --max_length $MAX_LENGTH `
-    --beta $BETA `
+    --lambda_end $LAMBDA_END `
     --lambda_ctr $LAMBDA_CTR `
     --save_dir $SAVE_DIR

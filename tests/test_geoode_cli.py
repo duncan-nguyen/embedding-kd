@@ -23,42 +23,27 @@ def test_geoode_method_selects_its_config():
 
     assert isinstance(config, GeoODEConfig)
     assert config.distill_method == "geoode"
-    # The default objective is L_end + L_ctr: the endpoint term at weight 1 plus the
-    # contrastive regulariser. Everything else in Eq. (38) is opt-in, so a run with
-    # no loss flags is the recipe rather than one of its ablations.
-    assert config.alpha == 1.0
+    # The objective is L_end + L_ctr and nothing else: the endpoint term at weight 1
+    # plus the contrastive regulariser.
     assert config.lambda_end == 1.0
     assert config.lambda_ctr == 0.5
-    assert config.lambda_vel == 0.0
-    assert config.lambda_desc == 0.0
-    assert config.guidance_schedule == "linear"
 
 
 def test_geoode_flags_override_the_config():
     config = _config(
         "--method",
         "geoode",
-        "--beta",
-        "2.5",
+        "--lambda_end",
+        "0.7",
         "--lambda_ctr",
         "0.05",
-        "--guidance_schedule",
-        "power",
-        "--guidance_power",
-        "2.0",
         "--student_pooling",
         "mean",
     )
 
-    assert config.beta == 2.5
+    assert config.lambda_end == 0.7
     assert config.lambda_ctr == 0.05
-    assert config.guidance_schedule == "power"
-    assert config.guidance_power == 2.0
     assert config.student_pooling == "mean"
-
-
-def test_lambda_desc_flag_overrides_the_config():
-    assert _config("--method", "geoode", "--lambda_desc", "0.5").lambda_desc == 0.5
 
 
 def test_pca_subtract_mean_flag_is_tri_state():
@@ -110,21 +95,16 @@ def test_gauge_refit_flag_overrides_the_config():
     assert _config("--method", "geoode", "--gauge_refit_every", "1").gauge_refit_every == 1
 
 
-def test_relational_target_flag_overrides_the_config():
-    assert _config("--method", "geoode").relational_target == "native"
-    assert _config("--method", "geoode", "--relational_target", "projected").relational_target == "projected"
-
-
 def test_geoode_flags_are_rejected_for_other_methods():
     with pytest.raises(ValueError, match="only supported by the geoode method"):
-        _config("--method", "talas", "--beta", "2.0")
+        _config("--method", "talas", "--lambda_end", "2.0")
 
 
 def test_geoode_config_round_trips_through_to_dict():
-    config = _config("--method", "geoode", "--lambda_vel", "0.5")
+    config = _config("--method", "geoode", "--lambda_ctr", "0.5")
 
     values = config.to_dict()
 
     assert values["distill_method"] == "geoode"
-    assert values["lambda_vel"] == 0.5
+    assert values["lambda_ctr"] == 0.5
     assert values["contrastive_view"] == "dropout"

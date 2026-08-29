@@ -54,9 +54,6 @@ class BaseConfig:
     save_every = 1
     save_best = True
     
-    # Per-depth diagnostics are only defined for methods with a cached teacher
-    # embedding per example, so the base default is off.
-    depth_log_every = 0
 
     # Where the pair-classification decision threshold is swept. "validation" keeps
     # the test score held out; "test" sweeps it on the test split itself, which turns
