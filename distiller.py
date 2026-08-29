@@ -236,6 +236,7 @@ class KnowledgeDistiller:
                 lambda_ctr=config.lambda_ctr,
                 contrastive_temperature=config.contrastive_temperature,
                 endpoint_loss=getattr(config, "endpoint_loss", "cosine"),
+                lambda_gram=float(getattr(config, "lambda_gram", 0.0) or 0.0),
                 pooling=config.student_pooling,
                 include_embedding_layer=config.include_embedding_layer,
                 eps_norm=config.eps_norm,
@@ -262,7 +263,8 @@ class KnowledgeDistiller:
             print(
                 "GeoODE-KD criterion initialized: "
                 f"lambda_end={config.lambda_end}, lambda_ctr={config.lambda_ctr}, "
-                f"endpoint_loss={getattr(config, 'endpoint_loss', 'cosine')}"
+                f"endpoint_loss={getattr(config, 'endpoint_loss', 'cosine')}, "
+                f"lambda_gram={float(getattr(config, 'lambda_gram', 0.0) or 0.0)}"
             )
         elif config.distill_method == "rkd":
             # RKD holds no parameters either: both of its potentials are invariant
@@ -845,14 +847,14 @@ class KnowledgeDistiller:
         gauge_stats = None
         gauge_mode = getattr(cfg, "gauge_rotation", "procrustes")
         refit_every = int(getattr(cfg, "gauge_refit_every", 0) or 0)
-        if gauge_mode == "random" and refit_every > 0:
+        if gauge_mode != "procrustes" and refit_every > 0:
             # The refit is an alternating exact minimisation over O(d_S) and is only
             # a descent step for the Procrustes gauge. Re-drawing a random rotation
             # every epoch is a different experiment; refusing the combination keeps
             # the two from being confused in the logs.
             raise ValueError(
                 "gauge_refit_every > 0 is only defined for gauge_rotation="
-                "'procrustes'; the random gauge has nothing to refit"
+                f"'procrustes'; the {gauge_mode} gauge has nothing to refit"
             )
         if getattr(cfg, "gauge_align", False):
             if texts is None:
@@ -874,6 +876,7 @@ class KnowledgeDistiller:
                     student_init,
                     mode=gauge_mode,
                     seed=int(getattr(cfg, "gauge_random_seed", 0)),
+                    theta=getattr(cfg, "gauge_theta", None),
                 )
                 if gauge_mode == "procrustes":
                     # Kept for the optional per-epoch re-estimation of R (alternating

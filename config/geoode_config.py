@@ -27,6 +27,11 @@ class GeoODEConfig(BaseConfig):
     # with). Pair it with --lambda_ctr 0 and --no-gauge_align to reproduce that
     # recipe exactly (PCA target + MSE, nothing else). CLI: --endpoint_loss.
     endpoint_loss = "cosine"
+    # Control for Prop. 3: weight of a pairwise-similarity (Gram) term between the
+    # student's and the target's batch Gram matrices. 0 is the recipe; > 0 is the
+    # "+ Gram" row of the recipe ablation, expected to be redundant with L_end once
+    # the interface is a fixed orthonormal map. CLI: --lambda_gram.
+    lambda_gram = 0.0
 
     # Pool(.) of Eq. (7) applied at every depth. "cls" matches the pooling the
     # evaluation code uses, so the supervised endpoint is the embedding that is scored.
@@ -77,6 +82,9 @@ class GeoODEConfig(BaseConfig):
     # by *being the right* orientation rather than by rotating at all.
     gauge_rotation = "procrustes"
     gauge_random_seed = 0
+    # Position on the geodesic between the Procrustes gauge (0) and the random one
+    # (1); read only by gauge_rotation = "interpolate". CLI: --gauge_theta.
+    gauge_theta = 0.5
     # Re-estimate R every N epochs against the current student (alternating exact
     # minimisation over O(d_S)); 0 keeps the initial gauge for the whole run.
     gauge_refit_every = 0

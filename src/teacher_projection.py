@@ -34,6 +34,7 @@ records which one it used.
 
 from __future__ import annotations
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -353,7 +354,49 @@ def fit_gauge_alignment(
     }
 
 
-GAUGE_ROTATIONS = ("procrustes", "random")
+GAUGE_ROTATIONS = ("procrustes", "random", "interpolate", "rank_one")
+
+
+def interpolate_rotation(start: torch.Tensor, end: torch.Tensor, theta: float) -> torch.Tensor:
+    """Geodesic on the rotation group from ``start`` (theta = 0) to ``end`` (theta = 1):
+    ``Q(theta) = start expm(theta logm(start^T end))``.
+
+    A reflection has no real logarithm, so when the two matrices lie in different
+    components of O(d) the last column of ``end`` is negated first; ``end`` is a Haar
+    draw, so the flipped matrix is one just as well. The logarithm is projected onto
+    its skew-symmetric part before exponentiation, which makes every ``Q(theta)``
+    exactly orthogonal rather than orthogonal up to rounding.
+    """
+    import scipy.linalg
+
+    if not 0.0 <= float(theta) <= 1.0:
+        raise ValueError(f"theta must lie in [0, 1], got {theta!r}")
+    a = start.detach().to(torch.float64).cpu().numpy()
+    b = end.detach().to(torch.float64).cpu().numpy().copy()
+    if np.linalg.det(a) * np.linalg.det(b) < 0:
+        b[:, -1] *= -1.0
+    log = np.real(scipy.linalg.logm(a.T @ b))
+    log = (log - log.T) / 2.0
+    rotation = a @ scipy.linalg.expm(float(theta) * log)
+    return torch.from_numpy(np.ascontiguousarray(rotation)).to(start.dtype)
+
+
+def rank_one_rotation(targets: torch.Tensor, student: torch.Tensor) -> torch.Tensor:
+    """The rank-one part of the gauge: a Householder reflection sending the mean
+    target direction onto the mean student direction and touching nothing else.
+
+    On a student whose initial states are nearly one-dimensional the Procrustes
+    cross-covariance is rank-one and its gauge can only do this much; this control
+    says whether the full ``R`` ever does more.
+    """
+    u = F.normalize(F.normalize(targets.detach().to(torch.float32), dim=-1).mean(dim=0), dim=0)
+    w = F.normalize(F.normalize(student.detach().to(torch.float32), dim=-1).mean(dim=0), dim=0)
+    v = u - w
+    eye = torch.eye(targets.shape[1], dtype=torch.float32)
+    norm_sq = float(v @ v)
+    if norm_sq < 1e-12:
+        return eye
+    return eye - 2.0 * torch.outer(v, v) / norm_sq
 
 
 def fit_gauge_rotation(
@@ -361,15 +404,19 @@ def fit_gauge_rotation(
     student: torch.Tensor,
     mode: str = "procrustes",
     seed: int = 0,
+    theta: float | None = None,
 ) -> tuple[torch.Tensor, dict[str, float]]:
-    """Pick the orientation factor by name: the Procrustes gauge or a random one.
+    """Pick the orientation factor by name.
 
-    The Procrustes fit is solved either way, even when a random rotation is the one
-    returned: it costs one ``d_S x d_S`` SVD and it puts the number the control
+    ``procrustes`` is the fitted gauge; ``random`` a Haar rotation of identical cost;
+    ``interpolate`` the geodesic point ``Q(theta)`` between the two (theta = 0 is the
+    Procrustes solution, theta = 1 the random one); ``rank_one`` the Householder map
+    that aligns only the two mean directions.
+
+    The Procrustes fit is solved either way, even when another rotation is the one
+    returned: it costs one ``d_S x d_S`` SVD and it puts the number every control
     exists to be compared against (``cos_procrustes``) in the same log line and the
-    same saved stats as the number the control achieved. Without it the two arms can
-    only be compared across runs, and the whole point of the random gauge is that it
-    is matched to the Procrustes one in everything but the information it uses.
+    same saved stats as the number the control achieved.
     """
     if mode not in GAUGE_ROTATIONS:
         raise ValueError(
@@ -381,11 +428,20 @@ def fit_gauge_rotation(
     if mode == "procrustes":
         return procrustes, stats
 
-    rotation = random_orthogonal(targets.shape[1], seed=seed)
     T = F.normalize(targets.detach().to(torch.float32), dim=-1)
     Z = F.normalize(student.detach().to(torch.float32), dim=-1)
+    if mode == "random":
+        rotation = random_orthogonal(targets.shape[1], seed=seed)
+        stats["rotation_seed"] = int(seed)
+    elif mode == "interpolate":
+        if theta is None:
+            raise ValueError("gauge rotation 'interpolate' needs theta in [0, 1]")
+        rotation = interpolate_rotation(procrustes, random_orthogonal(targets.shape[1], seed=seed), theta)
+        stats["rotation_seed"] = int(seed)
+        stats["theta"] = float(theta)
+    else:
+        rotation = rank_one_rotation(T, Z)
     # cos_after is always the cosine under the rotation that was actually applied.
     stats["cos_procrustes"] = stats["cos_after"]
     stats["cos_after"] = float(((T @ rotation) * Z).sum(dim=-1).mean())
-    stats["rotation_seed"] = int(seed)
     return rotation, stats

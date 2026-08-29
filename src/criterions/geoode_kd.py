@@ -79,20 +79,23 @@ class GeoODEKD(nn.Module):
         eps_norm: float = 1e-12,
         target_projector: nn.Module | None = None,
         endpoint_loss: str = "cosine",
+        lambda_gram: float = 0.0,
     ):
         super().__init__()
-        if lambda_end < 0 or lambda_ctr < 0:
-            raise ValueError("lambda_end and lambda_ctr must be non-negative (Eq. 38)")
-        if endpoint_loss not in ("cosine", "mse"):
+        if lambda_end < 0 or lambda_ctr < 0 or lambda_gram < 0:
+            raise ValueError("lambda_end, lambda_ctr and lambda_gram must be non-negative")
+        if endpoint_loss not in ("cosine", "mse", "procrustes"):
             raise ValueError(
-                f"endpoint_loss must be 'cosine' or 'mse', got {endpoint_loss!r}"
+                "endpoint_loss must be 'cosine', 'mse' or 'procrustes', "
+                f"got {endpoint_loss!r}"
             )
-        if endpoint_loss == "mse" and target_projector is not None:
+        if endpoint_loss != "cosine" and target_projector is not None:
             raise ValueError(
-                "endpoint_loss='mse' is the frozen-target baseline; it is not defined "
-                "together with a learned target projector"
+                f"endpoint_loss={endpoint_loss!r} is a frozen-target control; it is not "
+                "defined together with a learned target projector"
             )
         self.endpoint_loss_form = endpoint_loss
+        self.lambda_gram = float(lambda_gram)
 
         self.lambda_end = float(lambda_end)
         self.lambda_ctr = float(lambda_ctr)
@@ -140,6 +143,35 @@ class GeoODEKD(nn.Module):
         elements, as ``nn.MSELoss`` does.
         """
         return F.mse_loss(raw_final_state, teacher)
+
+    @staticmethod
+    def batch_procrustes(final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
+        """Per-step orthogonal re-alignment (the EdgePoint2 / Bhattarai family).
+
+        Solves ``R_b = argmin_{R in O(d)} ||Z R - T||_F`` for the current batch in
+        closed form and applies it to the student states. ``R_b`` is treated as a
+        constant: at the optimum its contribution to the gradient vanishes (envelope
+        theorem), so the student is trained on ``1 - <z R_b, tau>``. With a batch
+        smaller than ``d`` the solution is only determined on the batch's span; the
+        rest of ``R_b`` is an arbitrary orthogonal completion, which is exactly the
+        arm's weakness and the reason it is a control rather than the recipe.
+        """
+        with torch.no_grad():
+            cross = final_state.transpose(0, 1) @ teacher
+            u, _, vh = torch.linalg.svd(cross.float(), full_matrices=True)
+            rotation = (u @ vh).to(final_state.dtype)
+        return final_state @ rotation
+
+    @staticmethod
+    def gram_loss(final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
+        """Pairwise-similarity matching (SP-KD / RKD family) on the batch: squared
+        error between the student's and the target's off-diagonal Gram entries.
+        The control for Prop. 3 -- with a fixed orthonormal interface it should be
+        redundant with the endpoint term."""
+        gram_s = final_state @ final_state.transpose(0, 1)
+        gram_t = teacher @ teacher.transpose(0, 1)
+        mask = ~torch.eye(gram_s.shape[0], dtype=torch.bool, device=gram_s.device)
+        return ((gram_s - gram_t)[mask] ** 2).mean()
 
     def contrastive_loss(
         self, view_a: torch.Tensor, view_b: torch.Tensor
@@ -195,8 +227,15 @@ class GeoODEKD(nn.Module):
 
         if self.endpoint_loss_form == "mse":
             loss_end = loss_end_mse
+        elif self.endpoint_loss_form == "procrustes":
+            loss_end = self.endpoint_loss(self.batch_procrustes(states[-1], teacher), teacher)
         else:
             loss_end = self.endpoint_loss(states[-1], teacher)
+
+        if self.lambda_gram > 0.0:
+            loss_gram = self.gram_loss(states[-1], teacher)
+        else:
+            loss_gram = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
         if self.lambda_ctr > 0.0 and second_view is not None:
             loss_ctr = self.contrastive_loss(
@@ -205,13 +244,18 @@ class GeoODEKD(nn.Module):
         else:
             loss_ctr = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
-        total = self.lambda_end * loss_end + self.lambda_ctr * loss_ctr
+        total = (
+            self.lambda_end * loss_end
+            + self.lambda_ctr * loss_ctr
+            + self.lambda_gram * loss_gram
+        )
 
         with torch.no_grad():
             metrics = {
                 "loss_total": float(total.detach()),
                 "loss_end": float(loss_end.detach()),
                 "loss_ctr": float(loss_ctr.detach()),
+                "loss_gram": float(loss_gram.detach()),
                 # Only the final layer is supervised; the shallow cosine is logged
                 # next to it as a free sanity check on the untouched lower stack.
                 "cos_first": float((states[0] * teacher).sum(dim=-1).mean()),

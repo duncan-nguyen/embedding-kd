@@ -350,6 +350,49 @@ def test_a_random_gauge_cannot_be_refit():
         _targets_for(gauge_rotation="random", gauge_refit_every=1)
 
 
+def test_the_interpolated_gauge_walks_from_procrustes_to_the_random_one():
+    """Q(theta) is the geodesic between the two gauges the paper compares, so the
+    interpolation arm has to reduce to each of them at its endpoints -- otherwise the
+    curve in Figure A1 would not connect the two points it is drawn between."""
+    procrustes = _targets_for(gauge_rotation="procrustes")
+    random_gauge = _targets_for(gauge_rotation="random", gauge_random_seed=0)
+
+    at_zero = _targets_for(gauge_rotation="interpolate", gauge_theta=0.0, gauge_random_seed=0)
+    at_one = _targets_for(gauge_rotation="interpolate", gauge_theta=1.0, gauge_random_seed=0)
+    halfway = _targets_for(gauge_rotation="interpolate", gauge_theta=0.5, gauge_random_seed=0)
+
+    assert torch.allclose(at_zero, procrustes, atol=1e-4)
+    assert torch.allclose(at_one, random_gauge, atol=1e-4)
+    assert not torch.allclose(halfway, procrustes, atol=1e-3)
+    assert not torch.allclose(halfway, random_gauge, atol=1e-3)
+    # Every point of the path is still an orthogonal map, so the Gram matrix of the
+    # targets -- and with it the whole one-factor reading of the ablation -- is untouched.
+    ungauged = _targets_for(gauge_align=False)
+    assert torch.allclose(halfway @ halfway.T, ungauged @ ungauged.T, atol=1e-4)
+
+
+def test_the_rank_one_gauge_only_aligns_the_two_mean_directions():
+    """The control for a student whose initial states are nearly one-dimensional: if
+    the Householder map recovers the Procrustes gain, R was doing nothing more than
+    matching the means."""
+    rank_one = _targets_for(gauge_rotation="rank_one")
+    ungauged = _targets_for(gauge_align=False)
+
+    assert torch.allclose(rank_one @ rank_one.T, ungauged @ ungauged.T, atol=1e-4)
+    assert not torch.allclose(rank_one, ungauged, atol=1e-3)
+
+
+@pytest.mark.parametrize("mode", ["random", "interpolate", "rank_one"])
+def test_only_the_fitted_gauge_can_be_refit(mode):
+    with pytest.raises(ValueError, match="only defined for gauge_rotation"):
+        _targets_for(gauge_rotation=mode, gauge_theta=0.5, gauge_refit_every=1)
+
+
+def test_the_interpolated_gauge_needs_a_theta():
+    with pytest.raises(ValueError, match="theta"):
+        _targets_for(gauge_rotation="interpolate", gauge_theta=None)
+
+
 def test_the_run_records_which_arm_it_used(tmp_path):
     _targets_for(
         save_dir=str(tmp_path),
@@ -505,7 +548,7 @@ def test_an_unfinished_cell_is_not_reported_as_done(tmp_path):
 # The audit notebook is the run vehicle, and it builds every arm's command by hand
 # --------------------------------------------------------------------------- #
 
-NOTEBOOK = REPO_ROOT / "notebooks" / "audit_runs_qwen_minilm.ipynb"
+NOTEBOOK = REPO_ROOT / "notebooks" / "audit_qwen_minilm.ipynb"
 
 
 def _notebook_cell(prefix: str) -> str:
@@ -591,22 +634,32 @@ def test_the_notebook_builds_the_arms_it_names(tmp_path, capsys):
 
 
 def test_the_notebook_covers_the_protocol_arms_and_multiplies_only_the_random_ones(tmp_path, capsys):
-    namespace = _run_notebook_setup(tmp_path, DRAWS=3, SEEDS=[1, 2])
+    namespace = _run_notebook_setup(
+        tmp_path, DRAWS=3, SEEDS=[1, 2], GROUPS={"E1": True, "E2": True, "G": True, "A5": True}
+    )
     capsys.readouterr()
     names = [arm["name"] for arm in namespace["ARM_PLAN"]]
     bases = {arm["base"] for arm in namespace["ARM_PLAN"]}
 
     assert len(names) == len(set(names))
     assert all(name.endswith(("__s1", "__s2")) for name in names)
-    for expected in ("pca__procrustes", "pca__none", "random__none__d2", "pca__random__d2", "mrl_prefix__none",
-                     "learned_t2s__lr1", "learned_t2s__lr5", "learned_s2t__lr1", "pca__mse", "simcse_only",
-                     "talas__matched", "ours__talas15k"):
+    # One arm per interface family (E1), one row per design choice (E2), the gauge
+    # controls (G) and the sanity variants (A5).
+    for expected in ("pca__procrustes", "random__none__d2", "learned_t2s__lr1", "learned_t2s__lr5",
+                     "learned_s2t__lr1", "learned_s2t__lr5", "procrustes_per_batch",
+                     "ours__mse", "ours__no_ctr", "ours__gram_w1", "ours__gram_w10", "pca__none", "ours__refit",
+                     "ours__no_teacher",
+                     "pca__random__d2", "gauge_theta0.25", "gauge_theta0.5", "gauge_theta0.75", "gauge_rank_one",
+                     "random_gaussian__none__d0", "pca_full__procrustes", "svd__procrustes"):
         assert expected in bases, expected
     assert sum(base.startswith("pca__random__d") for base in bases) == 3
     assert sum(base.startswith("random__none__d") for base in bases) == 3
-    # Arms that still need code stay in the plan (so the summary says so) without a command.
-    blocked = {arm["base"] for arm in namespace["ARM_PLAN"] if arm["needs"]}
-    assert {"procrustes_per_batch", "ours+gram", "ours+lasd", "ours+anchor_k", "freeze_lower", "gauge_rank_one", "talas__adamw"} <= blocked
+    # Every arm of the protocol has code now: nothing is left blocked.
+    assert not any(arm["needs"] for arm in namespace["ARM_PLAN"])
+    # The groups that are off by default stay out of the plan.
+    default = _run_notebook_setup(tmp_path / "default")
+    capsys.readouterr()
+    assert not any(arm["group"] == "A5" for arm in default["ARM_PLAN"])
 
 
 def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path, capsys):
@@ -632,9 +685,18 @@ def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path
     assert len(caches) == 1
     cache = caches.pop()
     assert namespace["RUN_ROOT"] not in cache.parents and cache != namespace["RUN_ROOT"]
-    # The MSE baseline is the one arm allowed to change the objective, and only that.
-    mse = _config_for(namespace["ARM_COMMANDS"]["pca__mse"])
-    assert mse.endpoint_loss == "mse" and mse.lambda_ctr == 0.0 and mse.gauge_align is False
+    # The recipe ablation changes one thing per row and leaves the rest of the recipe alone.
+    mse = _config_for(namespace["ARM_COMMANDS"]["ours__mse"])
+    assert mse.endpoint_loss == "mse" and mse.lambda_ctr == hp["lambda_ctr"] and mse.gauge_align is True
+    no_ctr = _config_for(namespace["ARM_COMMANDS"]["ours__no_ctr"])
+    assert no_ctr.lambda_ctr == 0.0 and no_ctr.endpoint_loss == "cosine"
+    gram = _config_for(namespace["ARM_COMMANDS"]["ours__gram_w10"])
+    assert gram.lambda_gram == 10.0 and gram.gauge_align is True
+    per_batch = _config_for(namespace["ARM_COMMANDS"]["procrustes_per_batch"])
+    assert per_batch.endpoint_loss == "procrustes" and per_batch.gauge_align is False
+    theta = _config_for(namespace["ARM_COMMANDS"]["gauge_theta0.5"])
+    assert theta.gauge_rotation == "interpolate" and theta.gauge_theta == 0.5
+    assert _config_for(namespace["ARM_COMMANDS"]["gauge_rank_one"]).gauge_rotation == "rank_one"
 
 
 # --------------------------------------------------------------------------- #

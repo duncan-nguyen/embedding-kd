@@ -135,12 +135,22 @@ def parse_args():
     )
     parser.add_argument(
         '--endpoint_loss',
-        choices=['cosine', 'mse'],
+        choices=['cosine', 'mse', 'procrustes'],
         default=None,
         help='GeoODE-KD: form of the endpoint term. "cosine" is the recipe; "mse" is '
              'the sentence-transformers <= v5.4 baseline (squared error between the '
              'unnormalised student state and the projected, un-renormalised teacher '
-             'target). Combine with --lambda_ctr 0 --no-gauge_align for PCA + MSE'
+             'target). Combine with --lambda_ctr 0 --no-gauge_align for PCA + MSE. '
+             '"procrustes" re-solves an orthogonal alignment of the batch every step '
+             '(per-step re-alignment control)'
+    )
+    parser.add_argument(
+        '--lambda_gram',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of a pairwise-similarity (Gram) term between student '
+             'and target batch Gram matrices. 0 is the recipe; > 0 is the "+ Gram" '
+             'control of the recipe ablation'
     )
     parser.add_argument(
         '--projection_type',
@@ -197,12 +207,22 @@ def parse_args():
     )
     parser.add_argument(
         '--gauge_rotation',
-        choices=['procrustes', 'random'],
+        choices=['procrustes', 'random', 'interpolate', 'rank_one'],
         default=None,
         help='GeoODE-KD: which rotation --gauge_align applies. "procrustes" is the '
              'informative gauge fitted to the student init; "random" is a '
              'Haar-random rotation of identical cost, the control that separates '
-             '"the right orientation" from "an orientation"'
+             '"the right orientation" from "an orientation"; "interpolate" is the '
+             'geodesic point --gauge_theta of the way from the Procrustes gauge to the '
+             'random one; "rank_one" is the Householder map aligning only the two '
+             'mean directions'
+    )
+    parser.add_argument(
+        '--gauge_theta',
+        type=float,
+        default=None,
+        help='GeoODE-KD: theta in [0, 1] for --gauge_rotation interpolate '
+             '(0 = Procrustes, 1 = random)'
     )
     parser.add_argument(
         '--gauge_random_seed',
@@ -457,6 +477,7 @@ def get_config(method: str, args):
             'lambda_end',
             'lambda_ctr',
             'endpoint_loss',
+            'lambda_gram',
             'projection_type',
             'projection_seed',
             'learned_projector_lr_scale',
@@ -465,6 +486,7 @@ def get_config(method: str, args):
             'gauge_align',
             'gauge_rotation',
             'gauge_random_seed',
+            'gauge_theta',
             'gauge_refit_every',
         ),
         'geoode method',
