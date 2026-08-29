@@ -51,6 +51,11 @@ class GeoODEKD(nn.Module):
         lambda_end: weight of the endpoint distillation loss L_end (Eq. 36).
         lambda_ctr: weight of the contrastive regulariser L_ctr (Eq. 37).
         contrastive_temperature: tau_c of Eq. (37).
+        endpoint_loss: ``"cosine"`` is Eq. (36). ``"mse"`` is the
+            sentence-transformers (<= v5.4) distillation baseline: mean squared error
+            between the *unnormalised* pooled final state and the projected teacher
+            target exactly as delivered (the distiller then skips the final norm(.)
+            of Eq. 8). It is a baseline, not part of the recipe.
         target_projector: optional trainable map standing where the frozen ``P_T``
             would be (:class:`src.target_projector.LearnedTargetProjector`). It is
             the learned-projector *baseline*, not part of the recipe: given one, the
@@ -73,10 +78,21 @@ class GeoODEKD(nn.Module):
         include_embedding_layer: bool = False,
         eps_norm: float = 1e-12,
         target_projector: nn.Module | None = None,
+        endpoint_loss: str = "cosine",
     ):
         super().__init__()
         if lambda_end < 0 or lambda_ctr < 0:
             raise ValueError("lambda_end and lambda_ctr must be non-negative (Eq. 38)")
+        if endpoint_loss not in ("cosine", "mse"):
+            raise ValueError(
+                f"endpoint_loss must be 'cosine' or 'mse', got {endpoint_loss!r}"
+            )
+        if endpoint_loss == "mse" and target_projector is not None:
+            raise ValueError(
+                "endpoint_loss='mse' is the frozen-target baseline; it is not defined "
+                "together with a learned target projector"
+            )
+        self.endpoint_loss_form = endpoint_loss
 
         self.lambda_end = float(lambda_end)
         self.lambda_ctr = float(lambda_ctr)
@@ -115,6 +131,16 @@ class GeoODEKD(nn.Module):
         """Endpoint semantic distillation, Eq. (36)."""
         return (1.0 - (final_state * teacher).sum(dim=-1)).mean()
 
+    @staticmethod
+    def endpoint_mse(raw_final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
+        """Squared-error endpoint of the sentence-transformers baseline.
+
+        Both arguments are read as they come: no normalisation on either side, so
+        the student is also asked to reproduce the target's norm. Mean over all
+        elements, as ``nn.MSELoss`` does.
+        """
+        return F.mse_loss(raw_final_state, teacher)
+
     def contrastive_loss(
         self, view_a: torch.Tensor, view_b: torch.Tensor
     ) -> torch.Tensor:
@@ -142,11 +168,18 @@ class GeoODEKD(nn.Module):
             second_view: pooled (unnormalised) final representation of a second
                 dropout view, used only for the contrastive term.
         """
+        hidden_states = list(hidden_states)
         states = self.layer_states(hidden_states, attention_mask)
         if not states:
             raise ValueError("hidden_states contained no supervised layer")
 
-        teacher = self.normalize(teacher.to(states[-1].dtype))
+        teacher = teacher.to(states[-1].dtype)
+        if self.endpoint_loss_form == "mse":
+            # The baseline regresses the raw pooled state onto the raw target; the
+            # normalised copies below still feed the cosine diagnostics.
+            raw_final = _pool(hidden_states[-1], attention_mask, self.pooling).float()
+            loss_end_mse = self.endpoint_mse(raw_final, teacher)
+        teacher = self.normalize(teacher)
         # The contrastive term is a statement about the student's *own* space, so it
         # keeps reading the unmapped final state even when a learned projector moves
         # the endpoint comparison into a shared space.
@@ -160,7 +193,10 @@ class GeoODEKD(nn.Module):
                 "must be projected into the student dimension before training"
             )
 
-        loss_end = self.endpoint_loss(states[-1], teacher)
+        if self.endpoint_loss_form == "mse":
+            loss_end = loss_end_mse
+        else:
+            loss_end = self.endpoint_loss(states[-1], teacher)
 
         if self.lambda_ctr > 0.0 and second_view is not None:
             loss_ctr = self.contrastive_loss(

@@ -259,3 +259,59 @@ def test_both_active_weights_move_the_objective():
     reference = total()
     assert total(lambda_ctr=0.0) != reference
     assert total(lambda_end=0.0) != reference
+
+
+def test_mse_endpoint_regresses_the_raw_state_onto_the_raw_target():
+    """The MSE baseline reads both sides unnormalised and is nn.MSELoss over all
+    elements; the cosine diagnostics keep reporting on the normalised copies."""
+    criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0, endpoint_loss="mse")
+    batch, dim, tokens, layers = 3, 6, 4, 2
+    generator = torch.Generator().manual_seed(7)
+    hidden_states = [
+        torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)
+    ]
+    teacher = 0.7 * torch.randn(batch, dim, generator=generator)  # deliberately not unit
+
+    total, metrics = criterion(hidden_states=hidden_states, teacher=teacher)
+
+    raw_final = hidden_states[-1][:, 0, :]
+    expected = torch.nn.functional.mse_loss(raw_final, teacher)
+    assert float(total) == pytest.approx(float(expected), rel=1e-5)
+    assert metrics["loss_end"] == pytest.approx(float(expected), rel=1e-5)
+    unit_final = torch.nn.functional.normalize(raw_final, dim=-1)
+    unit_teacher = torch.nn.functional.normalize(teacher, dim=-1)
+    assert metrics["cos_final"] == pytest.approx(
+        float((unit_final * unit_teacher).sum(-1).mean()), rel=1e-5
+    )
+
+
+def test_cosine_endpoint_is_unchanged_by_the_new_option():
+    criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0)
+    batch, dim, tokens = 3, 6, 4
+    generator = torch.Generator().manual_seed(8)
+    hidden_states = [torch.randn(batch, tokens, dim, generator=generator) for _ in range(3)]
+    teacher = torch.randn(batch, dim, generator=generator)
+    total, _ = criterion(hidden_states=hidden_states, teacher=teacher)
+    unit_final = torch.nn.functional.normalize(hidden_states[-1][:, 0, :], dim=-1)
+    unit_teacher = torch.nn.functional.normalize(teacher, dim=-1)
+    assert float(total) == pytest.approx(
+        float((1 - (unit_final * unit_teacher).sum(-1)).mean()), rel=1e-5
+    )
+
+
+def test_unknown_endpoint_loss_and_mse_with_projector_are_rejected():
+    with pytest.raises(ValueError, match="endpoint_loss"):
+        _criterion(endpoint_loss="huber")
+    with pytest.raises(ValueError, match="learned target projector"):
+        _criterion(endpoint_loss="mse", target_projector=torch.nn.Linear(2, 2))
+
+
+def test_projection_can_skip_the_final_renormalisation():
+    generator = torch.Generator().manual_seed(9)
+    teacher = torch.nn.functional.normalize(torch.randn(64, 12, generator=generator), dim=-1)
+    projection, mean = fit_pca_projection(teacher, out_dim=4, center=True)
+    raw = project_teacher_embeddings(teacher, projection, mean=mean, renormalize=False)
+    unit = project_teacher_embeddings(teacher, projection, mean=mean)
+    assert torch.allclose(raw, teacher @ projection)
+    assert torch.allclose(unit, torch.nn.functional.normalize(raw, dim=-1))
+    assert (raw.norm(dim=-1) <= 1.0 + 1e-6).all()

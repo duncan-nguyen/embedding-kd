@@ -55,8 +55,18 @@ def test_pca_subtract_mean_flag_is_tri_state():
 
 def test_projection_type_flag_selects_the_subspace_arm():
     assert _config("--method", "geoode").projection_type == "pca"
-    for arm in ("random", "random_gaussian"):
+    for arm in ("random", "random_gaussian", "mrl_prefix", "learned_t2s", "learned_s2t"):
         assert _config("--method", "geoode", "--projection_type", arm).projection_type == arm
+
+
+def test_learned_projector_lr_scale_flag_overrides_the_config():
+    # The learned arms are baselines, so their one knob has to be sweepable from
+    # the command line rather than edited into the config.
+    assert _config("--method", "geoode").learned_projector_lr_scale == GeoODEConfig.learned_projector_lr_scale
+    config = _config("--method", "geoode", "--projection_type", "learned_t2s", "--learned_projector_lr_scale", "5")
+    assert config.learned_projector_lr_scale == 5.0
+    with pytest.raises(ValueError, match="only supported by the geoode method"):
+        _config("--method", "rkd", "--learned_projector_lr_scale", "5")
 
 
 def test_projection_seed_flag_overrides_the_config():
@@ -108,3 +118,23 @@ def test_geoode_config_round_trips_through_to_dict():
     assert values["distill_method"] == "geoode"
     assert values["lambda_ctr"] == 0.5
     assert values["contrastive_view"] == "dropout"
+
+
+def test_endpoint_loss_flag_selects_the_mse_baseline():
+    assert _config("--method", "geoode").endpoint_loss == "cosine"
+    assert _config("--method", "geoode", "--endpoint_loss", "mse").endpoint_loss == "mse"
+
+
+def test_pca_mse_baseline_is_expressible_from_the_cli():
+    # PCA target + MSE, no gauge, no contrastive term: the sentence-transformers
+    # <= v5.4 distillation recipe, run through the same code path as the recipe.
+    config = _config(
+        "--method", "geoode",
+        "--endpoint_loss", "mse",
+        "--no-gauge_align",
+        "--lambda_ctr", "0",
+    )
+    assert config.endpoint_loss == "mse"
+    assert config.gauge_align is False
+    assert config.lambda_ctr == 0.0
+    assert config.projection_type == "pca"

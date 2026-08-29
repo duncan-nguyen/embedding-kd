@@ -19,6 +19,14 @@ class GeoODEConfig(BaseConfig):
     lambda_end = 1.0
     lambda_ctr = 0.5
     contrastive_temperature = 0.05
+    # Form of the endpoint term. "cosine" is the recipe (Eq. 36: 1 - <z, tau> on
+    # the unit sphere). "mse" is the sentence-transformers <= v5.4 distillation
+    # recipe used as a baseline: squared error between the *unnormalised* pooled
+    # student state and the projected teacher target, which is then *not*
+    # re-normalised after P_T (so the target keeps the norm the projection left it
+    # with). Pair it with --lambda_ctr 0 and --no-gauge_align to reproduce that
+    # recipe exactly (PCA target + MSE, nothing else). CLI: --endpoint_loss.
+    endpoint_loss = "cosine"
 
     # Pool(.) of Eq. (7) applied at every depth. "cls" matches the pooling the
     # evaluation code uses, so the supervised endpoint is the embedding that is scored.

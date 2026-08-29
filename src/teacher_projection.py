@@ -187,7 +187,35 @@ def fit_random_projection(
     return projection, mean
 
 
-PROJECTION_TYPES = ("pca", "random", "random_gaussian")
+def fit_mrl_prefix_projection(
+    embeddings: torch.Tensor, out_dim: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The Matryoshka-prefix interface: keep the teacher's first ``out_dim`` coordinates.
+
+    Same contract as :func:`fit_pca_projection`. The map is the first ``out_dim``
+    columns of the identity, so it is orthonormal like PCA and random-orthonormal,
+    but the subspace is chosen by *coordinate order* rather than by the spectrum or
+    at random. For a teacher trained with Matryoshka representation learning the
+    leading coordinates are meant to carry the most information, so this arm is
+    expected between random and PCA; for any other teacher it is a random-looking
+    axis-aligned subspace and should behave like the random arm. Data-independent:
+    only the shape and mean of ``embeddings`` are read.
+    """
+    if embeddings.dim() != 2:
+        raise ValueError(
+            f"expected a [N, d_T] matrix, got shape {tuple(embeddings.shape)}"
+        )
+    if out_dim <= 0:
+        raise ValueError(f"out_dim must be positive, got {out_dim}")
+    matrix = embeddings.detach().to(torch.float32)
+    teacher_dim = matrix.shape[1]
+    mean = matrix.mean(dim=0)
+    if out_dim >= teacher_dim:
+        return torch.eye(teacher_dim, dtype=torch.float32), mean
+    return torch.eye(teacher_dim, dtype=torch.float32)[:, :out_dim].contiguous(), mean
+
+
+PROJECTION_TYPES = ("pca", "random", "random_gaussian", "mrl_prefix")
 
 
 def fit_teacher_projection(
@@ -203,7 +231,8 @@ def fit_teacher_projection(
     ``center=False`` the uncentered SVD ablation -- the same routine, differing only
     in whether the corpus mean is removed before the SVD, i.e. whether the first
     retained direction is allowed to be the teacher's mean vector. ``"random"`` and
-    ``"random_gaussian"`` are the two data-independent controls.
+    ``"random_gaussian"`` are the two data-independent controls, and
+    ``"mrl_prefix"`` (the leading coordinates) is the third fixed interface.
     """
     if projection_type == "pca":
         return fit_pca_projection(embeddings, out_dim=out_dim, center=center)
@@ -214,6 +243,8 @@ def fit_teacher_projection(
             seed=seed,
             orthonormal=projection_type == "random",
         )
+    if projection_type == "mrl_prefix":
+        return fit_mrl_prefix_projection(embeddings, out_dim=out_dim)
     if projection_type in ("learned_t2s", "learned_s2t"):
         raise ValueError(
             f"projection_type={projection_type!r} is a trained map, not a fitted one: "
@@ -248,11 +279,14 @@ def project_teacher_embeddings(
     mean: torch.Tensor | None = None,
     subtract_mean: bool = False,
     eps: float = 1e-12,
+    renormalize: bool = True,
 ) -> torch.Tensor:
     """Apply Eq. (8): ``tau_i = norm(f_T(x_i) P_T)``.
 
     ``subtract_mean`` is off by default so that the applied map is exactly the linear
     ``P_T`` of the paper; turning it on makes the transform the textbook PCA one.
+    ``renormalize=False`` skips the final ``norm(.)`` and returns ``f_T(x_i) P_T`` as
+    is -- the target the MSE baseline regresses onto (sentence-transformers recipe).
     """
     matrix = embeddings.detach().to(torch.float32)
     if subtract_mean:
@@ -260,6 +294,8 @@ def project_teacher_embeddings(
             raise ValueError("subtract_mean=True requires the fitted mean")
         matrix = matrix - mean.to(matrix.dtype)
     projected = matrix @ projection.to(matrix.dtype)
+    if not renormalize:
+        return projected
     return F.normalize(projected, p=2, dim=-1, eps=eps)
 
 

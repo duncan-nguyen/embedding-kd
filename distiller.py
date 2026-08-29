@@ -235,6 +235,7 @@ class KnowledgeDistiller:
                 lambda_end=config.lambda_end,
                 lambda_ctr=config.lambda_ctr,
                 contrastive_temperature=config.contrastive_temperature,
+                endpoint_loss=getattr(config, "endpoint_loss", "cosine"),
                 pooling=config.student_pooling,
                 include_embedding_layer=config.include_embedding_layer,
                 eps_norm=config.eps_norm,
@@ -260,7 +261,8 @@ class KnowledgeDistiller:
                 )
             print(
                 "GeoODE-KD criterion initialized: "
-                f"lambda_end={config.lambda_end}, lambda_ctr={config.lambda_ctr}"
+                f"lambda_end={config.lambda_end}, lambda_ctr={config.lambda_ctr}, "
+                f"endpoint_loss={getattr(config, 'endpoint_loss', 'cosine')}"
             )
         elif config.distill_method == "rkd":
             # RKD holds no parameters either: both of its potentials are invariant
@@ -806,12 +808,16 @@ class KnowledgeDistiller:
             center=cfg.pca_center_fit,
             seed=int(getattr(cfg, "projection_seed", 0)),
         )
+        # The MSE baseline (sentence-transformers recipe) regresses onto the raw
+        # projected target, so it is the one case where norm(.) is skipped.
+        renormalize = getattr(cfg, "endpoint_loss", "cosine") != "mse"
         targets = project_teacher_embeddings(
             teacher_cls,
             projection,
             mean=mean,
             subtract_mean=cfg.pca_subtract_mean,
             eps=cfg.eps_norm,
+            renormalize=renormalize,
         )
 
         explained = 1.0
@@ -878,7 +884,9 @@ class KnowledgeDistiller:
                         "texts": [texts[i] for i in index.tolist()],
                         "history": [gauge_stats],
                     }
-                targets = F.normalize(targets @ rotation, dim=-1, eps=cfg.eps_norm)
+                targets = targets @ rotation
+                if renormalize:
+                    targets = F.normalize(targets, dim=-1, eps=cfg.eps_norm)
                 reference = (
                     ""
                     if gauge_mode == "procrustes"

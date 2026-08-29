@@ -134,17 +134,27 @@ def parse_args():
         help='GeoODE-KD: weight of the contrastive regularizer'
     )
     parser.add_argument(
+        '--endpoint_loss',
+        choices=['cosine', 'mse'],
+        default=None,
+        help='GeoODE-KD: form of the endpoint term. "cosine" is the recipe; "mse" is '
+             'the sentence-transformers <= v5.4 baseline (squared error between the '
+             'unnormalised student state and the projected, un-renormalised teacher '
+             'target). Combine with --lambda_ctr 0 --no-gauge_align for PCA + MSE'
+    )
+    parser.add_argument(
         '--projection_type',
-        choices=['pca', 'random', 'random_gaussian', 'learned_t2s', 'learned_s2t'],
+        choices=['pca', 'random', 'random_gaussian', 'mrl_prefix', 'learned_t2s', 'learned_s2t'],
         default=None,
         help='GeoODE-KD: how the teacher targets reach the student dimension. "pca" '
              'is the paper\'s frozen spectral map; "random" draws a Haar-random '
              'orthonormal subspace and "random_gaussian" an unnormalised '
              'Johnson-Lindenstrauss map -- the two data-independent controls for the '
-             'Eckart-Young claim; "learned_t2s" and "learned_s2t" replace the frozen '
-             'map with a linear layer trained alongside the student (teacher mapped '
-             'down, or student mapped up into the teacher space) -- the adaptive '
-             'baselines'
+             'Eckart-Young claim; "mrl_prefix" keeps the teacher\'s leading '
+             'coordinates (the Matryoshka-prefix interface); "learned_t2s" and '
+             '"learned_s2t" replace the frozen map with a linear layer trained '
+             'alongside the student (teacher mapped down, or student mapped up into '
+             'the teacher space) -- the adaptive baselines'
     )
     parser.add_argument(
         '--projection_seed',
@@ -153,6 +163,15 @@ def parse_args():
         help='GeoODE-KD: draw index of the random teacher projection. Different '
              'seeds are different draws of the same control, so their spread is the '
              'null band the PCA map has to clear'
+    )
+    parser.add_argument(
+        '--learned_projector_lr_scale',
+        type=float,
+        default=None,
+        help='GeoODE-KD: learning rate of a learned target map (--projection_type '
+             'learned_*) as a multiple of the student\'s. The learned arms are the '
+             'baselines the frozen map is measured against, so they get a sweep '
+             '(e.g. 1 and 5) rather than a single untuned setting'
     )
     parser.add_argument(
         '--pca_center_fit',
@@ -437,8 +456,10 @@ def get_config(method: str, args):
         (
             'lambda_end',
             'lambda_ctr',
+            'endpoint_loss',
             'projection_type',
             'projection_seed',
+            'learned_projector_lr_scale',
             'pca_center_fit',
             'pca_subtract_mean',
             'gauge_align',

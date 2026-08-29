@@ -156,12 +156,17 @@ def test_uncentered_svd_spends_its_first_direction_on_the_mean():
 def test_fit_teacher_projection_dispatches_every_arm():
     embeddings = _spectral_data()
 
-    for kind in ("pca", "random", "random_gaussian"):
+    for kind in ("pca", "random", "random_gaussian", "mrl_prefix"):
         projection, mean = fit_teacher_projection(
             embeddings, out_dim=8, projection_type=kind, seed=10
         )
         assert projection.shape == (32, 8)
         assert mean.shape == (32,)
+
+    # The Matryoshka prefix is the leading coordinates: orthonormal, data-blind.
+    prefix, _ = fit_teacher_projection(embeddings, out_dim=8, projection_type="mrl_prefix")
+    assert torch.equal(prefix, torch.eye(32)[:, :8])
+    assert torch.equal(prefix, fit_teacher_projection(torch.randn(5, 32), out_dim=8, projection_type="mrl_prefix")[0])
 
     expected, _ = fit_pca_projection(embeddings, out_dim=8, center=False)
     dispatched, _ = fit_teacher_projection(
@@ -419,11 +424,11 @@ def test_cell_names_are_unique_so_runs_cannot_overwrite_each_other():
     names = [cell["name"] for cell in plan]
 
     assert len(names) == len(set(names))
-    # 17 cells = 5 subspaces x 3 gauges, plus the two learned arms which have no
-    # gauge column. 8 of those are deterministic ({pca, pca_full, svd} x {none,
-    # procrustes} and the two learned ones); the other 9 are drawn three times, and
-    # every cell is repeated at both training seeds.
-    assert len(names) == (8 + 9 * 3) * 2
+    # 20 cells = 6 subspaces x 3 gauges, plus the two learned arms which have no
+    # gauge column. 10 of those are deterministic ({pca, pca_full, svd, mrl_prefix}
+    # x {none, procrustes} and the two learned ones); the other 10 are drawn three
+    # times, and every cell is repeated at both training seeds.
+    assert len(names) == (10 + 10 * 3) * 2
 
 
 def test_draws_only_multiply_the_stochastic_arms():
@@ -436,9 +441,9 @@ def test_draws_only_multiply_the_stochastic_arms():
         if cell["subspace"] not in ablation.STOCHASTIC_SUBSPACES
         and cell["gauge"] != "random"
     ]
-    # {pca, pca_full, svd} x {none, procrustes}, plus the two learned arms: the
-    # learned map varies with the training seed, not with a draw of the map.
-    assert len(deterministic) == 8
+    # {pca, pca_full, svd, mrl_prefix} x {none, procrustes}, plus the two learned
+    # arms: the learned map varies with the training seed, not with a draw of the map.
+    assert len(deterministic) == 10
     assert len(tripled) == len(single) + 2 * (len(single) - len(deterministic))
 
 
@@ -497,14 +502,14 @@ def test_an_unfinished_cell_is_not_reported_as_done(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# The notebook is the run vehicle, and its ablation cells build commands by hand
+# The audit notebook is the run vehicle, and it builds every arm's command by hand
 # --------------------------------------------------------------------------- #
 
-NOTEBOOK = Path(__file__).resolve().parent.parent / "test_mdd.ipynb"
+NOTEBOOK = REPO_ROOT / "notebooks" / "audit_runs_qwen_minilm.ipynb"
 
 
 def _notebook_cell(prefix: str) -> str:
-    """One cell of test_mdd.ipynb, found by its header comment rather than index."""
+    """One cell of the audit notebook, found by its header comment rather than index."""
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
     sources = ["".join(cell["source"]) for cell in notebook["cells"]]
     matches = [source for source in sources if source.startswith(prefix)]
@@ -513,81 +518,123 @@ def _notebook_cell(prefix: str) -> str:
 
 
 def _run_notebook_setup(tmp_path, **overrides):
-    """Execute the config / command-building / ablation-plan cells only.
+    """Execute the config cell and the arm-registry cell only.
 
-    Cells 2 and 3 clone the repo and check the GPU, so what they define is stubbed
-    instead. Nothing here trains: cell 4 and cell 8 only build command lists.
+    Cells 2-4 clone the repo, check the GPU, dedup the corpus and encode the probe
+    set, so what they define is stubbed instead. Nothing here trains: cell 5 only
+    builds command lists.
     """
     namespace = {"__name__": "__nb__"}
     exec(_notebook_cell("# 1. "), namespace)
     namespace.update(overrides)
+    datasets = namespace["DATASETS"]
     namespace.update(
         {
             "sys": sys,
             "os": os,
             "subprocess": subprocess,
             "PROJECT_DIR": REPO_ROOT,
-            "TRAIN_DATA": REPO_ROOT / namespace["TRAIN_DATA_REL"],
-            # Cell 3 picks these: the run's own directory, and the output root the
-            # shared teacher cache hangs off (Google Drive on Colab).
+            # Cell 3 picks these: the run's own directory, the output root the shared
+            # teacher cache hangs off, and the (dedup) corpus of every dataset.
             "OUTPUT_BASE": tmp_path,
             "RUN_ROOT": tmp_path / namespace["RUN_NAME"],
             "IN_COLAB": False,
+            "TRAIN_DATA_BY_DATASET": {key: REPO_ROOT / spec["path"] for key, spec in datasets.items()},
+            "TRAIN_DATA": REPO_ROOT / datasets[namespace["DATASET"]]["path"],
         }
     )
-    exec(_notebook_cell("# 4. "), namespace)
-    exec(_notebook_cell("# 8. "), namespace)
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    exec(_notebook_cell("# 5. "), namespace)
     return namespace
 
 
-def test_the_notebook_builds_the_same_arms_as_the_script(tmp_path, capsys):
-    """The notebook appends arm flags to cell 4's command by hand, so this is what
-    catches the two drifting apart -- a whole grid that silently trained the
-    default map would otherwise look like a clean null result."""
-    namespace = _run_notebook_setup(tmp_path, ABLATION_GRID="full", ABLATION_DRAWS=2)
+def _config_for(command):
+    """Parse a generated command back through main.py's own parser, any method."""
+    original = sys.argv
+    sys.argv = ["main.py", *command[2:]]
+    try:
+        args = parse_args()
+        return get_config(args.method, args)
+    finally:
+        sys.argv = original
+
+
+def test_the_notebook_builds_the_arms_it_names(tmp_path, capsys):
+    """Every arm's flags are appended by hand, so this is what catches a flag that
+    was renamed on one side only -- a whole plan that silently trained the default
+    map would otherwise look like a clean null result."""
+    namespace = _run_notebook_setup(tmp_path, DRAWS=2)
     capsys.readouterr()
-    expected_type = {"pca": "pca", "pca_full": "pca", "svd": "pca"}
 
-    for cell in namespace["ABLATION_PLAN"]:
-        command = namespace["ABLATION_COMMANDS"][cell["name"]]
-        config = _config_from(command)
-
-        assert config.projection_type == expected_type.get(cell["subspace"], cell["subspace"])
-        assert config.pca_center_fit is (cell["subspace"] != "svd")
-        assert config.pca_subtract_mean is (cell["subspace"] == "pca_full")
-        assert config.gauge_align is (cell["gauge"] != "none")
-        if cell["gauge"] != "none":
-            assert config.gauge_rotation == cell["gauge"]
-        assert config.seed == cell["seed"]
-        # One save_dir and one seed: appending a second copy of either would leave
-        # argparse silently taking the last one.
+    plan = namespace["ARM_PLAN"]
+    commands = namespace["ARM_COMMANDS"]
+    assert plan, "the plan is empty"
+    for arm in plan:
+        if arm["needs"] is not None:
+            assert arm["name"] not in commands
+            continue
+        command = commands[arm["name"]]
+        config = _config_for(command)
+        assert config.distill_method == arm["method"]
+        for key, value in (arm["settings"] or {}).items():
+            assert getattr(config, key) == value, (arm["name"], key)
+        assert config.seed == arm["seed"]
+        # One save_dir and one seed: a second copy of either would leave argparse
+        # silently taking the last one.
         assert command.count("--save_dir") == 1
         assert command.count("--seed") == 1
-        assert command[command.index("--save_dir") + 1].endswith(cell["name"])
+        assert command[command.index("--save_dir") + 1].endswith(arm["name"])
+        # Per-epoch weights are what the probe dump reads.
+        assert command[command.index("--save_every") + 1] == "1"
+        assert "--weights_dir" in command
 
 
-def test_the_notebook_grid_shares_the_teacher_cache_of_the_method_runs(tmp_path, capsys):
-    """Every cell has the same teacher and corpus, so the teacher must be encoded
-    once for the whole grid and the method runs together -- and out of a directory
-    that outlives the run, so a later grid does not pay for it again."""
+def test_the_notebook_covers_the_protocol_arms_and_multiplies_only_the_random_ones(tmp_path, capsys):
+    namespace = _run_notebook_setup(tmp_path, DRAWS=3, SEEDS=[1, 2])
+    capsys.readouterr()
+    names = [arm["name"] for arm in namespace["ARM_PLAN"]]
+    bases = {arm["base"] for arm in namespace["ARM_PLAN"]}
+
+    assert len(names) == len(set(names))
+    assert all(name.endswith(("__s1", "__s2")) for name in names)
+    for expected in ("pca__procrustes", "pca__none", "random__none__d2", "pca__random__d2", "mrl_prefix__none",
+                     "learned_t2s__lr1", "learned_t2s__lr5", "learned_s2t__lr1", "pca__mse", "simcse_only",
+                     "talas__matched", "ours__talas15k"):
+        assert expected in bases, expected
+    assert sum(base.startswith("pca__random__d") for base in bases) == 3
+    assert sum(base.startswith("random__none__d") for base in bases) == 3
+    # Arms that still need code stay in the plan (so the summary says so) without a command.
+    blocked = {arm["base"] for arm in namespace["ARM_PLAN"] if arm["needs"]}
+    assert {"procrustes_per_batch", "ours+gram", "ours+lasd", "ours+anchor_k", "freeze_lower", "gauge_rank_one", "talas__adamw"} <= blocked
+
+
+def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path, capsys):
+    """Every arm has the same teacher and corpus, so the teacher is encoded once for
+    the whole plan, out of a directory that outlives the run; and the matched-HP
+    protocol means one lr / batch / epoch count / lambda for every arm."""
     namespace = _run_notebook_setup(tmp_path)
     capsys.readouterr()
-    method_command = namespace["COMMANDS"]["geoode"]
-    cache = Path(method_command[method_command.index("--cache_dir") + 1])
-
-    for command in namespace["ABLATION_COMMANDS"].values():
-        assert Path(command[command.index("--cache_dir") + 1]) == cache
-    # Outside the run directory: that is what makes it reusable at all.
+    hp = namespace["MATCHED_HP"]
+    caches = set()
+    for arm in namespace["ARM_PLAN"]:
+        if arm["needs"] is not None:
+            continue
+        command = namespace["ARM_COMMANDS"][arm["name"]]
+        config = _config_for(command)
+        assert config.learning_rate == hp["learning_rate"]
+        assert config.batch_size == hp["batch_size"]
+        assert config.epochs == hp["epochs"]
+        if config.distill_method == "geoode" and "--lambda_ctr" not in arm["flags"]:
+            assert config.lambda_ctr == hp["lambda_ctr"]
+        if config.distill_method in ("geoode", "talas", "rkd"):
+            caches.add(Path(command[command.index("--cache_dir") + 1]))
+    assert len(caches) == 1
+    cache = caches.pop()
     assert namespace["RUN_ROOT"] not in cache.parents and cache != namespace["RUN_ROOT"]
-
-
-def test_the_notebook_holds_the_objective_fixed_across_the_grid(tmp_path, capsys):
-    namespace = _run_notebook_setup(tmp_path)
-    capsys.readouterr()
-
-    for command in namespace["ABLATION_COMMANDS"].values():
-        config = _config_from(command)
-        assert config.lambda_ctr == namespace["ABLATION_LAMBDA_CTR"]
+    # The MSE baseline is the one arm allowed to change the objective, and only that.
+    mse = _config_for(namespace["ARM_COMMANDS"]["pca__mse"])
+    assert mse.endpoint_loss == "mse" and mse.lambda_ctr == 0.0 and mse.gauge_align is False
 
 
 # --------------------------------------------------------------------------- #

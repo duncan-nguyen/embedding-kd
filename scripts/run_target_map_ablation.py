@@ -12,6 +12,7 @@ random subspace of the same rank, and the same map without the orthonormality:
     svd              uncentered SVD -- the first direction may be the teacher mean
     random           Haar-random orthonormal columns: PCA's contract, no spectrum
     random_gaussian  Johnson-Lindenstrauss: the same random subspace, not an isometry
+    mrl_prefix       the teacher's first d_S coordinates (Matryoshka-prefix interface)
     learned_t2s      a linear map d_T -> d_S trained with the student (EMO, sbert v5.5)
     learned_s2t      a linear map d_S -> d_T trained with the student (TALAS, LEAF)
 
@@ -105,6 +106,7 @@ SUBSPACE_ARMS = {
     "svd": {"projection_type": "pca", "pca_center_fit": False, "pca_subtract_mean": False},
     "random": {"projection_type": "random"},
     "random_gaussian": {"projection_type": "random_gaussian"},
+    "mrl_prefix": {"projection_type": "mrl_prefix"},
     "learned_t2s": {"projection_type": "learned_t2s"},
     "learned_s2t": {"projection_type": "learned_s2t"},
 }
@@ -164,7 +166,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["requested", "full"],
         default="requested",
         help="'requested' is ours against the four controls it has to beat (6 runs); "
-             "'full' is every subspace x gauge combination (17 runs). Overridden by "
+             "'full' is every subspace x gauge combination (20 runs). Overridden by "
              "--subspace/--gauge",
     )
     parser.add_argument(

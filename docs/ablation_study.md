@@ -15,7 +15,7 @@ Entry point:
 | | |
 |---|---|
 | Lưới target map | `scripts/run_target_map_ablation.py` (dry-run → `--execute` → `--collect`) |
-| Trong notebook | `test_mdd.ipynb` cell 8–10, bật bằng `RUN_ABLATION` ở cell 1 |
+| Trong notebook | `notebooks/audit_runs_qwen_minilm.ipynb` (mọi arm của `docs/experiments_and_figures.md`, matched HP, probe dump) + `notebooks/audit_analysis_qwen_minilm.ipynb` (bảng/figure post-hoc) |
 | Ablation lẻ | truyền flag thẳng cho `main.py --method geoode` |
 | Test của các arm | `tests/test_target_map_ablations.py` |
 | Cache teacher | `--cache_dir` (mặc định của script: `runs/teacher_cache`) — dùng chung cho mọi cell, mọi lưới và cả 8 method của notebook, nên teacher chỉ chạy một lần cho mỗi (teacher, pooling, corpus) |
@@ -38,6 +38,7 @@ Kiểm định claim Eckart–Young: subspace phổ của teacher là thứ mang
 | `svd` | `--no-pca_center_fit` | uncentered SVD: hướng đầu tiên được phép chính là vector mean của teacher |
 | `random` | `--projection_type random` | subspace Haar orthonormal cùng rank — giữ đúng contract của PCA, bỏ phổ |
 | `random_gaussian` | `--projection_type random_gaussian` | Johnson–Lindenstrauss: **cùng subspace** với `random` ở cùng seed, bỏ thêm tính orthonormal |
+| `mrl_prefix` | `--projection_type mrl_prefix` | `d_S` toạ độ đầu của teacher (Matryoshka prefix): orthonormal như PCA, subspace chọn theo *thứ tự toạ độ* — kỳ vọng giữa random và PCA với teacher train MRL, ≈ random với teacher khác |
 | `learned_t2s` | `--projection_type learned_t2s` | `W ∈ R^{d_T×d_S}` học cùng student, chiếu teacher xuống (EMO, sbert v5.5) |
 | `learned_s2t` | `--projection_type learned_s2t` | `W ∈ R^{d_S×d_T}` học cùng student, chiếu student lên không gian teacher (TALAS, LEAF, jina-v5) |
 
@@ -65,7 +66,7 @@ vứt chiều nào theo cái gì làm loss nhỏ — đúng shortcut mà công t
 đối (Bhattarai 2509.25253 Thm 2). `s2t` không vứt gì của teacher, nhưng `d_T − d_S`
 chiều dư cho map chỗ trống để hấp thụ sai số mà student không bao giờ phải học.
 
-`learned_projector_lr_scale` (config, mặc định `1.0`) đặt lr của `W` theo bội số lr
+`--learned_projector_lr_scale` (mặc định `1.0`) đặt lr của `W` theo bội số lr
 student. Nó tồn tại để baseline được tune chứ không bị dựng thành bù nhìn.
 
 ### 1.2 Nhân tố orientation — `--gauge_align`, `--gauge_rotation`
@@ -119,7 +120,7 @@ không có gì để refit, và bước refit chỉ là bước giảm với Pro
 | `learned_t2s__none` | learned projection t→s | map học có đáng hơn map đóng băng không? |
 | `learned_s2t__none` | learned projection s→t | như trên, hướng ngược lại |
 
-`full` = mọi tổ hợp subspace × gauge = 17 ô (5 × 3 cộng 2 arm learned không có cột
+`full` = mọi tổ hợp subspace × gauge = 20 ô (6 × 3 cộng 2 arm learned không có cột
 gauge). Nhân thêm `--draws` (chỉ với arm ngẫu nhiên) và `--seeds`.
 
 ```bash
@@ -184,7 +185,7 @@ hiệu teacher mang lại.
 | arm | là gì | ai làm |
 |---|---|---|
 | Procrustes mỗi batch | giải lại closed-form theo từng batch — nấc thích ứng giữa `gauge_refit_every` và map học | EdgePoint2 2504.17280, Bhattarai 2509.25253 |
-| PCA + MSE | recipe sentence-transformers ≤ v5.4: cùng target map với `pca__none` nhưng loss MSE thay vì cosine | — |
+| ~~PCA + MSE~~ | **đã có**: `--endpoint_loss mse --lambda_ctr 0 --no-gauge_align` (dòng `pca_mse` của `main_tables.ipynb`, arm `pca__mse` của audit notebook) | — |
 
 (learned s→t và learned t→s đã có code, xem §1.1.)
 
