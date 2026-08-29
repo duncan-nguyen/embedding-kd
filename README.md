@@ -163,6 +163,10 @@ Transformer layer as one Riemannian Euler step of a teacher-conditioned flow
 instead of pushing every layer at the final teacher embedding. Its own flags are
 `--alpha`/`--beta` (the semantic and relational parts of the energy),
 `--lambda_end`/`--lambda_vel`/`--lambda_ctr` (the three loss weights),
+`--lambda_desc` (the optional weak descent constraint: the deep half of the
+transitions, `l >= ceil(L/2)`, is penalised only when it raises the semantic
+energy `E_sem`; `0` by default, and its residual is logged as `loss_desc` either
+way),
 `--guidance_schedule`/`--guidance_power` (the depth schedule s(t)) and
 `--student_pooling`. Training adds no parameters and inference is the plain
 student encoder.

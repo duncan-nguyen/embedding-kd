@@ -18,5 +18,12 @@ the inference architecture unchanged. Its ideal continuous flow preserves
 embedding norms and decreases the teacher-conditioned energy; without the
 relational term, geodesic distance to the teacher contracts in closed form and
 reaches zero at the final depth.
-% TODO: Add the principal quantitative result after the final experiments.
+% NOTE: these numbers come from the lambda_evel = 0 configuration
+% (endpoint + contrastive on the frozen targets). Revise if the headline
+% system changes.
+Across three teacher--student pairs and nine benchmarks, students distilled
+on 102{,}361 unlabeled sentences recover 97--98\% of their teacher's average
+score, and improve on the strongest multi-layer anchoring baseline by 3.0 and
+2.2 points on the two MiniLM students while trailing it by 0.8 points on
+BERT-base.
 \end{abstract}

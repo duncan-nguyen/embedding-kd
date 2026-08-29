@@ -222,6 +222,7 @@ class KnowledgeDistiller:
                 beta=config.beta,
                 lambda_end=config.lambda_end,
                 lambda_vel=config.lambda_vel,
+                lambda_desc=config.lambda_desc,
                 lambda_ctr=config.lambda_ctr,
                 contrastive_temperature=config.contrastive_temperature,
                 guidance_schedule=config.guidance_schedule,
@@ -236,6 +237,7 @@ class KnowledgeDistiller:
                 "GeoODE-KD criterion initialized: "
                 f"alpha={config.alpha}, beta={config.beta}, "
                 f"lambda_end={config.lambda_end}, lambda_vel={config.lambda_vel}, "
+                f"lambda_desc={config.lambda_desc}, "
                 f"lambda_ctr={config.lambda_ctr}, schedule={config.guidance_schedule}"
             )
         elif config.distill_method == "rkd":
@@ -2267,7 +2269,9 @@ class KnowledgeDistiller:
             "cos_teacher",
             "gram_gap",
             "energy",
+            "sem_energy",
             "vel_residual",
+            "desc_residual",
             "field_norm",
             "step_norm",
             "direction_alignment",

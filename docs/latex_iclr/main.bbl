@@ -10,14 +10,19 @@ Ricky T.~Q. Chen and Yaron Lipman.
 \newblock Flow matching on general geometries.
 \newblock In \emph{International Conference on Learning Representations}, 2024.
 
-\bibitem[Chen et~al.(2018)Chen, Rubanova, Bettencourt, and Duvenaud]{chen2018neuralode}
+\bibitem[Chen et~al.(2018)Chen, Rubanova, Bettencourt, and
+  Duvenaud]{chen2018neuralode}
 Ricky T.~Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David Duvenaud.
 \newblock Neural ordinary differential equations.
-\newblock In \emph{Advances in Neural Information Processing Systems}, volume~31, 2018.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~31, 2018.
 
-\bibitem[Dao et~al.(2026)Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and Le]{talas}
-Quoc~Phong Dao, Hoang~Son Nguyen, Khanh~Chi Pham, Linh Ngo~Van, Diep Thi-Ngoc Nguyen, Thien~Huu Nguyen, and Trung Le.
-\newblock {TALAS}: Teacher-anchored layer alignment with adaptive sharpness-aware minimization for embedding distillation, 2026.
+\bibitem[Dao et~al.(2026)Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and
+  Le]{talas}
+Quoc~Phong Dao, Hoang~Son Nguyen, Khanh~Chi Pham, Linh Ngo~Van, Diep Thi-Ngoc
+  Nguyen, Thien~Huu Nguyen, and Trung Le.
+\newblock {TALAS}: Teacher-anchored layer alignment with adaptive
+  sharpness-aware minimization for embedding distillation, 2026.
 \newblock Manuscript.
 
 \bibitem[Hinton et~al.(2015)Hinton, Vinyals, and Dean]{hinton2015distilling}
@@ -25,30 +30,41 @@ Geoffrey Hinton, Oriol Vinyals, and Jeff Dean.
 \newblock Distilling the knowledge in a neural network.
 \newblock \emph{arXiv preprint arXiv:1503.02531}, 2015.
 
-\bibitem[Huang et~al.(2023)Huang, Zhang, Zheng, You, Wang, Qian, and Xu]{huang2023diffkd}
-Tao Huang, Yuan Zhang, Mingkai Zheng, Shan You, Fei Wang, Chen Qian, and Chang Xu.
+\bibitem[Huang et~al.(2023)Huang, Zhang, Zheng, You, Wang, Qian, and
+  Xu]{huang2023diffkd}
+Tao Huang, Yuan Zhang, Mingkai Zheng, Shan You, Fei Wang, Chen Qian, and Chang
+  Xu.
 \newblock Knowledge diffusion for distillation.
 \newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
 
-\bibitem[Li et~al.(2022)Li, Du, Zhou, Jing, Zhou, Zeng, Xiao, Zhu, Liu, and Zhang]{li2022odetransformer}
-Bei Li, Quan Du, Tao Zhou, Yi~Jing, Shuhan Zhou, Xin Zeng, Tong Xiao, Jingbo Zhu, Xuebo Liu, and Min Zhang.
-\newblock {ODE} transformer: An ordinary differential equation-inspired model for sequence generation.
-\newblock In \emph{Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics}, pp.\  8335--8351, 2022.
+\bibitem[Li et~al.(2022)Li, Du, Zhou, Jing, Zhou, Zeng, Xiao, Zhu, Liu, and
+  Zhang]{li2022odetransformer}
+Bei Li, Quan Du, Tao Zhou, Yi~Jing, Shuhan Zhou, Xin Zeng, Tong Xiao, Jingbo
+  Zhu, Xuebo Liu, and Min Zhang.
+\newblock {ODE} transformer: An ordinary differential equation-inspired model
+  for sequence generation.
+\newblock In \emph{Proceedings of the 60th Annual Meeting of the Association
+  for Computational Linguistics}, pp.\  8335--8351, 2022.
 
 \bibitem[Li et~al.(2025)Li, Li, Li, Xie, and Li]{li2025ese}
 Xianming Li, Zongxi Li, Jing Li, Haoran Xie, and Qing Li.
 \newblock {ESE}: Espresso sentence embeddings.
 \newblock In \emph{International Conference on Learning Representations}, 2025.
 
-\bibitem[Lipman et~al.(2023)Lipman, Chen, Ben-Hamu, Nickel, and Le]{lipman2023flow}
-Yaron Lipman, Ricky T.~Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le.
+\bibitem[Lipman et~al.(2023)Lipman, Chen, Ben-Hamu, Nickel, and
+  Le]{lipman2023flow}
+Yaron Lipman, Ricky T.~Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew
+  Le.
 \newblock Flow matching for generative modeling.
 \newblock In \emph{International Conference on Learning Representations}, 2023.
 
-\bibitem[Reimers \& Gurevych(2020)Reimers and Gurevych]{reimers2020multilingual}
+\bibitem[Reimers \& Gurevych(2020)Reimers and
+  Gurevych]{reimers2020multilingual}
 Nils Reimers and Iryna Gurevych.
-\newblock Making monolingual sentence embeddings multilingual using knowledge distillation.
-\newblock In \emph{Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing}, pp.\  4512--4525, 2020.
+\newblock Making monolingual sentence embeddings multilingual using knowledge
+  distillation.
+\newblock In \emph{Proceedings of the 2020 Conference on Empirical Methods in
+  Natural Language Processing}, pp.\  4512--4525, 2020.
 
 \bibitem[Sch{\"o}nemann(1966)]{schonemann1966procrustes}
 Peter~H. Sch{\"o}nemann.
@@ -60,15 +76,20 @@ Shitong Shao, Zhiqiang Shen, Linrui Gong, Huanran Chen, and Xu~Dai.
 \newblock Precise knowledge transfer via flow matching.
 \newblock \emph{arXiv preprint arXiv:2402.02012}, 2024.
 
-\bibitem[Truong et~al.(2025)Truong, Vu, Vu, Nguyen, Ngo~Van, Nguyen, and Le]{truong2025emo}
-Minh-Phuc Truong, Hai~An Vu, Tu~Vu, Diep Thi-Ngoc Nguyen, Linh Ngo~Van, Thien~Huu Nguyen, and Trung Le.
-\newblock {EMO}: Embedding model distillation via intra-model relation and optimal transport alignments.
-\newblock In \emph{Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing}, 2025.
+\bibitem[Truong et~al.(2025)Truong, Vu, Vu, Nguyen, Ngo~Van, Nguyen, and
+  Le]{truong2025emo}
+Minh-Phuc Truong, Hai~An Vu, Tu~Vu, Diep Thi-Ngoc Nguyen, Linh Ngo~Van,
+  Thien~Huu Nguyen, and Trung Le.
+\newblock {EMO}: Embedding model distillation via intra-model relation and
+  optimal transport alignments.
+\newblock In \emph{Proceedings of the 2025 Conference on Empirical Methods in
+  Natural Language Processing}, 2025.
 
 \bibitem[Xu et~al.(2023)Xu, Shao, Chen, and Liu]{xu2023distillcse}
 Jiahao Xu, Wei Shao, Lihui Chen, and Lemao Liu.
 \newblock {DistillCSE}: Distilled contrastive learning for sentence embeddings.
-\newblock In \emph{Findings of the Association for Computational Linguistics: EMNLP 2023}, pp.\  8153--8165, 2023.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  EMNLP 2023}, pp.\  8153--8165, 2023.
 
 \bibitem[Zhang et~al.(2024)Zhang, Li, Zeng, and Wang]{zhang2024jasper}
 Dun Zhang, Jiacheng Li, Ziyang Zeng, and Fulong Wang.

@@ -16,7 +16,10 @@ depth diagnostics. The training signal is the endpoint-guided velocity loss
 L_evel (Eq. 32): it compares the *direction* of the realized layer update
 U^(l) = Log_{Z^(l)}(Z^(l+1)) with the geodesic direction to the teacher
 V^(l) = Log_{Z^(l)}(tau) in the tangent space of Z^(l), over every transition
-l = 1..L-1, the last one into the final layer included. The final layer is
+l = 1..L-1, the last one into the final layer included. Because that loss only
+constrains the *direction* of a transition, a weak descent constraint
+L_desc-sem (Eq. 33) additionally asks the deep half of the transitions not to
+raise the teacher-conditioned semantic energy E_sem. The final layer is
 additionally anchored on the teacher endpoint (Eq. 36).
 
 Nothing here is a module with weights: the criterion is teacher-conditioned geometry
@@ -61,6 +64,9 @@ class GeoODEKD(nn.Module):
         beta: weight of the relational (Gram) energy inside the potential.
         lambda_end: weight of the endpoint distillation loss.
         lambda_vel: weight of the endpoint-guided velocity loss L_evel.
+        lambda_desc: weight of the weak semantic-descent constraint L_desc-sem.
+            Zero (the default) leaves the objective exactly as in Eq. (38) without
+            the descent term.
         lambda_ctr: weight of the contrastive regulariser at the final layer.
         contrastive_temperature: tau_c of Eq. (37).
         guidance_schedule: ``"linear"`` for s(t) = t (the paper default),
@@ -69,8 +75,11 @@ class GeoODEKD(nn.Module):
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
             Off by default: the paper's L states are the L Transformer layers.
-        stop_grad_target: apply sg[.] to the field V^(l) (Eq. 32). Turning it off
-            is the full-gradient-dynamics ablation named in Section 3.5.
+        stop_grad_target: apply sg[.] to the field V^(l) (Eq. 32) and to the
+            earlier-layer energy E_sem(Z^(l), T) of the descent constraint (Eq. 33),
+            so neither term can be lowered by degrading the state it is measured
+            from. Turning it off is the full-gradient-dynamics ablation named in
+            Section 3.5.
 
     Per-layer diagnostics are not part of the returned training metrics; they are
     produced on demand by :meth:`depth_report`, which the distiller samples on its own
@@ -87,6 +96,7 @@ class GeoODEKD(nn.Module):
         beta: float = 1.0,
         lambda_end: float = 1.0,
         lambda_vel: float = 1.0,
+        lambda_desc: float = 0.0,
         lambda_ctr: float = 0.1,
         contrastive_temperature: float = 0.05,
         guidance_schedule: str = "linear",
@@ -104,6 +114,8 @@ class GeoODEKD(nn.Module):
             )
         if alpha < 0 or beta < 0:
             raise ValueError("alpha and beta must be non-negative (Eq. 20)")
+        if lambda_desc < 0:
+            raise ValueError("lambda_desc must be non-negative (Eq. 33)")
         if guidance_schedule == "power" and guidance_power <= -1.0:
             raise ValueError("guidance_power must exceed -1 so that int_0^1 s is finite")
 
@@ -111,6 +123,7 @@ class GeoODEKD(nn.Module):
         self.beta = float(beta)
         self.lambda_end = float(lambda_end)
         self.lambda_vel = float(lambda_vel)
+        self.lambda_desc = float(lambda_desc)
         self.lambda_ctr = float(lambda_ctr)
         self.contrastive_temperature = float(contrastive_temperature)
         self.guidance_schedule = guidance_schedule
@@ -209,6 +222,18 @@ class GeoODEKD(nn.Module):
             return teacher_gram.to(T.dtype)
         return T @ T.transpose(0, 1)
 
+    def semantic_energy(self, Z: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
+        """E_sem(Z, T) of Eq. (17): the batch-mean squared geodesic distance to the
+        teacher, 1/(2B) sum_i d_g(z_i, tau_i)^2.
+
+        The cosine is clamped by ``_COS_CLAMP`` rather than by +-1 so the term stays
+        differentiable: d/dcos of arccos(cos)^2/2 is -arccos/sqrt(1 - cos^2), which is
+        finite in the limit but evaluates to nan at cos = +-1 exactly. The clamp costs
+        at most 1e-6 rad of the reported distance.
+        """
+        cosine = (Z * T).sum(dim=-1).clamp(-self._COS_CLAMP, self._COS_CLAMP)
+        return 0.5 * torch.arccos(cosine).pow(2).mean()
+
     def energy(
         self,
         Z: torch.Tensor,
@@ -226,7 +251,7 @@ class GeoODEKD(nn.Module):
         the same flow at a batch-size-independent speed.
         """
         batch = Z.shape[0]
-        e_sem = 0.5 * self.geodesic_distance(Z, T).pow(2).mean()  # Eq. 17
+        e_sem = self.semantic_energy(Z, T)  # Eq. 17
         gram_gap = Z @ Z.transpose(0, 1) - self.teacher_gram(T, teacher_gram)
         e_geo = gram_gap.pow(2).sum() / (batch * batch)  # Eq. 19
         return self.alpha * e_sem + self.beta * e_geo, e_sem, e_geo
@@ -338,6 +363,60 @@ class GeoODEKD(nn.Module):
 
         return torch.stack(terms).mean()
 
+    @staticmethod
+    def descent_layers(num_layers: int) -> range:
+        """A = {ceil(L/2), ..., L-1} of Eq. (33), the 1-based source layers of the
+        constrained transitions: the deep half of the trajectory.
+
+        Empty when a single depth is supervised. The shallow half is left alone on
+        purpose - early layers still build lexical structure, and requiring them to
+        already lower the teacher energy would reinstate the layer-wise anchoring
+        that the flow replaces.
+        """
+        if num_layers < 2:
+            return range(0)
+        return range(-(-num_layers // 2), num_layers)
+
+    def descent_semantic_loss(
+        self, states: Sequence[torch.Tensor], teacher: torch.Tensor
+    ) -> torch.Tensor:
+        """Weak descent constraint on the teacher-conditioned semantic energy:
+
+            L_desc-sem = 1/|A| sum_{l in A} [E_sem(Z^(l+1), T) - E_sem(Z^(l), T)]_+,
+            A = {ceil(L/2), ..., L-1}.
+
+        L_evel constrains only the direction of a transition, so a layer can point
+        the right way and still make no progress toward the teacher (or move
+        backwards while a later layer repairs it). The hinge adds the missing
+        magnitude-side condition without prescribing a target state: a deep layer
+        pays nothing as long as it does not *increase* E_sem, and the term is exactly
+        zero on any trajectory whose deep half already descends - Proposition 2 says
+        the ideal flow is such a trajectory, so this is a constraint on the
+        discretisation, not a second endpoint loss.
+
+        With ``stop_grad_target`` the predecessor's energy is a detached reference,
+        so the hinge can only be lowered by improving Z^(l+1), never by pushing
+        Z^(l) away from the teacher.
+        """
+        layers = self.descent_layers(len(states))
+        if len(layers) == 0:
+            return torch.zeros((), device=teacher.device, dtype=teacher.dtype)
+
+        # Each state in the window is both the target of one transition and the
+        # reference of the next, so the energies are computed once and reused.
+        energies = {
+            index: self.semantic_energy(states[index], teacher)
+            for index in range(layers.start - 1, len(states))
+        }
+        terms = []
+        for layer in layers:
+            reference = energies[layer - 1]
+            if self.stop_grad_target:
+                reference = reference.detach()
+            terms.append(F.relu(energies[layer] - reference))
+
+        return torch.stack(terms).mean()
+
     def endpoint_loss(
         self, final_state: torch.Tensor, teacher: torch.Tensor
     ) -> torch.Tensor:
@@ -391,6 +470,12 @@ class GeoODEKD(nn.Module):
         - ``energy_violations``: depths where the realized trajectory *raises* the
           energy. Proposition 2 guarantees descent for the ideal continuous flow, so
           this counts how far the discrete student is from realizing it.
+        - ``sem_energy`` and ``desc_residual``: the semantic energy E_sem at every
+          depth, and the per-transition hinge [E_sem(Z^(l+1)) - E_sem(Z^(l))]_+ of
+          Eq. (33) over the deep half A. ``desc_residual`` is reported for the
+          transitions the constraint covers, so a positive entry is a depth where
+          the student moves away from the teacher in the region the constraint
+          governs.
         - ``vel_residual``: the per-transition term of Eq. (32),
           1 - cos(U, V) in the tangent space, i.e. where along depth the velocity
           loss is actually being paid. Reported for every transition, including
@@ -407,15 +492,22 @@ class GeoODEKD(nn.Module):
         teacher = self.normalize(teacher.to(states[-1].dtype))
         num_layers = len(states)
 
-        cos_teacher, distance, gram_gap, energy = [], [], [], []
+        cos_teacher, distance, gram_gap, energy, sem_energy = [], [], [], [], []
         if teacher_gram is not None:
             teacher_gram = teacher_gram.to(states[-1].dtype)
         for state in states:
-            total, _, geo = self.energy(state, teacher, teacher_gram)
+            total, sem, geo = self.energy(state, teacher, teacher_gram)
             cos_teacher.append(float((state * teacher).sum(dim=-1).mean()))
             distance.append(float(self.geodesic_distance(state, teacher).mean()))
             gram_gap.append(float(geo))
+            sem_energy.append(float(sem))
             energy.append(float(total))
+
+        descent_layers = list(self.descent_layers(num_layers))
+        desc_residual = [
+            max(0.0, sem_energy[layer] - sem_energy[layer - 1])
+            for layer in descent_layers
+        ]
 
         first_mass = self.guidance_mass(self._depth(0, num_layers))
         predicted_distance = [
@@ -465,7 +557,10 @@ class GeoODEKD(nn.Module):
             "geodesic_distance": distance,
             "predicted_geodesic_distance": predicted_distance,
             "gram_gap": gram_gap,
+            "sem_energy": sem_energy,
             "energy": energy,
+            "descent_layers": descent_layers,
+            "desc_residual": desc_residual,
             "vel_residual": vel_residual,
             "field_norm": field_norm,
             "step_norm": step_norm,
@@ -485,6 +580,10 @@ class GeoODEKD(nn.Module):
             "mean_vel_residual": sum(vel_residual) / len(vel_residual)
             if vel_residual
             else 0.0,
+            "mean_desc_residual": sum(desc_residual) / len(desc_residual)
+            if desc_residual
+            else 0.0,
+            "desc_violations": sum(1 for value in desc_residual if value > 0.0),
             "mean_alignment": sum(alignment) / len(alignment) if alignment else 0.0,
             "mean_field_norm": sum(field_norm) / len(field_norm) if field_norm else 0.0,
             "mean_step_norm": sum(step_norm) / len(step_norm) if step_norm else 0.0,
@@ -535,6 +634,9 @@ class GeoODEKD(nn.Module):
                 )
             teacher_gram = teacher_gram.to(teacher.dtype)
         loss_vel = self.velocity_loss(states, teacher, teacher_gram)
+        # Computed even at lambda_desc = 0: it costs one energy per deep layer and is
+        # the diagnostic that says whether the constraint would have bound at all.
+        loss_desc = self.descent_semantic_loss(states, teacher)
         loss_end = self.endpoint_loss(states[-1], teacher)
 
         if self.lambda_ctr > 0.0 and second_view is not None:
@@ -547,6 +649,7 @@ class GeoODEKD(nn.Module):
         total = (
             self.lambda_end * loss_end
             + self.lambda_vel * loss_vel
+            + self.lambda_desc * loss_desc
             + self.lambda_ctr * loss_ctr
         )
 
@@ -557,6 +660,7 @@ class GeoODEKD(nn.Module):
                 "loss_total": float(total.detach()),
                 "loss_end": float(loss_end.detach()),
                 "loss_vel": float(loss_vel.detach()),
+                "loss_desc": float(loss_desc.detach()),
                 "loss_ctr": float(loss_ctr.detach()),
                 # The hypothesis is that both discrepancies contract with depth, so
                 # the shallow and final values are logged as a pair.

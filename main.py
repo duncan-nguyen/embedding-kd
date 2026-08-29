@@ -146,6 +146,13 @@ def parse_args():
         help='GeoODE-KD: weight of the velocity-matching loss'
     )
     parser.add_argument(
+        '--lambda_desc',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the weak semantic-descent constraint on the deep '
+             'half of the layer transitions (0 disables it)'
+    )
+    parser.add_argument(
         '--lambda_ctr',
         type=float,
         default=None,
@@ -433,6 +440,7 @@ def get_config(method: str, args):
             'beta',
             'lambda_end',
             'lambda_vel',
+            'lambda_desc',
             'lambda_ctr',
             'guidance_schedule',
             'guidance_power',

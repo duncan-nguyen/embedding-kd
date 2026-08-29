@@ -233,6 +233,163 @@ def test_velocity_loss_is_positive_for_an_unrelated_trajectory():
     assert float(loss) > 0.1
 
 
+def _receding(criterion, T, angles, seed):
+    """States at prescribed geodesic distances from the teacher, along one fixed
+    tangent direction: E_sem grows with the angle, so every hinge is active."""
+    generator = torch.Generator().manual_seed(seed)
+    tangent = GeoODEKD.tangent_project(
+        T, torch.randn(T.shape, generator=generator, dtype=T.dtype)
+    )
+    direction = torch.nn.functional.normalize(tangent, dim=-1)
+    return [criterion.exp_map(T, angle * direction) for angle in angles]
+
+
+@pytest.mark.parametrize(
+    "num_layers, expected",
+    [
+        (1, []),
+        (2, [1]),
+        (3, [2]),
+        (6, [3, 4, 5]),
+        (7, [4, 5, 6]),
+        (12, [6, 7, 8, 9, 10, 11]),
+    ],
+)
+def test_descent_layers_are_the_deep_half(num_layers, expected):
+    # A = {ceil(L/2), ..., L-1}: the source layers of the constrained transitions.
+    assert list(GeoODEKD.descent_layers(num_layers)) == expected
+
+
+def test_descent_loss_vanishes_on_a_flow_following_trajectory():
+    # Proposition 2: the flow lowers the energy at every step, so the hinge is
+    # inactive on the trajectory the flow itself generates.
+    criterion = _criterion(alpha=1.0, beta=0.0, guidance_schedule="linear")
+    T = _sphere(8, 16, seed=80)
+    num_layers = 6
+
+    states = [_sphere(8, 16, seed=81)]
+    for index in range(num_layers - 1):
+        t, t_next = (index + 1) / num_layers, (index + 2) / num_layers
+        states.append(criterion.euler_step(states[-1], T, t, t_next))
+
+    assert float(criterion.descent_semantic_loss(states, T)) == pytest.approx(
+        0.0, abs=1e-14
+    )
+
+
+def test_descent_loss_matches_its_definition_on_an_unrelated_trajectory():
+    criterion = _criterion()
+    T = _sphere(8, 16, seed=82)
+    states = [_sphere(8, 16, seed=83 + index) for index in range(6)]
+
+    energies = [float(criterion.semantic_energy(state, T)) for state in states]
+    layers = list(range(3, 6))  # ceil(6 / 2) = 3
+    expected = sum(
+        max(0.0, energies[layer] - energies[layer - 1]) for layer in layers
+    ) / len(layers)
+
+    assert float(criterion.descent_semantic_loss(states, T)) == pytest.approx(
+        expected, rel=1e-12
+    )
+    assert expected > 0.0
+
+
+def test_descent_loss_ignores_the_shallow_half():
+    """A trajectory that regresses only before ceil(L/2) is not penalised, and the
+    same regression inside A is."""
+    criterion = _criterion()
+    T = _sphere(8, 16, seed=84)
+    good = _sphere(8, 16, seed=85)
+    # A state that is strictly further from the teacher than ``good``.
+    bad = criterion.normalize(good - 0.6 * criterion.log_map(good, T))
+    assert float(criterion.semantic_energy(bad, T)) > float(
+        criterion.semantic_energy(good, T)
+    )
+
+    # L = 6, A = {3, 4, 5}: the 0-based transition 0 -> 1 is outside the window.
+    shallow = [good, bad, bad, bad, bad, bad]
+    deep = [good, good, good, good, bad, bad]
+
+    assert float(criterion.descent_semantic_loss(shallow, T)) == pytest.approx(0.0)
+    assert float(criterion.descent_semantic_loss(deep, T)) > 0.0
+
+
+def test_descent_stop_gradient_only_trains_the_later_layer():
+    criterion = _criterion()
+    T = _sphere(4, 8, seed=86)
+    # L = 4, so A = {2, 3}: the sources are states[1], states[2] and the targets
+    # states[2], states[3] (0-based). The trajectory recedes from the teacher, so
+    # both hinges are active and every gradient path is exercised.
+    states = [
+        state.detach().requires_grad_(True)
+        for state in _receding(criterion, T, [0.2, 0.4, 0.6, 0.8], seed=87)
+    ]
+    criterion.descent_semantic_loss(states, T).backward()
+
+    assert states[0].grad is None or states[0].grad.abs().sum() == 0
+    # sg[.] on the predecessor: states[1] is only ever a source, so the hinge cannot
+    # be lowered by pushing it away from the teacher.
+    assert states[1].grad is None or states[1].grad.abs().sum() == 0
+    assert states[3].grad is not None and states[3].grad.abs().sum() > 0
+
+    assert states[2].grad is not None and states[2].grad.abs().sum() > 0
+
+    without_sg = _criterion(stop_grad_target=False)
+    fresh = [s.detach().clone().requires_grad_(True) for s in states]
+    without_sg.descent_semantic_loss(fresh, T).backward()
+
+    assert fresh[1].grad is not None and fresh[1].grad.abs().sum() > 0
+
+
+def test_descent_loss_is_finite_when_a_layer_reaches_the_teacher():
+    # arccos has an unbounded derivative at cos = 1; the endpoint loss drives the
+    # last layer exactly there, so the term has to survive it.
+    criterion = _criterion()
+    T = _sphere(4, 8, seed=88)
+    states = [_sphere(4, 8, seed=89), T.clone().requires_grad_(True)]
+
+    loss = criterion.descent_semantic_loss(states, T)
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert torch.isfinite(states[1].grad).all()
+
+
+def test_descent_term_enters_the_total_with_its_weight():
+    criterion = _criterion(lambda_end=1.0, lambda_vel=1.0, lambda_desc=2.0)
+    generator = torch.Generator().manual_seed(90)
+    teacher = torch.nn.functional.normalize(
+        torch.randn(4, 8, generator=generator), dim=-1
+    )
+    # One embedding output plus four supervised layers whose deep half walks away
+    # from the teacher, so the constraint actually binds.
+    hidden_states = [torch.randn(4, 5, 8, generator=generator)]
+    for state in _receding(criterion, teacher, [0.2, 0.4, 0.6, 0.8], seed=91):
+        tokens = torch.randn(4, 5, 8, generator=generator)
+        tokens[:, 0, :] = state
+        hidden_states.append(tokens)
+
+    total, metrics = criterion(hidden_states=hidden_states, teacher=teacher)
+
+    assert metrics["loss_desc"] > 0.0
+    expected = metrics["loss_end"] + metrics["loss_vel"] + 2.0 * metrics["loss_desc"]
+    assert float(total) == pytest.approx(expected, rel=1e-5)
+
+    # Off by default, but still reported: lambda_desc = 0 must leave the objective
+    # bit-for-bit what it was before the constraint existed.
+    off = _criterion(lambda_end=1.0, lambda_vel=1.0)
+    total_off, metrics_off = off(hidden_states=hidden_states, teacher=teacher)
+    assert metrics_off["loss_desc"] == pytest.approx(metrics["loss_desc"])
+    assert float(total_off) == pytest.approx(
+        metrics_off["loss_end"] + metrics_off["loss_vel"], rel=1e-6
+    )
+
+
+def test_negative_descent_weight_is_rejected():
+    with pytest.raises(ValueError, match="lambda_desc"):
+        GeoODEKD(lambda_desc=-1.0)
+
+
 def test_stop_gradient_target_only_trains_the_next_layer():
     criterion = _criterion(alpha=1.0, beta=1.0)
     T = _sphere(4, 8, seed=20)
@@ -450,6 +607,8 @@ def test_depth_report_measures_a_flow_following_trajectory():
         assert realized == pytest.approx(prescribed, rel=1e-8)
     assert report["energy_violations"] == 0
     assert report["cos_gain"] > 0
+    assert report["desc_violations"] == 0
+    assert report["mean_desc_residual"] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_depth_report_flags_a_trajectory_that_ignores_the_field():
@@ -462,6 +621,12 @@ def test_depth_report_flags_a_trajectory_that_ignores_the_field():
     assert report["mean_vel_residual"] > 0.1
     assert abs(report["mean_alignment"]) < 0.5
     assert report["energy_violations"] > 0
+    # The descent constraint is measured on the same trajectory: a student that
+    # ignores the field raises E_sem inside A too.
+    assert report["descent_layers"] == list(GeoODEKD.descent_layers(len(states)))
+    assert len(report["desc_residual"]) == len(report["descent_layers"])
+    assert report["desc_violations"] > 0
+    assert report["mean_desc_residual"] > 0.0
 
 
 

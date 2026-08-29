@@ -21,6 +21,10 @@ class GeoODEConfig(BaseConfig):
     # lambda_ctr is the one tuned on a validation split.
     lambda_end = 1.0
     lambda_vel = 1.0
+    # Weak semantic-descent constraint, Eq. (33): the deep half of the transitions
+    # is penalised only when it *raises* E_sem. Off by default so the objective
+    # stays the one the reported runs used; --lambda_desc turns it on.
+    lambda_desc = 0.0
     lambda_ctr = 0.1
     contrastive_temperature = 0.05
 

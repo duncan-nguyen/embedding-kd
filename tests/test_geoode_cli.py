@@ -27,6 +27,8 @@ def test_geoode_method_selects_its_config():
     assert config.alpha == 1.0
     assert config.lambda_end == 1.0
     assert config.lambda_vel == 1.0
+    # The descent constraint is opt-in, so the default objective is unchanged.
+    assert config.lambda_desc == 0.0
     assert config.guidance_schedule == "linear"
 
 
@@ -51,6 +53,10 @@ def test_geoode_flags_override_the_config():
     assert config.guidance_schedule == "power"
     assert config.guidance_power == 2.0
     assert config.student_pooling == "mean"
+
+
+def test_lambda_desc_flag_overrides_the_config():
+    assert _config("--method", "geoode", "--lambda_desc", "0.5").lambda_desc == 0.5
 
 
 def test_pca_subtract_mean_flag_is_tri_state():
