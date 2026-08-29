@@ -77,6 +77,12 @@ class GeoODEKD(nn.Module):
         guidance_schedule: ``"linear"`` for s(t) = t (the paper default),
             ``"power"`` for s(t) = t^p, ``"constant"`` for s(t) = 1.
         guidance_power: p of the ``"power"`` schedule.
+        target_projector: optional trainable map standing where the frozen ``P_T``
+            would be (:class:`src.target_projector.LearnedTargetProjector`). It is
+            the learned-projector *baseline*, not part of the recipe: given one, the
+            teacher and the student trajectory are brought into a shared space by
+            it, and its parameters are trained with the student. ``None`` (the
+            default) means the targets arrive already mapped and frozen.
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
             Off by default: the paper's L states are the L Transformer layers.
@@ -110,6 +116,7 @@ class GeoODEKD(nn.Module):
         include_embedding_layer: bool = False,
         stop_grad_target: bool = True,
         eps_norm: float = 1e-12,
+        target_projector: nn.Module | None = None,
     ):
         super().__init__()
         if guidance_schedule not in {"linear", "power", "constant"}:
@@ -131,6 +138,7 @@ class GeoODEKD(nn.Module):
         self.lambda_desc = float(lambda_desc)
         self.lambda_ctr = float(lambda_ctr)
         self.contrastive_temperature = float(contrastive_temperature)
+        self.target_projector = target_projector
         self.guidance_schedule = guidance_schedule
         self.guidance_power = float(guidance_power)
         self.pooling = pooling
@@ -465,6 +473,10 @@ class GeoODEKD(nn.Module):
         *across depth*, and whether the student's actual layer transition follows the
         prescribed field. All of it is measured here, on the realized trajectory:
 
+        With a learned target projector the trajectory and the teacher are brought
+        into its comparison space first, so the curves mean the same thing for a
+        learned map as for a frozen one.
+
         - ``cos_teacher`` / ``geodesic_distance`` / ``gram_gap`` / ``energy``: the
           profile of Eqs. (17), (19) and (20) at every depth. Hypotheses 1 and 2 are
           claims about these curves.
@@ -495,6 +507,8 @@ class GeoODEKD(nn.Module):
           moves *where* the teacher points, not just *how far*.
         """
         teacher = self.normalize(teacher.to(states[-1].dtype))
+        if self.target_projector is not None:
+            states, teacher = self.target_projector.align(states, teacher)
         num_layers = len(states)
 
         cos_teacher, distance, gram_gap, energy, sem_energy = [], [], [], [], []
@@ -624,6 +638,12 @@ class GeoODEKD(nn.Module):
             raise ValueError("hidden_states contained no supervised layer")
 
         teacher = self.normalize(teacher.to(states[-1].dtype))
+        # The contrastive term is a statement about the student's *own* space, so it
+        # keeps reading the unmapped final state even when a learned projector moves
+        # everything else into a shared comparison space.
+        student_view = states[-1]
+        if self.target_projector is not None:
+            states, teacher = self.target_projector.align(states, teacher)
         if teacher.shape != states[-1].shape:
             raise ValueError(
                 f"teacher targets have shape {tuple(teacher.shape)} but the student's "
@@ -650,7 +670,7 @@ class GeoODEKD(nn.Module):
 
         if self.lambda_ctr > 0.0 and second_view is not None:
             loss_ctr = self.contrastive_loss(
-                states[-1], self.normalize(second_view.float())
+                student_view, self.normalize(second_view.float())
             )
         else:
             loss_ctr = torch.zeros((), device=teacher.device, dtype=teacher.dtype)

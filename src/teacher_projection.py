@@ -214,6 +214,12 @@ def fit_teacher_projection(
             seed=seed,
             orthonormal=projection_type == "random",
         )
+    if projection_type in ("learned_t2s", "learned_s2t"):
+        raise ValueError(
+            f"projection_type={projection_type!r} is a trained map, not a fitted one: "
+            "it is a parameter of the criterion (see src/target_projector.py) and "
+            "cannot be applied to the cache once before training"
+        )
     raise ValueError(
         f"unknown projection_type={projection_type!r}; expected one of "
         f"{', '.join(PROJECTION_TYPES)}"

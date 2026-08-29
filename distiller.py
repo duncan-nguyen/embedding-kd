@@ -36,7 +36,9 @@ except ImportError:
         "Warning: pytorch_optimizer not installed. SAM optimizer unavailable for TALAS."
     )
 from src.cache_teacher import (
+    cache_filename,
     cache_teacher_embeddings,
+    corpus_digest,
     load_cached_embeddings,
     validate_cached_embeddings,
 )
@@ -73,6 +75,7 @@ from src.evaluation.evaluation_automodel import (
 from src.evaluation.retrieval import eval_retrieval_task, test_retrieval_tasks
 from src.loss import info_nce
 from src.pooling import mean_pooling, pool_sentence_embedding
+from src.target_projector import LearnedTargetProjector
 from src.teacher_projection import (
     fit_gauge_alignment,
     fit_gauge_rotation,
@@ -86,6 +89,10 @@ from src.teacher_projection import (
 # EMOTION, WiC and STS-B, so those three benchmarks are in-distribution and the
 # remaining ones are held out. Reporting them as one number would let an
 # in-distribution gain stand in for transfer, so the table averages them apart.
+# projection_type values whose map is trained rather than fitted, and the direction
+# each one hands to LearnedTargetProjector.
+LEARNED_PROJECTIONS = {"learned_t2s": "t2s", "learned_s2t": "s2t"}
+
 IOD_BENCHMARKS = frozenset({"emotion", "wic", "stsb"})
 # Scored by nDCG@10 over a whole corpus rather than over a sentence pair, so
 # they get their own summary row instead of diluting the sentence-level AVG
@@ -217,9 +224,20 @@ class KnowledgeDistiller:
             self.scheduler = self._build_scheduler()
             print("EMO criterion initialized and added to optimizer")
         elif config.distill_method == "geoode":
-            # GeoODE-KD holds no parameters: the vector field is analytic in the
-            # cached teacher targets, so nothing is added to the optimizer and the
-            # deployed student is the unmodified encoder.
+            # GeoODE-KD holds no parameters of its own: the targets are fitted and
+            # frozen before training, so nothing is added to the optimizer and the
+            # deployed student is the unmodified encoder. The learned-projector
+            # baselines are the exception, and the only one -- they put a trainable
+            # linear map where the frozen P_T would be, which is the thing under test.
+            target_projector = None
+            learned = getattr(self, "_learned_projector", None)
+            if learned is not None:
+                target_projector = LearnedTargetProjector(
+                    teacher_dim=learned["teacher_dim"],
+                    student_dim=learned["student_dim"],
+                    direction=learned["direction"],
+                    eps=config.eps_norm,
+                )
             self.criterion = GeoODEKD(
                 alpha=config.alpha,
                 beta=config.beta,
@@ -234,8 +252,27 @@ class KnowledgeDistiller:
                 include_embedding_layer=config.include_embedding_layer,
                 stop_grad_target=config.stop_grad_target,
                 eps_norm=config.eps_norm,
+                target_projector=target_projector,
             ).to(self.device_s)
             self.depth_probe = self.criterion
+            if target_projector is not None:
+                # GeoODEKD owns no other parameters, so this param group is exactly
+                # the projector. The scheduler is rebuilt because a group added after
+                # it was constructed has no matching base_lr and step() then fails.
+                scale = float(getattr(config, "learned_projector_lr_scale", 1.0))
+                self.optimizer.add_param_group(
+                    {
+                        "params": self.criterion.parameters(),
+                        "lr": config.learning_rate * scale,
+                    }
+                )
+                self.scheduler = self._build_scheduler()
+                trainable = sum(p.numel() for p in self.criterion.parameters())
+                print(
+                    f"Learned target map added to the optimizer: {target_projector} "
+                    f"({trainable:,} parameters, lr x{scale}). Training only -- "
+                    "inference is still the plain student encoder"
+                )
             print(
                 "GeoODE-KD criterion initialized: "
                 f"alpha={config.alpha}, beta={config.beta}, "
@@ -598,7 +635,11 @@ class KnowledgeDistiller:
         # TALAS, GeoODE-KD and RKD all train against cached teacher embeddings only:
         # the teacher is run once, offline, and never during student optimization.
         if cfg.distill_method in ("talas", "geoode", "rkd"):
-            cache_path = Path(cfg.cache_path)
+            # Identity of the teacher signal this run needs. The corpus enters by
+            # its *contents*: a file rebuilt to the same path with the same row
+            # count would otherwise pass every other check.
+            digest = corpus_digest(cfg.train_data_path)
+            cache_path = self._resolve_cache_path(digest)
             teacher_dim = self._embedding_dim_of(
                 self.model_teacher.config, cfg.teacher_model_name
             )
@@ -607,6 +648,7 @@ class KnowledgeDistiller:
                 "pooling_method": cfg.pooling_method,
                 "normalize": bool(cfg.normalize_cache),
                 "train_data_path": str(cfg.train_data_path),
+                "train_data_digest": digest,
                 "max_length": int(cfg.max_length),
             }
 
@@ -627,8 +669,13 @@ class KnowledgeDistiller:
                     normalize=bool(cfg.normalize_cache),
                     teacher_dim=teacher_dim,
                     rows=len(df),
+                    max_length=int(cfg.max_length),
+                    train_data_digest=digest,
                 )
-                print(f"Loaded {len(teacher_cls_list)} cached embeddings")
+                print(
+                    f"Loaded {len(teacher_cls_list)} cached embeddings "
+                    "(teacher not run for this training)"
+                )
             else:
                 print("Cache not found. Pre-computing teacher embeddings...")
                 os.makedirs(cache_path.parent, exist_ok=True)
@@ -673,10 +720,18 @@ class KnowledgeDistiller:
 
             teacher_native = None
             if cfg.distill_method == "geoode":
-                if getattr(cfg, "relational_target", "native") == "native":
+                learned_arm = (
+                    getattr(cfg, "projection_type", "pca") in LEARNED_PROJECTIONS
+                )
+                if (
+                    getattr(cfg, "relational_target", "native") == "native"
+                    and not learned_arm
+                ):
                     # E_geo is measured against the teacher's own cosine matrix:
                     # Gram matrices are dimension-free, so P_T only has to enter
                     # the point-wise term. Half precision keeps 100k x 2560 small.
+                    # A learned arm needs no second copy: its targets already *are*
+                    # the native teacher embeddings, so the Gram is read off those.
                     teacher_native = F.normalize(
                         teacher_cls_list.to(torch.float32), dim=-1
                     ).to(torch.float16)
@@ -749,6 +804,35 @@ class KnowledgeDistiller:
         print(f"Training batches: {len(self.train_loader)}")
         print("Done setup_data")
 
+    def _resolve_cache_path(self, digest: str) -> Path:
+        """Where this run's teacher cache lives.
+
+        ``cache_dir`` is the reuse path: the filename is derived from what makes a
+        cache reusable at all, so one directory can hold every cache a project
+        builds and a run either finds exactly its own or misses. That is what
+        ``cache_path`` cannot do -- a single name shared between runs of different
+        pairs loads the wrong file and gets refused, and a name scoped to one run
+        re-encodes the corpus every time.
+
+        ``cache_path`` still wins when it was set explicitly, so an existing cache
+        can always be pointed at directly.
+        """
+        cfg = self.config
+        cache_dir = getattr(cfg, "cache_dir", None)
+        if not cache_dir:
+            return Path(cfg.cache_path)
+        name = cache_filename(
+            teacher_model_name=cfg.teacher_model_name,
+            pooling_method=cfg.pooling_method,
+            train_data_path=cfg.train_data_path,
+            max_length=int(cfg.max_length),
+            normalize=bool(cfg.normalize_cache),
+            train_data_digest=digest,
+        )
+        path = Path(cache_dir) / name
+        print(f"Teacher cache (shared directory): {path}")
+        return path
+
     @torch.no_grad()
     def _student_initial_embeddings(self, texts: list[str]) -> torch.Tensor:
         """Pooled, normalised final-layer embeddings of the *untrained* student."""
@@ -793,6 +877,9 @@ class KnowledgeDistiller:
         teacher_dim = teacher_cls.shape[-1]
 
         projection_type = getattr(cfg, "projection_type", "pca")
+        if projection_type in LEARNED_PROJECTIONS:
+            return self._learned_teacher_targets(teacher_cls, projection_type)
+
         projection, mean = fit_teacher_projection(
             teacher_cls,
             out_dim=student_dim,
@@ -919,6 +1006,76 @@ class KnowledgeDistiller:
             )
             print(f"Teacher projection saved: {projection_path}")
 
+        return targets
+
+    def _learned_teacher_targets(
+        self, teacher_cls: torch.Tensor, projection_type: str
+    ) -> torch.Tensor:
+        """Targets for the learned-projector baselines: the teacher, left alone.
+
+        Nothing is fitted here. The map is a parameter trained with the student, so
+        it cannot be applied once up front the way ``P_T`` is; the cache stays in the
+        teacher's own space and the criterion's projector maps it (or the student)
+        at every step. That difference *is* the ablation: same targets, same
+        objective, and the only question is whether the map may adapt to them.
+        """
+        cfg = self.config
+        direction = LEARNED_PROJECTIONS[projection_type]
+        student_dim = self.model_student.config.hidden_size
+        teacher_dim = teacher_cls.shape[-1]
+        # Read by the criterion constructor, which is where the parameters have to be
+        # created: they must exist before the optimizer's param group is added.
+        self._learned_projector = {
+            "teacher_dim": teacher_dim,
+            "student_dim": student_dim,
+            "direction": direction,
+        }
+        targets = F.normalize(
+            teacher_cls.detach().to(torch.float32), p=2, dim=-1, eps=cfg.eps_norm
+        )
+        mapping = (
+            f"{teacher_dim} -> {student_dim}"
+            if direction == "t2s"
+            else f"{student_dim} -> {teacher_dim} (student mapped up)"
+        )
+        print(
+            f"Learned target map {projection_type} ({mapping}): no map is fitted, "
+            "targets stay in the teacher space and the projection is trained with "
+            "the student"
+        )
+        if getattr(cfg, "gauge_align", False):
+            # Not an ignored flag but an inapplicable one: a gauge fixes the
+            # arbitrary orientation of a *frozen* basis, and a learned map has no
+            # fixed basis to orient. Said out loud because gauge_align is on by
+            # default, so a learned run would otherwise look gauge-aligned in the log.
+            print(
+                "Gauge alignment does not apply to a learned target map (there is no "
+                "frozen basis to orient); gauge_align is ignored for this run"
+            )
+
+        if cfg.save_dir:
+            os.makedirs(cfg.save_dir, exist_ok=True)
+            projection_path = os.path.join(cfg.save_dir, "teacher_projection.pt")
+            torch.save(
+                {
+                    "projection": None,
+                    "mean": None,
+                    "teacher_model_name": cfg.teacher_model_name,
+                    "student_dim": student_dim,
+                    "teacher_dim": teacher_dim,
+                    "projection_type": projection_type,
+                    "learned_direction": direction,
+                    # A learned map keeps everything only in the sense that nothing
+                    # is discarded before training; what it keeps is what it learns.
+                    "explained_energy": None,
+                    "gauge_align": False,
+                    "gauge_rotation": "none",
+                    "gauge_matrix": None,
+                    "gauge_stats": None,
+                },
+                projection_path,
+            )
+            print(f"Teacher projection saved: {projection_path}")
         return targets
 
     @torch.no_grad()

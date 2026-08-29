@@ -160,12 +160,16 @@ def parse_args():
     )
     parser.add_argument(
         '--projection_type',
-        choices=['pca', 'random', 'random_gaussian'],
+        choices=['pca', 'random', 'random_gaussian', 'learned_t2s', 'learned_s2t'],
         default=None,
-        help='GeoODE-KD: how the d_S-dimensional teacher subspace is chosen. "pca" '
-             'is the paper\'s spectral map; "random" draws a Haar-random orthonormal '
-             'subspace and "random_gaussian" an unnormalised Johnson-Lindenstrauss '
-             'map -- the two data-independent controls for the Eckart-Young claim'
+        help='GeoODE-KD: how the teacher targets reach the student dimension. "pca" '
+             'is the paper\'s frozen spectral map; "random" draws a Haar-random '
+             'orthonormal subspace and "random_gaussian" an unnormalised '
+             'Johnson-Lindenstrauss map -- the two data-independent controls for the '
+             'Eckart-Young claim; "learned_t2s" and "learned_s2t" replace the frozen '
+             'map with a linear layer trained alongside the student (teacher mapped '
+             'down, or student mapped up into the teacher space) -- the adaptive '
+             'baselines'
     )
     parser.add_argument(
         '--projection_seed',
@@ -329,6 +333,15 @@ def parse_args():
         type=str,
         default=None,
         help='Optional durable directory for per-epoch student weights'
+    )
+    parser.add_argument(
+        '--cache_dir',
+        type=str,
+        default=None,
+        help='Shared directory for cached teacher embeddings (talas/geoode/rkd). The '
+             'filename is derived from the teacher, pooling, max_length and the '
+             'corpus contents, so runs of the same pair reuse one cache and runs of '
+             'different pairs never collide. Overrides --cache_path'
     )
     parser.add_argument(
         '--cache_path',
@@ -508,6 +521,8 @@ def get_config(method: str, args):
         config.weights_dir = args.weights_dir
     if args.cache_path is not None:
         config.cache_path = args.cache_path
+    if args.cache_dir is not None:
+        config.cache_dir = args.cache_dir
     
     if args.seed is not None:
         config.seed = args.seed

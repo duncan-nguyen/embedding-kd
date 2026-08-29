@@ -866,3 +866,80 @@ def test_cached_collate_carries_the_native_teacher_embedding():
 
     without = TextPairWithTeacher(df, "pair_cls", projected)
     assert "teacher_native" not in collate([without[0], without[1]])
+
+
+@pytest.mark.parametrize(
+    ("label", "kwargs", "with_gram"),
+    [
+        # alpha/beta weight the potential E = alpha*E_sem + beta*E_geo, which only
+        # ever reaches energy()/vector_field() -- diagnostics and depth_report.
+        ("alpha", {"alpha": 0.0}, False),
+        ("beta", {"beta": 5.0}, False),
+        # s(t) reaches step_fraction()/euler_step(), never a loss term.
+        ("guidance_schedule", {"guidance_schedule": "constant"}, False),
+        ("guidance_power", {"guidance_schedule": "power", "guidance_power": 3.0}, False),
+        # The native teacher Gram (--relational_target) is deleted by velocity_loss
+        # and otherwise read only inside the no_grad metrics block.
+        ("teacher_gram", {}, True),
+        # Both of these shape L_evel / L_desc-sem, which carry weight zero here.
+        ("stop_grad_target", {"stop_grad_target": False}, False),
+        ("include_embedding_layer", {"include_embedding_layer": True}, False),
+    ],
+)
+def test_the_default_objective_ignores_the_flow_hyperparameters(label, kwargs, with_gram):
+    """At the default objective (L_end + L_ctr) these settings cannot move the loss.
+
+    They read as objective ablations in ``--help`` but have no path to a gradient
+    while lambda_vel and lambda_desc are zero, so running them as an ablation burns
+    GPU hours and returns a null that means nothing. Documented in
+    docs/ablation_study.md 2.2; this test is what keeps that section true. If a loss
+    term ever starts reading E_geo or the depth schedule, this fails on purpose.
+    """
+    generator = torch.Generator().manual_seed(400)
+    batch, tokens, dim, layers = 8, 5, 16, 6
+    hidden = [torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)]
+    teacher = torch.nn.functional.normalize(torch.randn(batch, dim, generator=generator), dim=-1)
+    second_view = torch.randn(batch, dim, generator=generator)
+    side = torch.nn.functional.normalize(torch.randn(batch, 32, generator=generator), dim=-1)
+    gram = side @ side.transpose(0, 1)
+
+    def total(**overrides):
+        criterion = GeoODEKD(**overrides)
+        loss, _ = criterion(
+            hidden_states=hidden,
+            teacher=teacher,
+            second_view=second_view,
+            teacher_gram=gram if with_gram else None,
+        )
+        return float(loss)
+
+    baseline = GeoODEKD()
+    assert (baseline.lambda_vel, baseline.lambda_desc) == (0.0, 0.0), (
+        "this invariant only holds for the L_end + L_ctr default"
+    )
+    reference, _ = baseline(
+        hidden_states=hidden, teacher=teacher, second_view=second_view
+    )
+
+    assert total(**kwargs) == float(reference), f"{label} moved the default objective"
+
+
+def test_the_two_active_weights_do_move_the_default_objective():
+    """The other half of the claim: the test above passes because those settings are
+    inert, not because the harness cannot see a change."""
+    generator = torch.Generator().manual_seed(401)
+    hidden = [torch.randn(8, 5, 16, generator=generator) for _ in range(7)]
+    teacher = torch.nn.functional.normalize(torch.randn(8, 16, generator=generator), dim=-1)
+    second_view = torch.randn(8, 16, generator=generator)
+
+    def total(**overrides):
+        loss, _ = GeoODEKD(**overrides)(
+            hidden_states=hidden, teacher=teacher, second_view=second_view
+        )
+        return float(loss)
+
+    reference = total()
+    assert total(lambda_vel=1.0) != reference
+    assert total(lambda_desc=1.0) != reference
+    assert total(lambda_ctr=0.0) != reference
+    assert total(lambda_end=0.0) != reference

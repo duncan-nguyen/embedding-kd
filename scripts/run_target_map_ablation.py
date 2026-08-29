@@ -12,6 +12,13 @@ random subspace of the same rank, and the same map without the orthonormality:
     svd              uncentered SVD -- the first direction may be the teacher mean
     random           Haar-random orthonormal columns: PCA's contract, no spectrum
     random_gaussian  Johnson-Lindenstrauss: the same random subspace, not an isometry
+    learned_t2s      a linear map d_T -> d_S trained with the student (EMO, sbert v5.5)
+    learned_s2t      a linear map d_S -> d_T trained with the student (TALAS, LEAF)
+
+The two learned arms are a different kind of control: they do not pick a subspace at
+all, they let one be learned. They carry no gauge (a gauge orients a frozen basis and
+a learned map has none), and their randomness is the initialisation of ``W``, so they
+vary with ``--seeds`` rather than with ``--draws``.
 
 **Factor 2 -- the orientation** (``--gauge``). The claim is Schoenemann: the gauge
 fitted to the student init is better than the arbitrary gauge PCA happens to return.
@@ -48,7 +55,7 @@ Usage:
     # 3. read it back -- every planned cell, done or still missing
     python3 scripts/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --collect
 
-    # the full 5 x 3 grid with three draws of each random arm
+    # every subspace x gauge combination, three draws of each random arm
     python3 scripts/run_target_map_ablation.py --grid full --draws 3 --execute
 """
 
@@ -98,8 +105,14 @@ SUBSPACE_ARMS = {
     "svd": {"projection_type": "pca", "pca_center_fit": False, "pca_subtract_mean": False},
     "random": {"projection_type": "random"},
     "random_gaussian": {"projection_type": "random_gaussian"},
+    "learned_t2s": {"projection_type": "learned_t2s"},
+    "learned_s2t": {"projection_type": "learned_s2t"},
 }
+# Redrawn per --draws: the map itself is sampled, so a single cell is a single draw.
 STOCHASTIC_SUBSPACES = ("random", "random_gaussian")
+# No frozen basis, therefore no gauge to put on it: these always run at gauge "none",
+# and whatever randomness they have rides on the training seed.
+LEARNED_SUBSPACES = ("learned_t2s", "learned_s2t")
 
 # Factor 2.
 GAUGE_ARMS = {
@@ -108,16 +121,23 @@ GAUGE_ARMS = {
     "random": {"gauge_align": True, "gauge_rotation": "random"},
 }
 
-# The cells this ablation was asked for: the three subspace arms with and without
-# Procrustes, plus the PCA row's random-rotation control.
+# The cells this ablation was asked for: ours against the four things it has to beat.
+# Read as one row per claim rather than as a grid --
+#   pca/procrustes   ours: subspace from the teacher's spectrum, gauge from the
+#                    student init, both frozen before training
+#   pca/none         the subspace alone (sentence-transformers <= v5.4, HPD's
+#                    teacher side): is the gauge doing anything?
+#   pca/random       the same subspace under a Haar rotation of identical cost: is
+#                    the gauge doing anything *informative*?
+#   random/none      no spectrum at all: is the subspace doing anything?
+#   learned_*        the map learned instead of frozen: is adaptivity worth it?
 REQUESTED_CELLS = [
-    ("pca", "none"),
     ("pca", "procrustes"),
+    ("pca", "none"),
     ("pca", "random"),
-    ("svd", "none"),
-    ("svd", "procrustes"),
     ("random", "none"),
-    ("random", "procrustes"),
+    ("learned_t2s", "none"),
+    ("learned_s2t", "none"),
 ]
 
 SUMMARY_KEYS = ("avg_iod", "avg_ood", "avg_retrieval", "avg_all")
@@ -143,8 +163,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--grid",
         choices=["requested", "full"],
         default="requested",
-        help="'requested' is the 7 cells this ablation was asked for; 'full' is the "
-             "5 x 3 product. Overridden by --subspace/--gauge",
+        help="'requested' is ours against the four controls it has to beat (6 runs); "
+             "'full' is every subspace x gauge combination (17 runs). Overridden by "
+             "--subspace/--gauge",
     )
     parser.add_argument(
         "--subspace",
@@ -202,10 +223,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "of avg_retrieval and of avg_all meaning the same thing as elsewhere",
     )
     parser.add_argument(
-        "--cache_path",
+        "--cache_dir",
         default=None,
-        help="shared teacher cache (default <out>/cache/<pair>_teacher.pt). Every "
-             "cell has the same teacher and corpus, so the teacher runs once",
+        help="shared directory for cached teacher embeddings (default "
+             "<repo>/runs/teacher_cache). Every cell has the same teacher and "
+             "corpus, so the teacher runs once for the whole grid -- and the "
+             "directory is outside the run, so it is reused by later grids and by "
+             "the notebook's method runs too",
     )
     parser.add_argument("--execute", action="store_true", help="run the plan")
     parser.add_argument("--collect", action="store_true", help="summarise the runs")
@@ -233,6 +257,13 @@ def build_plan(args: argparse.Namespace) -> list[dict]:
         cells = [(s, g) for s in SUBSPACE_ARMS for g in GAUGE_ARMS]
     else:
         cells = list(REQUESTED_CELLS)
+    # A learned map has no frozen basis, so its gauge column collapses to one cell
+    # instead of silently running the same configuration three times.
+    cells = [
+        (subspace, "none" if subspace in LEARNED_SUBSPACES else gauge)
+        for subspace, gauge in cells
+    ]
+    cells = list(dict.fromkeys(cells))
     if args.draws < 1:
         raise ValueError("--draws must be at least 1")
 
@@ -290,11 +321,7 @@ def output_root(args: argparse.Namespace) -> Path:
 def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
     pair = PAIRS[args.pair]
     root = output_root(args)
-    cache_path = (
-        Path(args.cache_path)
-        if args.cache_path
-        else root / "cache" / f"{args.pair}_teacher.pt"
-    )
+    cache_dir = Path(args.cache_dir) if args.cache_dir else REPO_ROOT / "runs" / "teacher_cache"
     command = [
         sys.executable,
         str(REPO_ROOT / "main.py"),
@@ -317,7 +344,7 @@ def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
         # pair thresholds are swept there, so no extra pass is needed.
         "--eval_every", "0",
         "--pair_threshold_source", "test",
-        "--cache_path", str(cache_path),
+        "--cache_dir", str(cache_dir),
         "--save_dir", str(root / cell["name"]),
         "--no_wandb",
     ]

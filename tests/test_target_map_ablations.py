@@ -33,6 +33,8 @@ from main import get_config, parse_args
 from scripts import run_target_map_ablation as ablation
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+from src.criterions.geoode_kd import GeoODEKD
+from src.target_projector import LearnedTargetProjector
 from src.teacher_projection import (
     fit_gauge_alignment,
     fit_gauge_rotation,
@@ -418,9 +420,11 @@ def test_cell_names_are_unique_so_runs_cannot_overwrite_each_other():
     names = [cell["name"] for cell in plan]
 
     assert len(names) == len(set(names))
-    # 15 cells = 6 deterministic + 9 stochastic; the stochastic ones are drawn three
-    # times, and every cell is repeated at both training seeds.
-    assert len(names) == (6 + 9 * 3) * 2
+    # 17 cells = 5 subspaces x 3 gauges, plus the two learned arms which have no
+    # gauge column. 8 of those are deterministic ({pca, pca_full, svd} x {none,
+    # procrustes} and the two learned ones); the other 9 are drawn three times, and
+    # every cell is repeated at both training seeds.
+    assert len(names) == (8 + 9 * 3) * 2
 
 
 def test_draws_only_multiply_the_stochastic_arms():
@@ -433,19 +437,10 @@ def test_draws_only_multiply_the_stochastic_arms():
         if cell["subspace"] not in ablation.STOCHASTIC_SUBSPACES
         and cell["gauge"] != "random"
     ]
-    assert len(deterministic) == 6  # {pca, pca_full, svd} x {none, procrustes}
+    # {pca, pca_full, svd} x {none, procrustes}, plus the two learned arms: the
+    # learned map varies with the training seed, not with a draw of the map.
+    assert len(deterministic) == 8
     assert len(tripled) == len(single) + 2 * (len(single) - len(deterministic))
-
-
-def test_the_requested_grid_contains_the_control_it_exists_for():
-    _, plan = _plan("--grid", "requested")
-    cells = {(cell["subspace"], cell["gauge"]) for cell in plan}
-
-    # PCA with and without Procrustes, and against a random rotation of equal cost.
-    assert {("pca", "none"), ("pca", "procrustes"), ("pca", "random")} <= cells
-    # Every subspace arm with and without Procrustes.
-    for subspace in ("pca", "svd", "random"):
-        assert {(subspace, "none"), (subspace, "procrustes")} <= cells
 
 
 def test_collect_reports_finished_and_missing_cells(tmp_path, capsys):
@@ -534,6 +529,9 @@ def _run_notebook_setup(tmp_path, **overrides):
             "subprocess": subprocess,
             "PROJECT_DIR": REPO_ROOT,
             "TRAIN_DATA": REPO_ROOT / namespace["TRAIN_DATA_REL"],
+            # Cell 3 picks these: the run's own directory, and the output root the
+            # shared teacher cache hangs off (Google Drive on Colab).
+            "OUTPUT_BASE": tmp_path,
             "RUN_ROOT": tmp_path / namespace["RUN_NAME"],
             "IN_COLAB": False,
         }
@@ -571,14 +569,17 @@ def test_the_notebook_builds_the_same_arms_as_the_script(tmp_path, capsys):
 
 def test_the_notebook_grid_shares_the_teacher_cache_of_the_method_runs(tmp_path, capsys):
     """Every cell has the same teacher and corpus, so the teacher must be encoded
-    once for the whole grid and the eight method runs together."""
+    once for the whole grid and the method runs together -- and out of a directory
+    that outlives the run, so a later grid does not pay for it again."""
     namespace = _run_notebook_setup(tmp_path)
     capsys.readouterr()
     method_command = namespace["COMMANDS"]["geoode"]
-    cache = method_command[method_command.index("--cache_path") + 1]
+    cache = Path(method_command[method_command.index("--cache_dir") + 1])
 
     for command in namespace["ABLATION_COMMANDS"].values():
-        assert command[command.index("--cache_path") + 1] == cache
+        assert Path(command[command.index("--cache_dir") + 1]) == cache
+    # Outside the run directory: that is what makes it reusable at all.
+    assert namespace["RUN_ROOT"] not in cache.parents and cache != namespace["RUN_ROOT"]
 
 
 def test_the_notebook_holds_the_objective_fixed_across_the_grid(tmp_path, capsys):
@@ -589,3 +590,201 @@ def test_the_notebook_holds_the_objective_fixed_across_the_grid(tmp_path, capsys
         config = _config_from(command)
         assert config.lambda_vel == namespace["ABLATION_LAMBDA_VEL"]
         assert config.lambda_ctr == namespace["ABLATION_LAMBDA_CTR"]
+
+
+# --------------------------------------------------------------------------- #
+# The learned-projector baselines: the map trained instead of frozen
+# --------------------------------------------------------------------------- #
+
+
+def _hidden(batch=6, tokens=5, dim=8, layers=4, seed=500):
+    generator = torch.Generator().manual_seed(seed)
+    return [torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)]
+
+
+@pytest.mark.parametrize(
+    ("direction", "weight_shape", "comparison_dim"),
+    [("t2s", (8, 32), 8), ("s2t", (32, 8), 32)],
+)
+def test_the_learned_map_is_a_bare_linear_layer(direction, weight_shape, comparison_dim):
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction=direction)
+
+    assert projector.linear.weight.shape == weight_shape
+    # No bias: a shift would move the targets off the sphere every downstream metric
+    # is measured on, and none of the maps being compared has one.
+    assert projector.linear.bias is None
+    assert projector.comparison_dim == comparison_dim
+
+
+def test_the_learned_map_brings_both_sides_into_one_space():
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="s2t")
+    states = [torch.nn.functional.normalize(torch.randn(6, 8), dim=-1) for _ in range(4)]
+    teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+
+    aligned, target = projector.align(states, teacher)
+
+    assert len(aligned) == len(states)
+    assert all(state.shape == (6, 32) for state in aligned)
+    # Every layer lands on the sphere, so the depth diagnostics mean the same thing
+    # for a learned map as for a frozen one.
+    for state in aligned:
+        assert torch.allclose(state.norm(dim=-1), torch.ones(6), atol=1e-5)
+    assert torch.equal(target, teacher)
+
+
+def test_the_t2s_map_leaves_the_student_untouched():
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="t2s")
+    states = [torch.nn.functional.normalize(torch.randn(6, 8), dim=-1) for _ in range(3)]
+    teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+
+    aligned, target = projector.align(states, teacher)
+
+    assert all(torch.equal(a, b) for a, b in zip(aligned, states))
+    assert target.shape == (6, 8)
+    assert torch.allclose(target.norm(dim=-1), torch.ones(6), atol=1e-5)
+
+
+def test_an_unknown_direction_is_rejected():
+    with pytest.raises(ValueError, match="unknown direction"):
+        LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="both")
+
+
+@pytest.mark.parametrize("direction", ["t2s", "s2t"])
+def test_the_objective_trains_the_learned_map(direction):
+    """The whole point of the baseline: the map adapts to lower the loss."""
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction=direction)
+    criterion = GeoODEKD(target_projector=projector)
+    teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+
+    loss, metrics = criterion(
+        hidden_states=_hidden(), teacher=teacher, second_view=torch.randn(6, 8)
+    )
+    loss.backward()
+
+    gradient = projector.linear.weight.grad
+    assert gradient is not None and torch.isfinite(gradient).all()
+    assert float(gradient.norm()) > 0
+    assert metrics["loss_end"] > 0
+
+
+@pytest.mark.parametrize("direction", ["t2s", "s2t"])
+def test_the_learned_map_does_not_touch_the_contrastive_term(direction):
+    """The regulariser is a statement about the student's own space, so it has to
+    read the same number under every arm -- otherwise the arms differ in two things
+    at once and the comparison is not a controlled one."""
+    hidden = _hidden()
+    second_view = torch.randn(6, 8)
+    frozen_teacher = torch.nn.functional.normalize(torch.randn(6, 8), dim=-1)
+    learned_teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+
+    _, frozen = GeoODEKD()(
+        hidden_states=hidden, teacher=frozen_teacher, second_view=second_view
+    )
+    _, learned = GeoODEKD(
+        target_projector=LearnedTargetProjector(32, 8, direction)
+    )(hidden_states=hidden, teacher=learned_teacher, second_view=second_view)
+
+    assert learned["loss_ctr"] == pytest.approx(frozen["loss_ctr"], abs=1e-6)
+
+
+def test_the_criterions_parameters_are_exactly_the_learned_map():
+    """The distiller adds ``criterion.parameters()`` to the optimizer as one group.
+    If the criterion ever grows a parameter of its own, that group would silently
+    start training something else too."""
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="t2s")
+
+    assert list(GeoODEKD().parameters()) == []
+    criterion_params = list(GeoODEKD(target_projector=projector).parameters())
+    assert len(criterion_params) == 1
+    assert criterion_params[0] is projector.linear.weight
+
+
+@pytest.mark.parametrize("arm", ["learned_t2s", "learned_s2t"])
+def test_a_learned_arm_fits_no_map_and_leaves_the_targets_in_teacher_space(arm, tmp_path):
+    targets = _targets_for(save_dir=str(tmp_path), projection_type=arm)
+
+    # 32-dimensional: the cache is handed to the criterion unmapped, because the map
+    # is a parameter and cannot be applied once up front.
+    assert targets.shape == (64, 32)
+    assert torch.allclose(targets.norm(dim=-1), torch.ones(64), atol=1e-5)
+    saved = torch.load(tmp_path / "teacher_projection.pt", map_location="cpu")
+    assert saved["projection_type"] == arm
+    assert saved["projection"] is None
+    assert saved["learned_direction"] == arm.removeprefix("learned_")
+    # gauge_align defaults to True, and a learned map has no frozen basis to orient.
+    assert saved["gauge_align"] is False
+    assert saved["gauge_matrix"] is None
+
+
+def test_the_learned_arm_records_the_dimensions_the_projector_needs(capsys):
+    """The criterion is constructed after the targets, so the dimensions have to
+    survive the trip -- the parameters must exist before the optimizer group is
+    added."""
+    _targets_for(projection_type="learned_s2t")
+    output = capsys.readouterr().out
+
+    assert "Learned target map learned_s2t" in output
+    # gauge_align is on by default; the run has to say it does not apply.
+    assert "Gauge alignment does not apply" in output
+
+
+def test_the_learned_arms_have_no_gauge_column():
+    _, plan = _plan("--subspace", "learned_t2s", "learned_s2t", "--gauge", "none", "procrustes", "random")
+
+    assert [cell["name"] for cell in plan] == ["learned_t2s__none", "learned_s2t__none"]
+
+
+def test_the_requested_grid_is_ours_against_the_four_controls():
+    _, plan = _plan("--grid", "requested")
+
+    assert [cell["name"] for cell in plan] == [
+        "pca__procrustes",   # ours
+        "pca__none",         # PCA only
+        "pca__random",       # PCA + random orthogonal rotation
+        "random__none",      # random projection
+        "learned_t2s__none",
+        "learned_s2t__none",
+    ]
+
+
+def test_the_learned_map_can_join_the_optimizer_after_the_scheduler_exists():
+    """The distiller builds the optimizer in setup_training and the criterion after
+    it, so a learned arm adds its parameter group late. A group added after the
+    scheduler was constructed has no matching base_lr and ``scheduler.step()`` then
+    fails on the length mismatch -- which is why the scheduler is rebuilt. This is
+    that sequence, in order."""
+    student = torch.nn.Linear(8, 8)
+    config = GeoODEConfig(epochs=2, learning_rate=2e-5, min_lr=2e-6)
+    stub = object.__new__(KnowledgeDistiller)
+    stub.config = config
+    stub.train_loader = range(4)  # _build_scheduler only needs its length
+
+    stub.optimizer = torch.optim.AdamW(
+        [{"params": list(student.parameters()), "lr": config.learning_rate}],
+        lr=config.learning_rate,
+    )
+    stub.scheduler = stub._build_scheduler()
+
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="t2s")
+    criterion = GeoODEKD(target_projector=projector)
+    scale = config.learned_projector_lr_scale
+    stub.optimizer.add_param_group(
+        {"params": criterion.parameters(), "lr": config.learning_rate * scale}
+    )
+    stub.scheduler = stub._build_scheduler()
+
+    assert len(stub.optimizer.param_groups) == 2
+    for _ in range(len(stub.train_loader) * config.epochs):
+        stub.optimizer.step()
+        stub.scheduler.step()
+    # Both groups are still being scheduled, and the map got the rate it was given.
+    assert len(stub.scheduler.base_lrs) == 2
+    assert stub.scheduler.base_lrs[1] == pytest.approx(config.learning_rate * scale)
+
+
+def test_fitting_a_learned_map_is_refused_with_the_reason():
+    """A learned arm never reaches the fitter, but saying so beats "unknown type"."""
+    with pytest.raises(ValueError, match="trained map, not a fitted one"):
+        fit_teacher_projection(
+            torch.randn(16, 32), out_dim=8, projection_type="learned_t2s"
+        )

@@ -59,12 +59,21 @@ class GeoODEConfig(BaseConfig):
 
     # Fixed teacher dimensionality reduction P_T = P_PCA R, Eq. (8).
     # --- factor 1: which d_S-dimensional subspace of the teacher to keep ---
-    # "pca" is the paper's map; "random" (Haar-random orthonormal columns) and
+    # "pca" is the paper's map. "random" (Haar-random orthonormal columns) and
     # "random_gaussian" (Johnson-Lindenstrauss, no orthonormality) are the
-    # data-independent controls for the Eckart-Young claim. CLI:
-    # --projection_type / --projection_seed.
+    # data-independent controls for the Eckart-Young claim. "learned_t2s" and
+    # "learned_s2t" are the *adaptive* baselines: a linear map trained with the
+    # student instead of fitted and frozen, mapping the teacher down or the student
+    # up respectively. They add parameters during training only -- the deployed
+    # model is still the plain student encoder. CLI: --projection_type /
+    # --projection_seed.
     projection_type = "pca"
     projection_seed = 0
+    # Learning rate of the learned target map, as a multiple of the student's. The
+    # learned arms are baselines the recipe is measured against, so this exists to
+    # let them be tuned rather than strawmanned; 1.0 gives them the student's own
+    # schedule, which is what the methods they stand for do.
+    learned_projector_lr_scale = 1.0
     # Centre the cache before the SVD: True is centered PCA, False the uncentered
     # SVD ablation, in which the teacher's mean vector is allowed to be the first
     # retained direction. Ignored by the random arms, which never look at the data.

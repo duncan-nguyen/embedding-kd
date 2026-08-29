@@ -1,4 +1,7 @@
+import hashlib
 import os
+import re
+from pathlib import Path
 from typing import Any, Optional
 
 import torch
@@ -13,8 +16,64 @@ from .pooling import pool_sentence_embedding
 # Metadata fields that identify *which* teacher signal a cache file holds. A cache
 # is reused only when every one of them matches the run asking for it: two
 # teachers of the same width (Qwen3-Embedding-0.6B and BGE-M3 are both 1024-d)
-# would otherwise be indistinguishable by shape alone.
-CACHE_IDENTITY_KEYS = ("teacher_model_name", "pooling_method", "normalize")
+# would otherwise be indistinguishable by shape alone, and a corpus rebuilt to the
+# same path with the same row count would be indistinguishable by shape *or* name.
+CACHE_IDENTITY_KEYS = (
+    "teacher_model_name",
+    "pooling_method",
+    "normalize",
+    "max_length",
+    "train_data_digest",
+)
+
+
+def corpus_digest(path: str | os.PathLike[str]) -> str:
+    """Content fingerprint of a training corpus, as a short hex digest.
+
+    The cache is keyed on this rather than on the corpus *path*: `train_150k.csv`
+    rebuilt from a different MS MARCO shard keeps its name and its row count, so
+    nothing else would notice that the cached embeddings no longer describe it.
+    Reading 30 MB to avoid re-running a 4B-parameter teacher is a good trade.
+    """
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+def cache_filename(
+    *,
+    teacher_model_name: str,
+    pooling_method: str,
+    train_data_path: str | os.PathLike[str],
+    max_length: int,
+    normalize: bool,
+    train_data_digest: Optional[str] = None,
+) -> str:
+    """A filename that encodes everything a cache's reusability depends on.
+
+    With this name, one shared directory can hold every cache a project builds and
+    a run either finds exactly its own or misses -- it can never load someone
+    else's and be turned away by :func:`validate_cached_embeddings`, which is what
+    a hand-written shared filename invites. The readable prefix is for humans
+    listing the directory; the digest carries the rest, corpus contents included.
+    """
+    if train_data_digest is None:
+        train_data_digest = corpus_digest(train_data_path)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", str(teacher_model_name)).strip("-").lower()
+    identity = "|".join(
+        [
+            str(teacher_model_name),
+            str(pooling_method),
+            str(int(max_length)),
+            str(bool(normalize)),
+            train_data_digest,
+        ]
+    )
+    key = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+    corpus = Path(train_data_path).stem
+    return f"{slug}__{corpus}__{pooling_method}__{key}.pt"
 
 
 def cache_teacher_embeddings(
@@ -138,6 +197,8 @@ def validate_cached_embeddings(
     normalize: bool,
     teacher_dim: Optional[int] = None,
     rows: Optional[int] = None,
+    max_length: Optional[int] = None,
+    train_data_digest: Optional[str] = None,
 ) -> None:
     """Refuse a cache that was built for a different teacher, pooling or corpus.
 
@@ -150,11 +211,15 @@ def validate_cached_embeddings(
         "teacher_model_name": teacher_model_name,
         "pooling_method": pooling_method,
         "normalize": bool(normalize),
+        "max_length": None if max_length is None else int(max_length),
+        "train_data_digest": train_data_digest,
     }
     problems = []
     for key in CACHE_IDENTITY_KEYS:
         actual = metadata.get(key)
-        if actual is not None and actual != expected[key]:
+        # Either side may be absent: an older cache carries fewer fields, and a
+        # caller may not know one. Only two *known and different* values are a clash.
+        if actual is not None and expected[key] is not None and actual != expected[key]:
             problems.append(f"{key}: cache has {actual!r}, this run uses {expected[key]!r}")
     if teacher_dim is not None and int(embeddings.shape[-1]) != int(teacher_dim):
         problems.append(

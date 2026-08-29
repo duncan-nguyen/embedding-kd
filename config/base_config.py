@@ -35,6 +35,15 @@ class BaseConfig:
     # sentences plus 25k MS MARCO queries and 25k MS MARCO passages, all raw
     # text. Built by scripts/build_train_150k.py.
     train_data_path = "data/train_set/train_150k.csv"
+    # Shared directory for the cached teacher embeddings of talas/geoode/rkd. When
+    # set it wins over cache_path, and the filename is derived from what a cache's
+    # reusability actually depends on (teacher, pooling, normalisation, max_length
+    # and the corpus *contents*), so one directory holds every cache the project
+    # builds and a run either finds exactly its own or misses. Point it somewhere
+    # that outlives a single run -- re-encoding 100k sentences with a 4B-parameter
+    # teacher is the most expensive thing in the pipeline and never changes between
+    # runs of the same pair. CLI: --cache_dir.
+    cache_dir = None
     eval_data_path = None
     num_workers = 2
     

@@ -7,13 +7,17 @@ the tokenizer marker has to be settable from the CLI.
 """
 
 import sys
+from pathlib import Path
 
 import pytest
 import torch
 
 from config import CDMConfig, GeoODEConfig
+from distiller import KnowledgeDistiller
 from main import get_config, parse_args
 from src.cache_teacher import (
+    cache_filename,
+    corpus_digest,
     load_cached_embeddings,
     save_cached_embeddings,
     validate_cached_embeddings,
@@ -185,3 +189,148 @@ def test_special_token_flags_override_the_config():
     # The flags are defined on the base config, so every method accepts them.
     assert _config("--method", "geoode", "--teacher_special_token", "Ġ").teacher_special_token == "Ġ"
     assert _config("--method", "geoode").teacher_special_token == GeoODEConfig.teacher_special_token
+
+
+# --------------------------------------------------------------------------- #
+# Reuse: one shared directory, a filename that carries the cache's identity
+# --------------------------------------------------------------------------- #
+
+
+def _corpus(tmp_path, name, text):
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_the_cache_name_separates_runs_that_must_not_share_one(tmp_path):
+    """Everything a cache's reusability depends on has to change the filename, or a
+    shared directory turns into a pile of mutual refusals."""
+    corpus = _corpus(tmp_path, "train.csv", "premise,hypothesis\na,b\n")
+    base = dict(
+        teacher_model_name="Qwen/Qwen3-Embedding-4B",
+        pooling_method="last_token",
+        train_data_path=str(corpus),
+        max_length=256,
+        normalize=True,
+    )
+    reference = cache_filename(**base)
+
+    assert cache_filename(**base) == reference  # deterministic
+    for field, value in [
+        ("teacher_model_name", "BAAI/bge-m3"),
+        ("pooling_method", "cls"),
+        ("max_length", 128),
+        ("normalize", False),
+    ]:
+        assert cache_filename(**{**base, field: value}) != reference, field
+    # Readable enough to identify by eye in a shared directory listing.
+    assert reference.startswith("qwen-qwen3-embedding-4b__train__last_token__")
+    assert reference.endswith(".pt")
+
+
+def test_a_corpus_rebuilt_in_place_gets_a_different_cache(tmp_path):
+    """The failure a shared cache directory would otherwise introduce: a corpus
+    regenerated to the same path with the same row count is a different corpus, and
+    nothing but its contents can say so."""
+    corpus = _corpus(tmp_path, "train_150k.csv", "premise,hypothesis\na,b\nc,d\n")
+    before = cache_filename(
+        teacher_model_name="t", pooling_method="cls", train_data_path=str(corpus),
+        max_length=256, normalize=True,
+    )
+    corpus.write_text("premise,hypothesis\nx,y\nz,w\n", encoding="utf-8")
+    after = cache_filename(
+        teacher_model_name="t", pooling_method="cls", train_data_path=str(corpus),
+        max_length=256, normalize=True,
+    )
+
+    assert before != after
+
+
+def test_the_corpus_digest_reads_contents_not_names(tmp_path):
+    first = _corpus(tmp_path, "a.csv", "same\n")
+    second = _corpus(tmp_path, "b.csv", "same\n")
+
+    assert corpus_digest(first) == corpus_digest(second)
+    assert corpus_digest(first) != corpus_digest(_corpus(tmp_path, "c.csv", "other\n"))
+
+
+def test_a_stale_corpus_is_refused_even_behind_an_explicit_cache_path():
+    """--cache_path names one file forever, so the digest is the only thing that
+    can notice the corpus underneath it changed."""
+    with pytest.raises(ValueError, match="train_data_digest"):
+        validate_cached_embeddings(
+            torch.randn(4, 8),
+            {"teacher_model_name": "t", "pooling_method": "cls", "normalize": True,
+             "train_data_digest": "0123456789abcdef"},
+            "cache.pt",
+            teacher_model_name="t",
+            pooling_method="cls",
+            normalize=True,
+            train_data_digest="fedcba9876543210",
+        )
+
+
+def test_an_older_cache_without_the_new_fields_still_loads():
+    """Caches predating the digest carry fewer identity fields; a field only one
+    side knows is not a clash, or every existing cache would be thrown away."""
+    validate_cached_embeddings(
+        torch.randn(4, 8),
+        {"teacher_model_name": "t", "pooling_method": "cls", "normalize": True},
+        "cache.pt",
+        teacher_model_name="t",
+        pooling_method="cls",
+        normalize=True,
+        max_length=256,
+        train_data_digest="0123456789abcdef",
+    )
+
+
+def test_the_run_resolves_a_shared_directory_into_its_own_file(tmp_path):
+    """cache_dir wins over cache_path, and an explicitly set cache_path still wins
+    when no directory is given."""
+    config = GeoODEConfig(
+        cache_dir=str(tmp_path),
+        cache_path="cache/teacher_train.pt",
+        train_data_path="data/train_set/train_100k.csv",
+        teacher_model_name="Qwen/Qwen3-Embedding-4B",
+        pooling_method="last_token",
+        max_length=256,
+        normalize_cache=True,
+    )
+    stub = object.__new__(KnowledgeDistiller)
+    stub.config = config
+    digest = corpus_digest(config.train_data_path)
+
+    resolved = stub._resolve_cache_path(digest)
+    assert resolved.parent == tmp_path
+    assert resolved.name == cache_filename(
+        teacher_model_name=config.teacher_model_name,
+        pooling_method=config.pooling_method,
+        train_data_path=config.train_data_path,
+        max_length=config.max_length,
+        normalize=config.normalize_cache,
+        train_data_digest=digest,
+    )
+
+    config.cache_dir = None
+    assert stub._resolve_cache_path(digest) == Path("cache/teacher_train.pt")
+
+
+def test_two_pairs_land_on_different_files_in_one_directory(tmp_path):
+    """The point of the shared directory: the second pair misses instead of loading
+    the first pair's cache and being refused."""
+    stub = object.__new__(KnowledgeDistiller)
+    paths = set()
+    for teacher, pooling in [
+        ("Qwen/Qwen3-Embedding-0.6B", "last_token"),
+        ("BAAI/bge-m3", "cls"),
+        ("Qwen/Qwen3-Embedding-4B", "last_token"),
+    ]:
+        stub.config = GeoODEConfig(
+            cache_dir=str(tmp_path),
+            train_data_path="data/train_set/train_100k.csv",
+            teacher_model_name=teacher,
+            pooling_method=pooling,
+        )
+        paths.add(stub._resolve_cache_path("digest"))
+    assert len(paths) == 3

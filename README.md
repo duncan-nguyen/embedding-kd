@@ -160,7 +160,13 @@ epochs). Both factors of that map are claims, so both have a control. The
 subspace: `--projection_type random` draws a Haar-random subspace of the same
 rank and `random_gaussian` the Johnson-Lindenstrauss map that gives up
 orthonormality too, while `--no-pca_center_fit` is the uncentered-SVD arm in
-which the teacher's mean vector may itself be the first retained direction. The
+which the teacher's mean vector may itself be the first retained direction.
+Whether the map should be frozen at all: `--projection_type learned_t2s` and
+`learned_s2t` replace it with a linear layer trained alongside the student (the
+teacher mapped down, or the student mapped up into the teacher's space), which is
+what TALAS, LEAF, EMO and sentence-transformers v5.5 do. Those parameters exist
+during training only — inference is still the plain student encoder, so what
+changes is the supervision rather than the artefact. The
 orientation: `--gauge_rotation random` applies a Haar-random rotation of exactly
 the Procrustes arm's cost, which is the control that matters, because the PCA
 basis is already an arbitrary gauge and so `--no-gauge_align` alone cannot
@@ -310,22 +316,37 @@ models/talas/qwen3_4b_to_bert_base/eval_by_epoch.csv
 models/talas/qwen3_4b_to_bert_base/final_test_results.csv
 ```
 
-The teacher embedding cache is written to `--cache_path`, e.g.:
+## Reusing the Teacher Cache
 
-```text
-cache/talas/qwen3_4b_bert_base_teacher_train.pt
+Encoding the corpus with the teacher is the most expensive step in the pipeline
+and it does not change between runs of the same pair, so it should be paid for
+once. Pass `--cache_dir` and the run derives the filename from everything a
+cache's reusability depends on — teacher, pooling, normalisation, `max_length`
+and the corpus *contents*:
+
+```bash
+python3 main.py --method geoode --cache_dir runs/teacher_cache ...
+# runs/teacher_cache/qwen-qwen3-embedding-4b__train_100k__last_token__8f3b4afdb247.pt
 ```
+
+One directory then holds every cache the project builds, and a run either finds
+exactly its own or misses. Point it somewhere that outlives a single run (on
+Colab, a directory in the mounted Drive) and every later run of the same pair —
+the other cached methods, the ablation grid, a rerun tomorrow — skips the teacher
+entirely. `--cache_path` still names one file directly when you want that.
 
 ## Rebuilding Caches
 
-The cache is looked up by its path, so use one path per teacher / pooling /
-corpus. Each file records the teacher name, pooling, normalisation and corpus it
-was built from next to the embeddings, and a run whose settings differ from that
-record (or whose teacher width or corpus length differs from the tensor) is
-rejected at startup with the mismatching fields listed, rather than trained
-against the wrong teacher. This is what catches a swap between two teachers of
-the same width, e.g. Qwen3-Embedding-0.6B and BGE-M3, both 1024-d. To rebuild a
-cache, remove the file and rerun:
+Each file records the teacher name, pooling, normalisation, `max_length` and a
+digest of the corpus it was built from next to the embeddings, and a run whose
+settings differ from that record (or whose teacher width or corpus length differs
+from the tensor) is rejected at startup with the mismatching fields listed,
+rather than trained against the wrong teacher. This is what catches a swap
+between two teachers of the same width, e.g. Qwen3-Embedding-0.6B and BGE-M3,
+both 1024-d — and, via the digest, a corpus regenerated to the same path with the
+same row count, which nothing else can see. With `--cache_dir` those differences
+change the filename instead, so they are a miss rather than a refusal. To rebuild
+a cache, remove the file and rerun:
 
 ```bash
 rm cache/talas/qwen3_4b_bert_base_teacher_train.pt

@@ -44,3 +44,8 @@ htmlcov/
 # Benchmark data rebuilt by scripts/, too large to track
 data/test_set/retrieval/
 data/cache/
+
+# Run outputs and the shared teacher embedding cache (both large)
+runs/
+cache/
+checkpoints/
