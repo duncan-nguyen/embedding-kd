@@ -155,6 +155,22 @@ def parse_args():
              'control of the recipe ablation'
     )
     parser.add_argument(
+        '--lambda_topo',
+        type=float,
+        default=None,
+        help='GeoODE-KD: weight of the H0 persistence term, matching the sorted '
+             'finite H0 death times (MST edge weights) of the student batch to those '
+             'of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ H0" '
+             'control. Death times are O(1), so sweep the weight over decades'
+    )
+    parser.add_argument(
+        '--topo_metric',
+        choices=['chord', 'angular', 'cosine'],
+        default=None,
+        help='GeoODE-KD: ground metric of the H0 diagram on the unit sphere -- '
+             '"chord" (Euclidean), "angular" (geodesic) or "cosine" (1 - cos)'
+    )
+    parser.add_argument(
         '--projection_type',
         choices=['pca', 'random', 'random_gaussian', 'mrl_prefix', 'learned_t2s', 'learned_s2t'],
         default=None,
@@ -480,6 +496,8 @@ def get_config(method: str, args):
             'lambda_ctr',
             'endpoint_loss',
             'lambda_gram',
+            'lambda_topo',
+            'topo_metric',
             'projection_type',
             'projection_seed',
             'learned_projector_lr_scale',

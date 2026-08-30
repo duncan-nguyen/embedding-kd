@@ -32,6 +32,18 @@ class GeoODEConfig(BaseConfig):
     # "+ Gram" row of the recipe ablation, expected to be redundant with L_end once
     # the interface is a fixed orthonormal map. CLI: --lambda_gram.
     lambda_gram = 0.0
+    # Weight of the H0 persistence term: squared error between the sorted finite
+    # H0 death times (= MST edge weights) of the student batch and of the teacher
+    # batch. It constrains the *shape* of the cloud, not the position of any point,
+    # and is read off the teacher's own d_T-dimensional cache rather than the
+    # projected target, so it is the one term that does not depend on P_T. 0 is the
+    # recipe; > 0 is the "+ H0" row. Death times live in [0, 2] (chord), so the
+    # term is small -- sweep the weight over decades, 0.01-1.0. CLI: --lambda_topo.
+    lambda_topo = 0.0
+    # Ground metric of the persistence diagram on the unit sphere: "chord" is the
+    # Euclidean distance sqrt(2 - 2cos), "angular" the geodesic acos(cos), "cosine"
+    # the (non-metric) 1 - cos. CLI: --topo_metric.
+    topo_metric = "chord"
 
     # Pool(.) of Eq. (7) applied at every depth. "cls" matches the pooling the
     # evaluation code uses, so the supervised endpoint is the embedding that is scored.

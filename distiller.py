@@ -237,6 +237,8 @@ class KnowledgeDistiller:
                 contrastive_temperature=config.contrastive_temperature,
                 endpoint_loss=getattr(config, "endpoint_loss", "cosine"),
                 lambda_gram=float(getattr(config, "lambda_gram", 0.0) or 0.0),
+                lambda_topo=float(getattr(config, "lambda_topo", 0.0) or 0.0),
+                topo_metric=getattr(config, "topo_metric", "chord"),
                 pooling=config.student_pooling,
                 include_embedding_layer=config.include_embedding_layer,
                 eps_norm=config.eps_norm,
@@ -264,7 +266,9 @@ class KnowledgeDistiller:
                 "GeoODE-KD criterion initialized: "
                 f"lambda_end={config.lambda_end}, lambda_ctr={config.lambda_ctr}, "
                 f"endpoint_loss={getattr(config, 'endpoint_loss', 'cosine')}, "
-                f"lambda_gram={float(getattr(config, 'lambda_gram', 0.0) or 0.0)}"
+                f"lambda_gram={float(getattr(config, 'lambda_gram', 0.0) or 0.0)}, "
+                f"lambda_topo={float(getattr(config, 'lambda_topo', 0.0) or 0.0)} "
+                f"({getattr(config, 'topo_metric', 'chord')})"
             )
         elif config.distill_method == "rkd":
             # RKD holds no parameters either: both of its potentials are invariant
@@ -682,7 +686,15 @@ class KnowledgeDistiller:
                     f"rows but training data has {len(df)} rows. Remove or regenerate {cache_path}."
                 )
 
+            teacher_topo_list = None
             if cfg.distill_method == "geoode":
+                if float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0:
+                    # The H0 term compares point-cloud shapes, so it needs no shared
+                    # basis and reads the teacher *before* P_T narrows it to d_S --
+                    # the one supervision signal in the run that P_T cannot colour.
+                    teacher_topo_list = (
+                        teacher_cls_list.clone().contiguous().share_memory_()
+                    )
                 teacher_cls_list = self._project_teacher_targets(
                     teacher_cls_list, df["premise"].astype(str).tolist()
                 )
@@ -698,7 +710,9 @@ class KnowledgeDistiller:
                 torch.cuda.empty_cache()
             print("Teacher model freed from GPU memory")
 
-            self.train_ds = TextPairWithTeacher(df, cfg.task_type, teacher_cls_list)
+            self.train_ds = TextPairWithTeacher(
+                df, cfg.task_type, teacher_cls_list, teacher_topo_list
+            )
             self.collate_fn = DualTokenizerCollateWithTeacher(
                 self.tok_student, cfg.task_type, cfg.max_length
             )
@@ -1373,7 +1387,7 @@ class KnowledgeDistiller:
             for k, v in batch.items():
                 if not torch.is_tensor(v):
                     continue
-                if k.endswith("_stu") or k in ("labels", "teacher_cls"):
+                if k.endswith("_stu") or k in ("labels", "teacher_cls", "teacher_topo"):
                     batch_s[k] = v.to(self.device_s, non_blocking=True)
 
             self.optimizer.zero_grad(set_to_none=True)
@@ -1422,6 +1436,7 @@ class KnowledgeDistiller:
                     teacher=teacher_cls,
                     attention_mask=attention_mask,
                     second_view=second_view,
+                    teacher_topo=batch_s.get("teacher_topo"),
                 )
                 loss = loss.float()
 

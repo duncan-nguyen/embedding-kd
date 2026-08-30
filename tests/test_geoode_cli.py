@@ -138,3 +138,16 @@ def test_pca_mse_baseline_is_expressible_from_the_cli():
     assert config.gauge_align is False
     assert config.lambda_ctr == 0.0
     assert config.projection_type == "pca"
+
+
+def test_h0_flags_default_off_and_are_forwarded():
+    # The H0 term is a control, so the recipe run must be bit-identical without it.
+    default = _config("--method", "geoode")
+    assert default.lambda_topo == 0.0
+    assert default.topo_metric == "chord"
+
+    config = _config(
+        "--method", "geoode", "--lambda_topo", "0.1", "--topo_metric", "angular"
+    )
+    assert config.lambda_topo == 0.1
+    assert config.topo_metric == "angular"

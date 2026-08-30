@@ -184,6 +184,31 @@ intermediate layers, so what the lower stack does with depth is left to the
 encoder. Its other flag is `--student_pooling`. Training adds no parameters and
 inference is the plain student encoder.
 
+`--lambda_topo` adds the H0 persistence term of `src/criterions/h0_topological_loss.py`
+to that objective. It asks the student batch and the teacher batch to have the
+same *shape*: the finite death times of the H0 Vietoris-Rips diagram are the
+weights of the batch's minimum spanning tree, so matching them sorted is a
+statement about how the cloud is connected and about nothing else. Like RKD's
+potentials it needs no shared basis and no shared width, which is why it reads
+the teacher cache *before* `P_T` narrows it to `d_S` — it is the one term in the
+run whose supervision the choice of target map cannot colour, and the reason it
+is worth reporting next to `--lambda_gram` (the pairwise-similarity control,
+which can only be measured after that map). The MST is Prim's, run on the batch:
+the selection is detached and the selected edge weights are not, so the gradient
+reaches the endpoints of the tree the batch actually has. `--topo_metric` picks
+the ground metric on the sphere (`chord`, the default Euclidean `sqrt(2 - 2cos)`;
+`angular`, the geodesic; `cosine`). Death times are O(1) and the term is their
+mean squared error, so it enters small — sweep the weight over decades
+(`0.01`, `0.1`, `1.0`) rather than around `0.5`. Rung 4 of the structural audit
+already measures the same object post-hoc (`h0_w1`, Wasserstein-1 between the two
+barcodes on the probe set), which is where to read off how far apart the diagrams
+are before spending a run on the weight — and the caveat that comes with it: for
+a `--lambda_topo > 0` arm, `h0_w1` is no longer an independent measurement, it is
+the training objective scored back. The audit builds its MST under `1 - cos` and
+the default term under `chord`; both are increasing in `1 - cos`, so the tree is
+the same and only the edge lengths are scaled. `--topo_metric cosine` makes the
+two read the same units.
+
 Training is single-process. Two visible CUDA devices place the student on
 `cuda:0` and the teacher on `cuda:1`; one device puts both on `cuda:0`.
 

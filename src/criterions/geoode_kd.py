@@ -25,6 +25,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from src.criterions.h0_topological_loss import Metric, h0_topological_loss
 from src.loss import info_nce
 from src.pooling import mean_pooling
 
@@ -64,6 +65,13 @@ class GeoODEKD(nn.Module):
             teacher and the student's final state are brought into a shared space by
             it, and its parameters are trained with the student. ``None`` (the
             default) means the targets arrive already mapped and frozen.
+        lambda_topo: weight of the H0 persistence term. It matches the *shape* of
+            the batch -- the sorted finite death times of the H0 Vietoris-Rips
+            diagram, i.e. the MST edge weights -- rather than any individual point,
+            so it is invariant to the width of the space and reads the teacher's own
+            geometry when ``teacher_topo`` is given. 0 is the recipe.
+        topo_metric: ground metric of that diagram on the unit sphere: ``"chord"``
+            (Euclidean), ``"angular"`` (geodesic) or ``"cosine"``.
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
             Off by default: the paper's L states are the L Transformer layers. Only
@@ -82,10 +90,18 @@ class GeoODEKD(nn.Module):
         target_projector: nn.Module | None = None,
         endpoint_loss: str = "cosine",
         lambda_gram: float = 0.0,
+        lambda_topo: float = 0.0,
+        topo_metric: Metric = "chord",
     ):
         super().__init__()
-        if lambda_end < 0 or lambda_ctr < 0 or lambda_gram < 0:
-            raise ValueError("lambda_end, lambda_ctr and lambda_gram must be non-negative")
+        if lambda_end < 0 or lambda_ctr < 0 or lambda_gram < 0 or lambda_topo < 0:
+            raise ValueError(
+                "lambda_end, lambda_ctr, lambda_gram and lambda_topo must be non-negative"
+            )
+        if topo_metric not in ("chord", "angular", "cosine"):
+            raise ValueError(
+                f"topo_metric must be 'chord', 'angular' or 'cosine', got {topo_metric!r}"
+            )
         if endpoint_loss not in ("cosine", "mse", "procrustes"):
             raise ValueError(
                 "endpoint_loss must be 'cosine', 'mse' or 'procrustes', "
@@ -98,6 +114,8 @@ class GeoODEKD(nn.Module):
             )
         self.endpoint_loss_form = endpoint_loss
         self.lambda_gram = float(lambda_gram)
+        self.lambda_topo = float(lambda_topo)
+        self.topo_metric = topo_metric
 
         self.lambda_end = float(lambda_end)
         self.lambda_ctr = float(lambda_ctr)
@@ -180,6 +198,19 @@ class GeoODEKD(nn.Module):
         mask = ~torch.eye(gram_s.shape[0], dtype=torch.bool, device=gram_s.device)
         return ((gram_s - gram_t)[mask] ** 2).mean()
 
+    def topological_loss(
+        self, final_state: torch.Tensor, teacher: torch.Tensor
+    ) -> torch.Tensor:
+        """H0 persistence matching between the two batches.
+
+        Both diagrams are read off the batch's minimum spanning tree, so this is a
+        statement about the connectivity of the point cloud and nothing else: it
+        needs no correspondence between the two spaces' axes and no equality of
+        their dimensions, which is why ``teacher`` here may be the *unprojected*
+        teacher cache. The teacher side is a constant (no_grad inside).
+        """
+        return h0_topological_loss(final_state, teacher, metric=self.topo_metric)
+
     def contrastive_loss(
         self, view_a: torch.Tensor, view_b: torch.Tensor
     ) -> torch.Tensor:
@@ -195,6 +226,7 @@ class GeoODEKD(nn.Module):
         teacher: torch.Tensor,
         attention_mask: torch.Tensor | None = None,
         second_view: torch.Tensor | None = None,
+        teacher_topo: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute L_total of Eq. (38).
 
@@ -206,6 +238,10 @@ class GeoODEKD(nn.Module):
             attention_mask: student attention mask, needed for mean pooling.
             second_view: pooled (unnormalised) final representation of a second
                 dropout view, used only for the contrastive term.
+            teacher_topo: optional cached teacher embeddings in the teacher's *own*
+                dimension ``[B, d_T]``, read only by the H0 term. ``None`` falls
+                back to the projected targets, which makes the term a statement
+                about the shape P_T left behind rather than the teacher's own.
         """
         hidden_states = list(hidden_states)
         states = self.layer_states(hidden_states, attention_mask)
@@ -244,6 +280,13 @@ class GeoODEKD(nn.Module):
         else:
             loss_gram = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
+        # A single-sample tail batch has no MST, so the term is simply absent there.
+        if self.lambda_topo > 0.0 and states[-1].shape[0] >= 2:
+            topo_target = teacher if teacher_topo is None else teacher_topo.float()
+            loss_topo = self.topological_loss(states[-1], topo_target)
+        else:
+            loss_topo = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
+
         if self.lambda_ctr > 0.0 and second_view is not None:
             loss_ctr = self.contrastive_loss(
                 student_view, self.normalize(second_view.float())
@@ -255,6 +298,7 @@ class GeoODEKD(nn.Module):
             self.lambda_end * loss_end
             + self.lambda_ctr * loss_ctr
             + self.lambda_gram * loss_gram
+            + self.lambda_topo * loss_topo
         )
 
         with torch.no_grad():
@@ -263,6 +307,7 @@ class GeoODEKD(nn.Module):
                 "loss_end": float(loss_end.detach()),
                 "loss_ctr": float(loss_ctr.detach()),
                 "loss_gram": float(loss_gram.detach()),
+                "loss_topo": float(loss_topo.detach()),
                 # Only the final layer is supervised; the shallow cosine is logged
                 # next to it as a free sanity check on the untouched lower stack.
                 "cos_first": float((states[0] * teacher).sum(dim=-1).mean()),

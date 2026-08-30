@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -11,6 +13,9 @@ class DualTokenizerCollateWithTeacher:
         columns = list(zip(*batch))
         samples, teacher_cls = columns[0], columns[1]
         teacher_cls = torch.stack(teacher_cls, dim=0)  # [B, d_t]
+        # Present only when the dataset also carries the unprojected teacher cache
+        # (the H0 term); every other method sees the batch exactly as before.
+        teacher_topo = torch.stack(columns[2], dim=0) if len(columns) > 2 else None
 
         if self.task == "single_cls":
             s1s, ys = zip(*samples)
@@ -26,6 +31,8 @@ class DualTokenizerCollateWithTeacher:
             }
             if "token_type_ids" in s_enc:
                 out["token_type_ids_stu"] = s_enc["token_type_ids"]
+            if teacher_topo is not None:
+                out["teacher_topo"] = teacher_topo
             return out
 
         # ---------- pair ----------
@@ -52,6 +59,8 @@ class DualTokenizerCollateWithTeacher:
             out["token_type_ids1_stu"] = s1_enc["token_type_ids"]
         if "token_type_ids" in s2_enc:
             out["token_type_ids2_stu"] = s2_enc["token_type_ids"]
+        if teacher_topo is not None:
+            out["teacher_topo"] = teacher_topo
 
         return out
     
@@ -61,9 +70,11 @@ class TextPairWithTeacher(Dataset):
         df: pd.DataFrame,
         task: str,
         teacher_cls: torch.Tensor,
+        teacher_topo: torch.Tensor | None = None,
     ):
         self.task = task
         self.teacher_cls = teacher_cls   # [N, d_t]
+        self.teacher_topo = teacher_topo # [N, d_T] unprojected, or None
 
         if task == "single_cls":
             self.samples = [(t, int(y)) for t, y in zip(df["text"].astype(str),
@@ -81,4 +92,6 @@ class TextPairWithTeacher(Dataset):
     def __getitem__(self, idx):
         item = self.samples[idx]
         tcls = self.teacher_cls[idx]   # lấy đúng teacher CLS của sample này
-        return item, tcls
+        if self.teacher_topo is None:
+            return item, tcls
+        return item, tcls, self.teacher_topo[idx]
