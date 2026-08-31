@@ -1,70 +1,25 @@
+"""Dataset and collate for the methods that train against a frozen teacher cache.
+
+The teacher never runs during training here: row ``i`` of the cache is the
+teacher's embedding of row ``i`` of the corpus, so the dataset only has to carry
+the text and hand the matching cached vector along with it.
+"""
+
 from __future__ import annotations
 
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-class DualTokenizerCollateWithTeacher:
-    def __init__(self, tok_student, task: str, max_len: int):
-        self.ts = tok_student
-        self.task = task
-        self.max_len = max_len
 
-    def __call__(self, batch):
-        columns = list(zip(*batch))
-        samples, teacher_cls = columns[0], columns[1]
-        teacher_cls = torch.stack(teacher_cls, dim=0)  # [B, d_t]
-        # Present only when the dataset also carries the unprojected teacher cache
-        # (the H0 term); every other method sees the batch exactly as before.
-        teacher_topo = torch.stack(columns[2], dim=0) if len(columns) > 2 else None
 
-        if self.task == "single_cls":
-            s1s, ys = zip(*samples)
-            s_enc = self.ts(list(s1s), max_length=self.max_len, truncation=True,
-                            padding=True, return_tensors="pt",
-                            return_special_tokens_mask=True)
-            out = {
-                "input_ids_stu": s_enc["input_ids"],
-                "attention_mask_stu": s_enc["attention_mask"],
-                "special_tokens_mask_stu": s_enc["special_tokens_mask"],
-                "teacher_cls": teacher_cls,
-                "labels": torch.tensor(ys, dtype=torch.long),
-            }
-            if "token_type_ids" in s_enc:
-                out["token_type_ids_stu"] = s_enc["token_type_ids"]
-            if teacher_topo is not None:
-                out["teacher_topo"] = teacher_topo
-            return out
-
-        # ---------- pair ----------
-        s1s, s2s = zip(*samples)
-
-        s1_enc = self.ts(list(s1s), max_length=self.max_len, truncation=True,
-                         padding=True, return_tensors="pt",
-                         return_special_tokens_mask=True)
-        s2_enc = self.ts(list(s2s), max_length=self.max_len, truncation=True,
-                         padding=True, return_tensors="pt",
-                         return_special_tokens_mask=True)
-
-        out = {
-            "input_ids1_stu": s1_enc["input_ids"],
-            "attention_mask1_stu": s1_enc["attention_mask"],
-            "special_tokens_mask1_stu": s1_enc["special_tokens_mask"],
-            "input_ids2_stu": s2_enc["input_ids"],
-            "attention_mask2_stu": s2_enc["attention_mask"],
-            "special_tokens_mask2_stu": s2_enc["special_tokens_mask"],
-            "teacher_cls": teacher_cls,
-        }
-
-        if "token_type_ids" in s1_enc:
-            out["token_type_ids1_stu"] = s1_enc["token_type_ids"]
-        if "token_type_ids" in s2_enc:
-            out["token_type_ids2_stu"] = s2_enc["token_type_ids"]
-        if teacher_topo is not None:
-            out["teacher_topo"] = teacher_topo
-
-        return out
-    
 class TextPairWithTeacher(Dataset):
+    """Corpus rows paired with their cached teacher embeddings.
+
+    ``teacher_topo`` is the same cache in the teacher's *own* dimension, carried
+    only when the H0 term is switched on; every other run leaves it ``None`` and
+    the batch looks exactly as it did before.
+    """
+
     def __init__(
         self,
         df: pd.DataFrame,
@@ -73,25 +28,68 @@ class TextPairWithTeacher(Dataset):
         teacher_topo: torch.Tensor | None = None,
     ):
         self.task = task
-        self.teacher_cls = teacher_cls   # [N, d_t]
-        self.teacher_topo = teacher_topo # [N, d_T] unprojected, or None
+        self.teacher_cls = teacher_cls    # [N, d_t]
+        self.teacher_topo = teacher_topo  # [N, d_T] unprojected, or None
 
         if task == "single_cls":
-            self.samples = [(t, int(y)) for t, y in zip(df["text"].astype(str),
-                                                        df["label"].astype(int))]
+            columns = (df["text"].astype(str), df["label"].astype(int))
         elif task == "pair_cls":
-            self.samples = [(a, b) for a,b in zip(df["premise"].astype(str),
-                                                  df["hypothesis"].astype(str))]
+            columns = (df["premise"].astype(str), df["hypothesis"].astype(str))
         else:
-            self.samples = [(a, b) for a,b in zip(df["sentence1"].astype(str),
-                                                  df["sentence2"].astype(str))]
+            columns = (df["sentence1"].astype(str), df["sentence2"].astype(str))
+        self.samples = list(zip(*columns))
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         item = self.samples[idx]
-        tcls = self.teacher_cls[idx]   # lấy đúng teacher CLS của sample này
         if self.teacher_topo is None:
-            return item, tcls
-        return item, tcls, self.teacher_topo[idx]
+            return item, self.teacher_cls[idx]
+        return item, self.teacher_cls[idx], self.teacher_topo[idx]
+
+
+class DualTokenizerCollateWithTeacher:
+    """Tokenize for the student only; the teacher side arrives pre-computed."""
+
+    def __init__(self, tok_student, task: str, max_len: int):
+        self.ts = tok_student
+        self.task = task
+        self.max_len = max_len
+
+    def _encode(self, texts, side: int, out: dict) -> None:
+        encoding = self.ts(
+            list(texts),
+            max_length=self.max_len,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+            return_special_tokens_mask=True,
+        )
+        # single_cls has one text per row and drops the index from the key.
+        suffix = f"{side}_stu" if side else "_stu"
+        out[f"input_ids{suffix}"] = encoding["input_ids"]
+        out[f"attention_mask{suffix}"] = encoding["attention_mask"]
+        out[f"special_tokens_mask{suffix}"] = encoding["special_tokens_mask"]
+        if "token_type_ids" in encoding:
+            out[f"token_type_ids{suffix}"] = encoding["token_type_ids"]
+
+    def __call__(self, batch):
+        columns = list(zip(*batch))
+        samples = columns[0]
+        out = {"teacher_cls": torch.stack(columns[1], dim=0)}  # [B, d_t]
+        # Present only when the dataset also carries the unprojected teacher cache
+        # (the H0 term); every other method sees the batch exactly as before.
+        if len(columns) > 2:
+            out["teacher_topo"] = torch.stack(columns[2], dim=0)
+
+        if self.task == "single_cls":
+            texts, labels = zip(*samples)
+            self._encode(texts, 0, out)
+            out["labels"] = torch.tensor(labels, dtype=torch.long)
+            return out
+
+        first, second = zip(*samples)
+        self._encode(first, 1, out)
+        self._encode(second, 2, out)
+        return out

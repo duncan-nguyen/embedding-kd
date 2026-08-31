@@ -20,9 +20,8 @@ def last_token_pool(last_hidden_states: Tensor,
 def mean_pooling(last_hidden_state: torch.Tensor,
                  attention_mask: torch.Tensor) -> torch.Tensor:
     mask = attention_mask.unsqueeze(-1).type_as(last_hidden_state)
-    # sum theo chiều L
-    summed = (last_hidden_state * mask).sum(dim=1)               # [B, d]
-    counts = mask.sum(dim=1).clamp(min=1e-9)                     # [B, 1]
+    summed = (last_hidden_state * mask).sum(dim=1)  # sum over the length axis, [B, d]
+    counts = mask.sum(dim=1).clamp(min=1e-9)        # [B, 1]
     return summed / counts
 
 

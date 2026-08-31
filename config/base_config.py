@@ -1,5 +1,11 @@
 class BaseConfig:
-    
+    """Defaults shared by every method; a subclass overrides only what it changes.
+
+    Keyword arguments to the constructor override any attribute the class already
+    defines. An unknown name is ignored rather than raising, so a caller may pass a
+    superset of settings and each config takes the ones it understands.
+    """
+
     task_type = "pair_cls"
     max_length = 256
     
@@ -33,7 +39,7 @@ class BaseConfig:
     
     # Every method in the paper is distilled on this one corpus: 100k benchmark
     # sentences plus 25k MS MARCO queries and 25k MS MARCO passages, all raw
-    # text. Built by scripts/build_train_150k.py.
+    # text. Built by scripts/build_train_corpus.py.
     train_data_path = "data/train_set/train_150k.csv"
     # Shared directory for the cached teacher embeddings of talas/geoode/rkd. When
     # set it wins over cache_path, and the filename is derived from what a cache's
@@ -71,7 +77,12 @@ class BaseConfig:
     eval_every = 1
     
     seed = 42
-    
+
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
     def __repr__(self):
         attrs = [f"{k}={v}" for k, v in self.to_dict().items()]
         return f"{self.__class__.__name__}({', '.join(attrs)})"

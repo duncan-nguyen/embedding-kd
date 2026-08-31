@@ -23,8 +23,3 @@ class CDMConfig(BaseConfig):
     debug_align = False
     
     save_dir = "checkpoints/cdm"
-    
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            if hasattr(self, k):
-                setattr(self, k, v)

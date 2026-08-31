@@ -17,7 +17,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from torch.utils.data import Dataset
 from tqdm import tqdm
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -134,47 +133,17 @@ def _cosine_similarity(left, right):
     return np.sum(left * right, axis=1)
 
 
-class STSDataset(Dataset):
+# The three readers below just hold the columns of one split. Embedding goes
+# through `_embed_texts` over plain lists of strings, so none of them is ever
+# iterated by a DataLoader.
+class STSDataset:
+    """sentence1 / sentence2 / score of one STS split."""
+
     def __init__(self, file_path):
-        self.dataset = _read_eval_csv(file_path)
-        self.sentence1 = _column_as_list(self.dataset, "sentence1")
-        self.sentence2 = _column_as_list(self.dataset, "sentence2")
-        self.labels = self.dataset["score"].to_numpy(dtype=np.float32)
-
-    def __len__(self):
-        return len(self.sentence1)
-
-    def __getitem__(self, idx):
-        return {
-            "sentence1": self.sentence1[idx],
-            "sentence2": self.sentence2[idx],
-            "label": torch.tensor(self.labels[idx], dtype=torch.float),
-        }
-
-
-def collate_fn(batch, tokenizer, max_len=128):
-    s1_list = [item["sentence1"] for item in batch]
-    s2_list = [item["sentence2"] for item in batch]
-    labels = torch.stack([item["label"] for item in batch])
-
-    enc1 = tokenizer(
-        s1_list,
-        truncation=True,
-        padding=True,  # chỉ pad theo câu dài nhất trong batch
-        max_length=max_len,
-        return_tensors="pt",
-    )
-    enc2 = tokenizer(
-        s2_list, truncation=True, padding=True, max_length=max_len, return_tensors="pt"
-    )
-
-    return {
-        "input_ids1": enc1["input_ids"],
-        "attention_mask1": enc1["attention_mask"],
-        "input_ids2": enc2["input_ids"],
-        "attention_mask2": enc2["attention_mask"],
-        "labels": labels,
-    }
+        frame = _read_eval_csv(file_path)
+        self.sentence1 = _column_as_list(frame, "sentence1")
+        self.sentence2 = _column_as_list(frame, "sentence2")
+        self.labels = frame["score"].to_numpy(dtype=np.float32)
 
 
 def eval_sts(model, tokenizer, path):
@@ -208,20 +177,13 @@ def eval_cls(model, tokenizer, path):
     return features, dataset.labels
 
 
-class ClasssifyDataset(Dataset):
+class ClasssifyDataset:
+    """text / label of one classification split."""
+
     def __init__(self, file_path):
-        self.dataset = _read_eval_csv(file_path)
-        self.texts = _column_as_list(self.dataset, "text")
-        self.labels = self.dataset["label"].to_numpy(dtype=np.int64)
-
-    def __len__(self):
-        return len(self.texts)
-
-    def __getitem__(self, idx):
-        return {
-            "text": self.texts[idx],
-            "label": torch.tensor(self.labels[idx], dtype=torch.long),
-        }
+        frame = _read_eval_csv(file_path)
+        self.texts = _column_as_list(frame, "text")
+        self.labels = frame["label"].to_numpy(dtype=np.int64)
 
 
 def _normalized_text_keys(dataset):
@@ -266,25 +228,6 @@ def _validate_classification_pair(train_path, eval_path):
         )
 
 
-def clf_collate_fn(batch, tokenizer, max_len=512):
-    s1_list = [item["text"] for item in batch]
-    labels = torch.stack([item["label"] for item in batch])
-
-    enc1 = tokenizer(
-        s1_list,
-        truncation=True,
-        padding=True,  # chỉ pad theo câu dài nhất trong batch
-        max_length=max_len,
-        return_tensors="pt",
-    )
-
-    return {
-        "input_ids1": enc1["input_ids"],
-        "attention_mask1": enc1["attention_mask"],
-        "labels": labels,
-    }
-
-
 def eval_classification_task(model, path_list, tokenizer):
     model.eval()
     print(" eval classifier")
@@ -317,22 +260,14 @@ def eval_classification_task(model, path_list, tokenizer):
     return results
 
 
-class PairDataset(Dataset):
+class PairDataset:
+    """sentence1 / sentence2 / label of one pair-classification split."""
+
     def __init__(self, file_path):
-        self.dataset = _read_eval_csv(file_path)
-        self.sentence1 = _column_as_list(self.dataset, "sentence1")
-        self.sentence2 = _column_as_list(self.dataset, "sentence2")
-        self.labels = self.dataset["label"].to_numpy(dtype=np.float32)
-
-    def __len__(self):
-        return len(self.sentence1)
-
-    def __getitem__(self, idx):
-        return {
-            "sentence1": self.sentence1[idx],
-            "sentence2": self.sentence2[idx],
-            "label": torch.tensor(self.labels[idx], dtype=torch.float),
-        }
+        frame = _read_eval_csv(file_path)
+        self.sentence1 = _column_as_list(frame, "sentence1")
+        self.sentence2 = _column_as_list(frame, "sentence2")
+        self.labels = frame["label"].to_numpy(dtype=np.float32)
 
 
 def eval_pair(model, tokenizer, path, threshold=None):

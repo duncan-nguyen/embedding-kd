@@ -22,8 +22,3 @@ class DSKDConfig(BaseConfig):
     learning_rate = 2e-5
     
     save_dir = "checkpoints/dskd"
-    
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            if hasattr(self, k):
-                setattr(self, k, v)

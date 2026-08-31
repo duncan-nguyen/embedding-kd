@@ -1,8 +1,18 @@
+"""DSKD: bidirectional distillation in both the student's and the teacher's space.
+
+The CLS term maps each side into the other's dimension and matches the two
+normalised vectors. The token term uses cross-model attention (CLA) to build,
+for every token of one model, the mixture of the other model's tokens it best
+corresponds to -- which is what lets two different tokenizations be compared
+without an explicit alignment.
+"""
+
 import math
+from typing import Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Tuple, Optional
 
 
 class DualSpaceKD(nn.Module):
@@ -44,7 +54,6 @@ class DualSpaceKD(nn.Module):
         Q_seq: torch.Tensor,
         K_seq: torch.Tensor,
         V_seq: torch.Tensor,
-        mask_q: torch.Tensor,
         mask_k: torch.Tensor,
         q_proj: nn.Linear,
         k_proj: nn.Linear,
@@ -97,7 +106,6 @@ class DualSpaceKD(nn.Module):
             Q_seq=S_last,
             K_seq=T_last,
             V_seq=T_last,
-            mask_q=mask_s1,
             mask_k=mask_t1,
             q_proj=self.cla_q_s2t,
             k_proj=self.cla_k_s2t,
@@ -108,7 +116,6 @@ class DualSpaceKD(nn.Module):
             Q_seq=T_last,
             K_seq=S_last,
             V_seq=S_last,
-            mask_q=mask_t1,
             mask_k=mask_s1,
             q_proj=self.cla_q_t2s,
             k_proj=self.cla_k_t2s,

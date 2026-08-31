@@ -1,6 +1,6 @@
-from __future__ import annotations
+"""Raw-text dataset and collate for the methods that run the teacher online."""
 
-from typing import List, Optional, Tuple
+from __future__ import annotations
 
 import pandas as pd
 import torch
@@ -8,7 +8,11 @@ from torch.utils.data import Dataset
 
 
 class TextPairRaw(Dataset):
-    """Canonical raw-text dataset used by online teacher/student methods."""
+    """Canonical raw-text dataset used by online teacher/student methods.
+
+    Every row is ``(text1, text2 | None, label | None)``; which columns supply
+    them is what the task type decides.
+    """
 
     def __init__(self, df: pd.DataFrame, task: str):
         self.task = task
@@ -51,7 +55,7 @@ class TextPairRaw(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[str, Optional[str], Optional[float]]:
+    def __getitem__(self, idx: int) -> tuple[str, str | None, float | None]:
         return self.samples[idx]
 
 
@@ -75,7 +79,7 @@ class DualTokenizerCollate:
         self.task = task
         self.max_len = max_len
 
-    def _encode(self, tokenizer, texts: List[str]):
+    def _encode(self, tokenizer, texts: list[str]):
         return tokenizer(
             texts,
             max_length=self.max_len,
@@ -94,7 +98,7 @@ class DualTokenizerCollate:
         if "token_type_ids" in encoding:
             out[f"token_type_ids{key_suffix}"] = encoding["token_type_ids"]
 
-    def __call__(self, batch: List[Tuple[str, Optional[str], Optional[float]]]):
+    def __call__(self, batch: list[tuple[str, str | None, float | None]]):
         text1s = [sample[0] for sample in batch]
         text2s = [sample[1] for sample in batch]
         labels = [sample[2] for sample in batch]

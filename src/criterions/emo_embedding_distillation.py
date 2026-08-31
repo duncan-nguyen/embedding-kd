@@ -1,9 +1,19 @@
+"""EMO: attention-CKA plus optimal-transport distillation across two tokenizers.
+
+The teacher and the student tokenize differently, so both terms first align the
+two token sequences by minimum edit distance (:func:`align_tokens`). The
+attention term then matches the maps of the aligned tokens through CKA, and the
+OT term transports the student states onto the projected teacher states, with
+the marginals set by the teacher's own attention mass.
+"""
+
+import math
+from typing import Dict, Tuple
+
+import editdistance
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from typing import List, Tuple, Dict, Optional
-import editdistance
 
 
 class CKALoss(nn.Module):
@@ -27,67 +37,9 @@ class CKALoss(nn.Module):
         return 1 - num/torch.sqrt(den1*den2)
 
 
-def build_reciprocal_mapping_from_token_lists(
-    teacher_tokens, student_tokens,
-    teacher_special="<s>", student_special="[CLS]"
-):
-    return align_tokens(
-        teacher_tokens,
-        student_tokens,
-        teacher_special,
-        student_special,
-    )
-
-
-def build_reciprocal_mapping_from_token_lists_old(
-    tokens_t: List[str],
-    tokens_s: List[str],
-    teacher_special: str = "<s>",
-    student_special: str = "[CLS]"
-) -> Dict[int, int]:
-    indices_t = [i for i, tok in enumerate(tokens_t) if not tok.startswith(teacher_special)]
-    indices_s = [i for i, tok in enumerate(tokens_s) if not tok.startswith(student_special)]
-    
-    pure_tokens_t = [tokens_t[i] for i in indices_t]
-    pure_tokens_s = [tokens_s[i] for i in indices_s]
-    
-    n_t = len(pure_tokens_t)
-    n_s = len(pure_tokens_s)
-    
-    dist_matrix = torch.zeros(n_t, n_s)
-    for i in range(n_t):
-        for j in range(n_s):
-            dist_matrix[i, j] = editdistance.eval(pure_tokens_t[i], pure_tokens_s[j])
-    
-    mapping = {}
-    used_s = set()
-    
-    for i in range(n_t):
-        min_dist = float('inf')
-        best_j = -1
-        for j in range(n_s):
-            if j not in used_s and dist_matrix[i, j] < min_dist:
-                min_dist = dist_matrix[i, j]
-                best_j = j
-        
-        if best_j >= 0:
-            reciprocal = True
-            for k in range(n_t):
-                if dist_matrix[k, best_j] < dist_matrix[i, best_j]:
-                    reciprocal = False
-                    break
-            
-            if reciprocal:
-                mapping[indices_t[i]] = indices_s[best_j]
-                used_s.add(best_j)
-    
-    return mapping
-
-
 def compute_token_importance(attention_weights, tokens):
-    device = attention_weights.device
-    
-    # Check if attention_weights is 3D (with multiple heads) or 2D (single attention matrix)
+    """Normalised attention mass each token receives, averaged over heads."""
+    # 3D means [heads, seq, seq]; 2D is an already-averaged attention matrix.
     if len(attention_weights.shape) == 3:
         # Average attention across heads: [seq_len, seq_len]
         avg_attention = attention_weights.mean(dim=0)
@@ -114,7 +66,7 @@ def compute_token_importance(attention_weights, tokens):
     return norm_importance
 
 
-def project_importance(teacher_importance, teacher_tokens, student_tokens, mapping):
+def project_importance(teacher_importance, student_tokens, mapping):
     device = teacher_importance.device
     if len(student_tokens) == 0:
         return torch.empty(0, device=device)
@@ -291,15 +243,15 @@ def align_tokens(
 
 
 def compute_att_loss_2(
-    teacher_atts,          # list: mỗi phần tử [B, H, L_t, L_t] trên device_s
-    student_atts,          # list: mỗi phần tử [B, H, L_s, L_s]
-    input_ids_tea,         # [B, L_t] trên device_s
-    input_ids_stu,         # [B, L_s] trên device_s
-    attention_mask_tea,    # [B, L_t] trên device_s
-    attention_mask_stu,    # [B, L_s] trên device_s
+    teacher_atts,          # list of [B, H, L_t, L_t], on the student device
+    student_atts,          # list of [B, H, L_s, L_s]
+    input_ids_tea,         # [B, L_t]
+    input_ids_stu,         # [B, L_s]
+    attention_mask_tea,    # [B, L_t]
+    attention_mask_stu,    # [B, L_s]
     tok_teacher,
     tok_student,
-    k,                     # số last layers dùng (thường = 1)
+    k,                     # how many of the last layers to match (usually 1)
     device,
     teacher_special="<s>",
     student_special="[CLS]",
@@ -341,7 +293,7 @@ def compute_att_loss_2(
             last_teacher_att, teacher_tokens
         )  # [L_t_valid]
 
-        reciprocal = build_reciprocal_mapping_from_token_lists(
+        reciprocal = align_tokens(
             teacher_tokens, student_tokens,
             teacher_special=teacher_special,
             student_special=student_special
@@ -373,11 +325,11 @@ def compute_att_loss_2(
             tea_sub = teacher_att_layer[b, :, :L_t_valid, :L_t_valid]  # [H, L_t_valid, L_t_valid]
             stu_sub = student_att_layer[b, :, :L_s_valid, :L_s_valid]  # [H, L_s_valid, L_s_valid]
 
-            # attention của N token đã align, trung bình các head
+            # attention of the N aligned tokens, averaged over heads
             tea_tok_att = tea_sub[:, aligned_teacher_indices, :].mean(dim=0)  # [N, L_t_valid]
             stu_tok_att = stu_sub[:, aligned_student_indices, :].mean(dim=0)  # [N, L_s_valid]
 
-            # xử lý mask rất nhỏ
+            # very negative entries are masked-out positions, not attention
             tea_tok_att = torch.where(
                 tea_tok_att <= -1e2,
                 torch.zeros_like(tea_tok_att, device=device),
@@ -401,13 +353,13 @@ def compute_att_loss_2(
 
 
 def compute_ot_loss(
-    teacher_last,           # [B, L_t, d_t]  trên device_s
-    student_last,           # [B, L_s, d_s]  trên device_s
-    teacher_att_last,       # [B, H, L_t, L_t] (attention layer cuối) trên device_s
-    attention_mask_teacher, # [B, L_t] trên device_s
-    attention_mask_student, # [B, L_s] trên device_s
-    input_ids_tea,          # [B, L_t] trên device_s
-    input_ids_stu,          # [B, L_s] trên device_s
+    teacher_last,           # [B, L_t, d_t], on the student device
+    student_last,           # [B, L_s, d_s]
+    teacher_att_last,       # [B, H, L_t, L_t], the last layer's attention
+    attention_mask_teacher, # [B, L_t]
+    attention_mask_student, # [B, L_s]
+    input_ids_tea,          # [B, L_t]
+    input_ids_stu,          # [B, L_s]
     tok_teacher,
     tok_student,
     projector,              # proj_t2s: Linear(d_t -> d_s)
@@ -453,10 +405,7 @@ def compute_ot_loss(
         )
 
         student_importance = project_importance(
-            teacher_importance,
-            teacher_tokens,
-            student_tokens,
-            token_mapping
+            teacher_importance, student_tokens, token_mapping
         )   # [Ls']
 
         tea_mass = teacher_importance.view(-1, 1).to(device=device, dtype=torch.float32)

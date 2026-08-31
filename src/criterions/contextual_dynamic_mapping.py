@@ -1,36 +1,20 @@
-import math
+"""CDM: token-level distillation across two tokenizers, aligned by DTW.
+
+The student and the teacher segment the same sentence differently, so the token
+states cannot be compared position by position. DTW over the token *strings*
+(edit distance as the local cost) gives a monotone alignment path, and only its
+strict one-to-one, name-matching steps are kept -- everything ambiguous is
+dropped rather than averaged, so the KD term never compares two tokens that are
+not the same piece of text.
+"""
+
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import editdistance
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import editdistance
-from typing import List, Tuple, Optional, Sequence, Dict
-from collections import deque
-import time
-
-
-def dist_fn(a: str, b: str, 
-            blending_model_special_token: str = "G",
-            base_model_special_token: str = "##",
-            specTok_mapper: Optional[Dict] = None) -> float:
-
-    if specTok_mapper is None:
-        specTok_mapper = {}
-        
-    if a in specTok_mapper and b in specTok_mapper.values():
-        return 0.0
-    if b in specTok_mapper and a in specTok_mapper.values():
-        return 0.0
-        
-    aa = a.replace(blending_model_special_token, "").replace(" ", "")
-    bb = b.replace(base_model_special_token, "").replace(" ", "")
-    
-    dist = editdistance.eval(aa, bb)
-    if len(aa) == len(bb) == 0:
-        return 0.0
-        
-    dist = dist / (len(aa) + len(bb))
-    return dist
 
 
 def cost_fn(a: str, b: str,
@@ -53,11 +37,16 @@ def cost_fn(a: str, b: str,
     return dist
 
 
-def dtw(series_1: List[str], 
-        series_2: List[str], 
+def dtw(series_1: List[str],
+        series_2: List[str],
         series1_factor: Optional[List] = None,
-        series2_factor: Optional[List] = None, 
-        norm_func=None) -> Tuple[List[Tuple[int, int]], float, List, List, np.ndarray]:
+        series2_factor: Optional[List] = None,
+        norm_func=None) -> Tuple[List[Tuple[int, int]], np.ndarray]:
+    """Dynamic time warping over two token-string sequences.
+
+    Returns the backtraced alignment path and the accumulated cost matrix (the
+    latter only so ``debug_align`` can print a corner of it).
+    """
 
     if norm_func is None:
         norm_func = cost_fn
@@ -87,14 +76,10 @@ def dtw(series_1: List[str],
     j = matrix.shape[1] - 1
     
     matches = []
-    mappings_series_1 = [list() for _ in range(matrix.shape[0])]
-    mappings_series_2 = [list() for _ in range(matrix.shape[1])]
-    
+
     while i > 0 or j > 0:
         matches.append((i, j))
-        mappings_series_1[i].append(j)
-        mappings_series_2[j].append(i)
-        
+
         option_diag = matrix[i - 1, j - 1] if i > 0 and j > 0 else np.inf
         option_up = matrix[i - 1, j] if i > 0 else np.inf
         option_left = matrix[i, j - 1] if j > 0 else np.inf
@@ -109,16 +94,9 @@ def dtw(series_1: List[str],
             j -= 1
             
     matches.append((0, 0))
-    mappings_series_1[0].append(0)
-    mappings_series_2[0].append(0)
     matches.reverse()
-    
-    for mp in mappings_series_1:
-        mp.reverse()
-    for mp in mappings_series_2:
-        mp.reverse()
 
-    return matches, matrix[-1, -1], mappings_series_1, mappings_series_2, matrix
+    return matches, matrix
 
 
 def _normalize_token(t: str, marker: Optional[str] = None) -> str:
@@ -167,9 +145,6 @@ def align_strict_one_to_one(
             return True
         return False
 
-    one_to_one = [(i, j) for (i, j) in path
-                  if base_counts.get(i, 0) == 1 and blend_counts.get(j, 0) == 1]
-
     kept_pairs, name_mismatch, multi_align = [], [], []
     for (i, j) in path:
         if base_counts.get(i, 0) != 1 or blend_counts.get(j, 0) != 1:
@@ -195,7 +170,11 @@ def align_strict_one_to_one(
     if debug:
         print("\n================= [ALIGN DEBUG] =================")
         print(f"L_base={base_vals.size(0)}, L_blend={blend_vals.size(0)}, |path|={len(path)}")
-        print(f"1–1 candidates: {len(one_to_one)} / {len(path)}")
+        one_to_one = sum(
+            1 for (i, j) in path
+            if base_counts.get(i, 0) == 1 and blend_counts.get(j, 0) == 1
+        )
+        print(f"1–1 candidates: {one_to_one} / {len(path)}")
         print(f"Final kept (strict name match + special map): {len(kept_pairs)}")
 
         if multi_align:
@@ -223,60 +202,6 @@ def align_strict_one_to_one(
             print(np.array2string(dtw_matrix[:h, :w], precision=2, suppress_small=True))
         print("=================================================\n")
 
-    return A_base, A_blend
-
-
-def align_by_path_pool_many(
-    base_vals: torch.Tensor,
-    blend_vals: torch.Tensor,
-    path: List[Tuple[int, int]]
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    A_base, A_blend = [], []
-    k = 0
-    P = len(path)
-    
-    while k < P:
-        i0, j0 = path[k]
-        if k == P - 1:
-            A_base.append(base_vals[i0])
-            A_blend.append(blend_vals[j0])
-            break
-
-        i1, j1 = path[k+1]
-        di, dj = i1 - i0, j1 - j0
-
-        # Many teacher -> one student
-        if dj == 0 and di == 1:
-            i_run = [i0]
-            j_fix = j0
-            kk = k + 1
-            while kk < P and path[kk][1] == j_fix and path[kk][0] == i_run[-1] + 1:
-                i_run.append(path[kk][0])
-                kk += 1
-            A_base.append(base_vals[i_run].mean(dim=0))
-            A_blend.append(blend_vals[j_fix])
-            k = kk
-            continue
-
-        if di == 0 and dj == 1:
-            j_run = [j0]
-            i_fix = i0
-            kk = k + 1
-            while kk < P and path[kk][0] == i_fix and path[kk][1] == j_run[-1] + 1:
-                j_run.append(path[kk][1])
-                kk += 1
-            A_base.append(base_vals[i_fix])
-            A_blend.append(blend_vals[j_run].mean(dim=0))
-            k = kk
-            continue
-
-        # Diagonal / direction change: 1-1
-        A_base.append(base_vals[i0])
-        A_blend.append(blend_vals[j0])
-        k += 1
-
-    A_base = torch.stack(A_base, dim=0)
-    A_blend = torch.stack(A_blend, dim=0)
     return A_base, A_blend
 
 
@@ -348,7 +273,7 @@ class ContextualDynamicMapping:
             
             if Si.numel() > 0 and Ti.numel() > 0 and len(s_tok_i) > 0 and len(t_tok_i) > 0:
                 
-                matches, dtw_cost, _, _, dtw_mat = dtw(
+                matches, dtw_mat = dtw(
                     series_1=t_tok_i,
                     series_2=s_tok_i,
                     norm_func=lambda a, b: cost_fn(

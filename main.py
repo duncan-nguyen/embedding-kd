@@ -1,5 +1,4 @@
 import argparse
-import sys
 
 from config import (
     BaseConfig,
@@ -402,6 +401,78 @@ def parse_args():
     return parser.parse_args()
 
 
+# CLI flags every method reads, and the config attribute each one sets. A flag
+# left unset (None) never touches the config, so the method's own default stands.
+COMMON_FLAGS = {
+    "train_data": "train_data_path",
+    "eval_data": "eval_data_path",
+    "student_model": "student_model_name",
+    "teacher_model": "teacher_model_name",
+    "teacher_pooling": "pooling_method",
+    "teacher_special_token": "teacher_special_token",
+    "student_special_token": "student_special_token",
+    "batch_size": "batch_size",
+    "epochs": "epochs",
+    "save_every": "save_every",
+    "lr": "learning_rate",
+    "max_length": "max_length",
+    "w_task": "w_task",
+    "alpha_dtw": "alpha_dtw",
+    "task_type": "task_type",
+    "pair_threshold_source": "pair_threshold_source",
+    "eval_every": "eval_every",
+    "save_dir": "save_dir",
+    "weights_dir": "weights_dir",
+    "cache_path": "cache_path",
+    "cache_dir": "cache_dir",
+    "seed": "seed",
+    "num_workers": "num_workers",
+    "wandb_project": "wandb_project",
+    "wandb_run_name": "wandb_run_name",
+    "wandb_mode": "wandb_mode",
+}
+
+# Flags of a single method's own objective. Applied through apply_method_flags, so
+# aiming one at a method that does not define it fails instead of being ignored.
+METHOD_FLAGS = (
+    (
+        (
+            "lambda_end",
+            "lambda_ctr",
+            "endpoint_loss",
+            "lambda_gram",
+            "lambda_topo",
+            "topo_metric",
+            "projection_type",
+            "projection_seed",
+            "learned_projector_lr_scale",
+            "pca_center_fit",
+            "pca_subtract_mean",
+            "gauge_align",
+            "gauge_rotation",
+            "gauge_random_seed",
+            "gauge_theta",
+            "gauge_refit_every",
+        ),
+        "geoode method",
+    ),
+    (("w_dist", "w_angle", "normalize_student"), "rkd method"),
+    (("simcse_view",), "simcse method"),
+    (("student_pooling",), "geoode, rkd and simcse methods"),
+)
+
+CONFIGS = {
+    "cdm": CDMConfig,
+    "dskd": DSKDConfig,
+    "emo": EMOConfig,
+    "stella": StellaConfig,
+    "talas": TALASConfig,
+    "geoode": GeoODEConfig,
+    "rkd": RKDConfig,
+    "simcse": SimCSEConfig,
+}
+
+
 def apply_method_flags(config, args, names, supported: str) -> None:
     """Copy the flags of one method's own objective onto its config.
 
@@ -419,161 +490,55 @@ def apply_method_flags(config, args, names, supported: str) -> None:
 
 
 def get_config(method: str, args):
-    if method == 'cdm':
-        config = CDMConfig()
-    elif method == 'dskd':
-        config = DSKDConfig()
-    elif method == 'emo':
-        config = EMOConfig()
-    elif method == 'stella':
-        config = StellaConfig()
-    elif method == 'talas':
-        config = TALASConfig()
-    elif method == 'geoode':
-        config = GeoODEConfig()
-    elif method == 'rkd':
-        config = RKDConfig()
-    elif method == 'simcse':
-        config = SimCSEConfig()
-    else:
-        config = BaseConfig()
-    
-    if args.train_data is not None:
-        config.train_data_path = args.train_data
-    if args.eval_data is not None:
-        config.eval_data_path = args.eval_data
-    
-    if args.student_model is not None:
-        config.student_model_name = args.student_model
-    if args.teacher_model is not None:
-        config.teacher_model_name = args.teacher_model
-    if args.teacher_pooling is not None:
-        config.pooling_method = args.teacher_pooling
-    if args.teacher_special_token is not None:
-        config.teacher_special_token = args.teacher_special_token
-    if args.student_special_token is not None:
-        config.student_special_token = args.student_special_token
-    
-    if args.batch_size is not None:
-        config.batch_size = args.batch_size
-    if args.epochs is not None:
-        config.epochs = args.epochs
-    if args.save_every is not None:
-        if args.save_every <= 0:
-            raise ValueError("--save_every must be a positive integer")
-        config.save_every = args.save_every
-    if args.lr is not None:
-        config.learning_rate = args.lr
-    if args.max_length is not None:
-        config.max_length = args.max_length
-    
-    if args.w_task is not None:
-        config.w_task = args.w_task
-    if args.alpha_dtw is not None:
-        config.alpha_dtw = args.alpha_dtw
-    if args.task_type is not None:
-        config.task_type = args.task_type
-    if args.pair_threshold_source is not None:
-        config.pair_threshold_source = args.pair_threshold_source
+    config = CONFIGS.get(method, BaseConfig)()
+
+    if args.save_every is not None and args.save_every <= 0:
+        raise ValueError("--save_every must be a positive integer")
+    if args.eval_every is not None and args.eval_every < 0:
+        raise ValueError("--eval_every must be zero or positive")
+
+    for flag, attribute in COMMON_FLAGS.items():
+        value = getattr(args, flag)
+        if value is not None:
+            setattr(config, attribute, value)
+
+    for names, supported in METHOD_FLAGS:
+        apply_method_flags(config, args, names, supported)
+
     if args.evaluate_test_each_epoch:
         config.evaluate_test_each_epoch = True
         # The flag's whole point is to run without a validation pass, so it carries
         # the threshold source with it unless one was named explicitly.
         if args.pair_threshold_source is None:
-            config.pair_threshold_source = 'test'
+            config.pair_threshold_source = "test"
     if args.no_eval_retrieval:
         config.eval_retrieval = False
-    if args.eval_every is not None:
-        if args.eval_every < 0:
-            raise ValueError("--eval_every must be zero or positive")
-        config.eval_every = args.eval_every
-
-    apply_method_flags(
-        config,
-        args,
-        (
-            'lambda_end',
-            'lambda_ctr',
-            'endpoint_loss',
-            'lambda_gram',
-            'lambda_topo',
-            'topo_metric',
-            'projection_type',
-            'projection_seed',
-            'learned_projector_lr_scale',
-            'pca_center_fit',
-            'pca_subtract_mean',
-            'gauge_align',
-            'gauge_rotation',
-            'gauge_random_seed',
-            'gauge_theta',
-            'gauge_refit_every',
-        ),
-        'geoode method',
-    )
-    apply_method_flags(config, args, ('w_dist', 'w_angle', 'normalize_student'), 'rkd method')
-    apply_method_flags(config, args, ('simcse_view',), 'simcse method')
-    apply_method_flags(
-        config, args, ('student_pooling',), 'geoode, rkd and simcse methods'
-    )
-    
-    if args.save_dir is not None:
-        config.save_dir = args.save_dir
-    if args.weights_dir is not None:
-        config.weights_dir = args.weights_dir
-    if args.cache_path is not None:
-        config.cache_path = args.cache_path
-    if args.cache_dir is not None:
-        config.cache_dir = args.cache_dir
-    
-    if args.seed is not None:
-        config.seed = args.seed
     if args.debug:
         config.debug_align = True
-    if args.num_workers is not None:
-        config.num_workers = args.num_workers
     if args.no_wandb:
         config.use_wandb = False
-    if args.wandb_project is not None:
-        config.wandb_project = args.wandb_project
-    if args.wandb_run_name is not None:
-        config.wandb_run_name = args.wandb_run_name
-    if args.wandb_mode is not None:
-        config.wandb_mode = args.wandb_mode
-    
+
     return config
 
 
 def main():
     args = parse_args()
-    
     config = get_config(args.method, args)
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print(f"Configuration for {args.method.upper()} method:")
-    print("="*70)
-    for k, v in config.to_dict().items():
-        print(f"  {k:25s} : {v}")
-    print("="*70 + "\n")
-    
-    try:
-        distiller = KnowledgeDistiller(config)
-    except Exception as e:
-        print(f"Error creating distiller: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-    
+    print("=" * 70)
+    for key, value in config.to_dict().items():
+        print(f"  {key:25s} : {value}")
+    print("=" * 70 + "\n")
+
+    # A failure here is fatal either way, so it is left to propagate: Python prints
+    # the traceback and exits non-zero, which is what the hand-rolled handlers did.
+    distiller = KnowledgeDistiller(config)
     try:
         distiller.train()
     except KeyboardInterrupt:
         print("\n\nTraining interrupted by user!")
-        sys.exit(0)
-    except Exception as e:
-        print(f"\n\nError during training: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
     finally:
         distiller.close()
 

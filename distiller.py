@@ -6,6 +6,7 @@ import tempfile
 import time
 from collections import deque
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -60,7 +61,6 @@ from src.data_utils.dataset_cache import (
     TextPairWithTeacher,
 )
 
-# Use evaluation_automodel for AutoModel (not evaluation_model_define which is for Stella)
 from src.evaluation.evaluation_automodel import (
     eval_classification_task,
     eval_cls_tasks,
@@ -84,14 +84,14 @@ from src.teacher_projection import (
     retained_energy,
 )
 
-# The distillation corpus (data/train_set/merged_3_data_5k_each.csv) is drawn from
-# EMOTION, WiC and STS-B, so those three benchmarks are in-distribution and the
-# remaining ones are held out. Reporting them as one number would let an
-# in-distribution gain stand in for transfer, so the table averages them apart.
 # projection_type values whose map is trained rather than fitted, and the direction
 # each one hands to LearnedTargetProjector.
 LEARNED_PROJECTIONS = {"learned_t2s": "t2s", "learned_s2t": "s2t"}
 
+# The distillation corpus is drawn from EMOTION, WiC and STS-B, so those three
+# benchmarks are in-distribution and the remaining ones are held out. Reporting
+# them as one number would let an in-distribution gain stand in for transfer, so
+# the table averages them apart.
 IOD_BENCHMARKS = frozenset({"emotion", "wic", "stsb"})
 # Scored by nDCG@10 over a whole corpus rather than over a sentence pair, so
 # they get their own summary row instead of diluting the sentence-level AVG
@@ -173,137 +173,168 @@ class KnowledgeDistiller:
         self.setup_data()
         self.setup_training()
         self.setup_wandb()
-
-        # Initialize criterion based on method
-        if config.distill_method == "cdm":
-            self.criterion = ContextualDynamicMapping(
-                tok_student=self.tok_student,
-                tok_teacher=self.tok_teacher,
-                blending_model_special_token=config.teacher_special_token,
-                base_model_special_token=config.student_special_token,
-                w_task=config.w_task,
-                alpha_dtw=config.alpha_dtw,
-                debug_align=config.debug_align,
-            )
-        elif config.distill_method == "dskd":
-            self.criterion = DualSpaceKD(
-                student_dim=self.model_student.config.hidden_size,
-                teacher_dim=self.model_teacher.config.hidden_size,
-                w_task=config.w_task,
-                alpha_dtw=config.alpha_dtw,
-            )
-            # Move DSKD to device and add to optimizer
-            self.criterion.to(self.device_s)
-            self.optimizer.add_param_group(
-                {"params": self.criterion.parameters(), "lr": config.learning_rate}
-            )
-            self.scheduler = self._build_scheduler()
-            print("DSKD criterion initialized and added to optimizer")
-        elif config.distill_method == "emo":
-            self.criterion = EMODistillation(
-                d_teacher=self.model_teacher.config.hidden_size,
-                d_student=self.model_student.config.hidden_size,
-                k_layers=getattr(config, "k_layers", 1),
-                alpha_ot=getattr(config, "alpha_ot", 0.1),
-                max_iter=getattr(config, "max_iter_ot", 100),
-                teacher_special=getattr(config, "teacher_special_token", "<s>"),
-                student_special=getattr(config, "student_special_token", "[CLS]"),
-            )
-            # Move EMO to device and add to optimizer
-            self.criterion.to(self.device_s)
-            self.optimizer.add_param_group(
-                {"params": self.criterion.parameters(), "lr": config.learning_rate}
-            )
-            self.scheduler = self._build_scheduler()
-            print("EMO criterion initialized and added to optimizer")
-        elif config.distill_method == "geoode":
-            # GeoODE-KD holds no parameters of its own: the targets are fitted and
-            # frozen before training, so nothing is added to the optimizer and the
-            # deployed student is the unmodified encoder. The learned-projector
-            # baselines are the exception, and the only one -- they put a trainable
-            # linear map where the frozen P_T would be, which is the thing under test.
-            target_projector = None
-            learned = getattr(self, "_learned_projector", None)
-            if learned is not None:
-                target_projector = LearnedTargetProjector(
-                    teacher_dim=learned["teacher_dim"],
-                    student_dim=learned["student_dim"],
-                    direction=learned["direction"],
-                    eps=config.eps_norm,
-                )
-            self.criterion = GeoODEKD(
-                lambda_end=config.lambda_end,
-                lambda_ctr=config.lambda_ctr,
-                contrastive_temperature=config.contrastive_temperature,
-                endpoint_loss=getattr(config, "endpoint_loss", "cosine"),
-                lambda_gram=float(getattr(config, "lambda_gram", 0.0) or 0.0),
-                lambda_topo=float(getattr(config, "lambda_topo", 0.0) or 0.0),
-                topo_metric=getattr(config, "topo_metric", "chord"),
-                pooling=config.student_pooling,
-                include_embedding_layer=config.include_embedding_layer,
-                eps_norm=config.eps_norm,
-                target_projector=target_projector,
-            ).to(self.device_s)
-            if target_projector is not None:
-                # GeoODEKD owns no other parameters, so this param group is exactly
-                # the projector. The scheduler is rebuilt because a group added after
-                # it was constructed has no matching base_lr and step() then fails.
-                scale = float(getattr(config, "learned_projector_lr_scale", 1.0))
-                self.optimizer.add_param_group(
-                    {
-                        "params": self.criterion.parameters(),
-                        "lr": config.learning_rate * scale,
-                    }
-                )
-                self.scheduler = self._build_scheduler()
-                trainable = sum(p.numel() for p in self.criterion.parameters())
-                print(
-                    f"Learned target map added to the optimizer: {target_projector} "
-                    f"({trainable:,} parameters, lr x{scale}). Training only -- "
-                    "inference is still the plain student encoder"
-                )
-            print(
-                "GeoODE-KD criterion initialized: "
-                f"lambda_end={config.lambda_end}, lambda_ctr={config.lambda_ctr}, "
-                f"endpoint_loss={getattr(config, 'endpoint_loss', 'cosine')}, "
-                f"lambda_gram={float(getattr(config, 'lambda_gram', 0.0) or 0.0)}, "
-                f"lambda_topo={float(getattr(config, 'lambda_topo', 0.0) or 0.0)} "
-                f"({getattr(config, 'topo_metric', 'chord')})"
-            )
-        elif config.distill_method == "rkd":
-            # RKD holds no parameters either: both of its potentials are invariant
-            # to the width of the space, so the teacher supervises the student
-            # across the dimensionality gap with nothing fitted in between.
-            self.criterion = RelationalKD(
-                w_task=config.w_task,
-                w_dist=config.w_dist,
-                w_angle=config.w_angle,
-                huber_delta=config.huber_delta,
-                normalize_student=config.normalize_student,
-                eps=config.eps_norm,
-            ).to(self.device_s)
-            print(
-                "RKD criterion initialized: "
-                f"w_task={config.w_task}, w_dist={config.w_dist}, "
-                f"w_angle={config.w_angle}, "
-                f"normalize_student={config.normalize_student}"
-            )
-        elif config.distill_method == "simcse":
-            self.criterion = SimCSEOnly(temperature=config.temperature).to(
-                self.device_s
-            )
-            print(
-                "SimCSE-only control initialized: "
-                f"view={config.simcse_view}, temperature={config.temperature}. "
-                "No teacher term is in this objective."
-            )
-        else:
-            self.criterion = None
+        self.criterion = self._build_criterion()
 
         # Metrics tracking
         self.step_times = []
         self.ma_window = deque(maxlen=50)
         self.warmup_steps = 10
+
+    # ------------------------------------------------------------------ criterion
+
+    def _build_criterion(self):
+        """The objective of the selected method.
+
+        ``None`` for TALAS: its criterion sizes itself from the first batch's layer
+        count, so it is built in the training step instead (together with the SAM
+        optimizer that owns its parameters).
+        """
+        builders = {
+            "cdm": self._build_cdm_criterion,
+            "dskd": self._build_dskd_criterion,
+            "emo": self._build_emo_criterion,
+            "geoode": self._build_geoode_criterion,
+            "rkd": self._build_rkd_criterion,
+            "simcse": self._build_simcse_criterion,
+        }
+        builder = builders.get(self.config.distill_method)
+        return None if builder is None else builder()
+
+    def _add_criterion_to_optimizer(self, criterion, lr_scale: float = 1.0) -> None:
+        """Give a criterion's own parameters an optimizer group and rebuild the
+        scheduler.
+
+        The rebuild is not optional: a group added after the scheduler was
+        constructed has no matching ``base_lr``, and ``scheduler.step()`` then fails
+        on the length mismatch.
+        """
+        self.optimizer.add_param_group(
+            {
+                "params": criterion.parameters(),
+                "lr": self.config.learning_rate * lr_scale,
+            }
+        )
+        self.scheduler = self._build_scheduler()
+
+    def _build_cdm_criterion(self):
+        cfg = self.config
+        return ContextualDynamicMapping(
+            tok_student=self.tok_student,
+            tok_teacher=self.tok_teacher,
+            blending_model_special_token=cfg.teacher_special_token,
+            base_model_special_token=cfg.student_special_token,
+            w_task=cfg.w_task,
+            alpha_dtw=cfg.alpha_dtw,
+            debug_align=cfg.debug_align,
+        )
+
+    def _build_dskd_criterion(self):
+        cfg = self.config
+        criterion = DualSpaceKD(
+            student_dim=self.model_student.config.hidden_size,
+            teacher_dim=self.model_teacher.config.hidden_size,
+            w_task=cfg.w_task,
+            alpha_dtw=cfg.alpha_dtw,
+        ).to(self.device_s)
+        self._add_criterion_to_optimizer(criterion)
+        print("DSKD criterion initialized and added to optimizer")
+        return criterion
+
+    def _build_emo_criterion(self):
+        cfg = self.config
+        criterion = EMODistillation(
+            d_teacher=self.model_teacher.config.hidden_size,
+            d_student=self.model_student.config.hidden_size,
+            k_layers=getattr(cfg, "k_layers", 1),
+            alpha_ot=getattr(cfg, "alpha_ot", 0.1),
+            max_iter=getattr(cfg, "max_iter_ot", 100),
+            teacher_special=getattr(cfg, "teacher_special_token", "<s>"),
+            student_special=getattr(cfg, "student_special_token", "[CLS]"),
+        ).to(self.device_s)
+        self._add_criterion_to_optimizer(criterion)
+        print("EMO criterion initialized and added to optimizer")
+        return criterion
+
+    def _build_geoode_criterion(self):
+        # GeoODE-KD holds no parameters of its own: the targets are fitted and
+        # frozen before training, so nothing is added to the optimizer and the
+        # deployed student is the unmodified encoder. The learned-projector
+        # baselines are the exception, and the only one -- they put a trainable
+        # linear map where the frozen P_T would be, which is the thing under test.
+        cfg = self.config
+        target_projector = None
+        learned = getattr(self, "_learned_projector", None)
+        if learned is not None:
+            target_projector = LearnedTargetProjector(
+                teacher_dim=learned["teacher_dim"],
+                student_dim=learned["student_dim"],
+                direction=learned["direction"],
+                eps=cfg.eps_norm,
+            )
+        criterion = GeoODEKD(
+            lambda_end=cfg.lambda_end,
+            lambda_ctr=cfg.lambda_ctr,
+            contrastive_temperature=cfg.contrastive_temperature,
+            endpoint_loss=getattr(cfg, "endpoint_loss", "cosine"),
+            lambda_gram=float(getattr(cfg, "lambda_gram", 0.0) or 0.0),
+            lambda_topo=float(getattr(cfg, "lambda_topo", 0.0) or 0.0),
+            topo_metric=getattr(cfg, "topo_metric", "chord"),
+            pooling=cfg.student_pooling,
+            include_embedding_layer=cfg.include_embedding_layer,
+            eps_norm=cfg.eps_norm,
+            target_projector=target_projector,
+        ).to(self.device_s)
+        if target_projector is not None:
+            # GeoODEKD owns no other parameters, so this param group is exactly
+            # the projector.
+            scale = float(getattr(cfg, "learned_projector_lr_scale", 1.0))
+            self._add_criterion_to_optimizer(criterion, lr_scale=scale)
+            trainable = sum(p.numel() for p in criterion.parameters())
+            print(
+                f"Learned target map added to the optimizer: {target_projector} "
+                f"({trainable:,} parameters, lr x{scale}). Training only -- "
+                "inference is still the plain student encoder"
+            )
+        print(
+            "GeoODE-KD criterion initialized: "
+            f"lambda_end={cfg.lambda_end}, lambda_ctr={cfg.lambda_ctr}, "
+            f"endpoint_loss={getattr(cfg, 'endpoint_loss', 'cosine')}, "
+            f"lambda_gram={float(getattr(cfg, 'lambda_gram', 0.0) or 0.0)}, "
+            f"lambda_topo={float(getattr(cfg, 'lambda_topo', 0.0) or 0.0)} "
+            f"({getattr(cfg, 'topo_metric', 'chord')})"
+        )
+        return criterion
+
+    def _build_rkd_criterion(self):
+        # RKD holds no parameters either: both of its potentials are invariant
+        # to the width of the space, so the teacher supervises the student
+        # across the dimensionality gap with nothing fitted in between.
+        cfg = self.config
+        criterion = RelationalKD(
+            w_task=cfg.w_task,
+            w_dist=cfg.w_dist,
+            w_angle=cfg.w_angle,
+            huber_delta=cfg.huber_delta,
+            normalize_student=cfg.normalize_student,
+            eps=cfg.eps_norm,
+        ).to(self.device_s)
+        print(
+            "RKD criterion initialized: "
+            f"w_task={cfg.w_task}, w_dist={cfg.w_dist}, "
+            f"w_angle={cfg.w_angle}, "
+            f"normalize_student={cfg.normalize_student}"
+        )
+        return criterion
+
+    def _build_simcse_criterion(self):
+        cfg = self.config
+        criterion = SimCSEOnly(temperature=cfg.temperature).to(self.device_s)
+        print(
+            "SimCSE-only control initialized: "
+            f"view={cfg.simcse_view}, temperature={cfg.temperature}. "
+            "No teacher term is in this objective."
+        )
+        return criterion
 
     @staticmethod
     def _validate_eval_config(config) -> None:
@@ -579,147 +610,25 @@ class KnowledgeDistiller:
         cfg = self.config
 
         print(f"Loading training data from: {cfg.train_data_path}")
-
         df = pd.read_csv(cfg.train_data_path)
 
-        if cfg.task_type == "pair_cls":
-            if "premise" not in df.columns or "hypothesis" not in df.columns:
-                # Create from text column
-                df["premise"] = df["text"] if "text" in df.columns else df.iloc[:, 0]
-                df["hypothesis"] = df["text"] if "text" in df.columns else df.iloc[:, 0]
+        if cfg.task_type == "pair_cls" and (
+            "premise" not in df.columns or "hypothesis" not in df.columns
+        ):
+            # A raw one-column corpus is read as a degenerate pair, so the two
+            # sides of the contrastive term are the same sentence under dropout.
+            text = df["text"] if "text" in df.columns else df.iloc[:, 0]
+            df["premise"] = text
+            df["hypothesis"] = text
 
-        self.task_head = None
-        if cfg.distill_method == "emo":
-            hidden_size = self.model_student.config.hidden_size
-            if cfg.task_type == "single_cls" and "label" in df.columns:
-                num_labels = int(df["label"].nunique())
-                self.task_head = nn.Linear(hidden_size, num_labels).to(self.device_s)
-            elif cfg.task_type == "pair_cls" and "label" in df.columns:
-                num_labels = int(df["label"].nunique())
-                self.task_head = nn.Linear(hidden_size * 4, num_labels).to(
-                    self.device_s
-                )
+        self.task_head = self._build_task_head(df)
 
         # TALAS, GeoODE-KD and RKD all train against cached teacher embeddings only:
         # the teacher is run once, offline, and never during student optimization.
         if cfg.distill_method in ("talas", "geoode", "rkd"):
-            # Identity of the teacher signal this run needs. The corpus enters by
-            # its *contents*: a file rebuilt to the same path with the same row
-            # count would otherwise pass every other check.
-            digest = corpus_digest(cfg.train_data_path)
-            cache_path = self._resolve_cache_path(digest)
-            teacher_dim = self._embedding_dim_of(
-                self.model_teacher.config, cfg.teacher_model_name
-            )
-            cache_metadata = {
-                "teacher_model_name": cfg.teacher_model_name,
-                "pooling_method": cfg.pooling_method,
-                "normalize": bool(cfg.normalize_cache),
-                "train_data_path": str(cfg.train_data_path),
-                "train_data_digest": digest,
-                "max_length": int(cfg.max_length),
-            }
-
-            # Check if cache exists
-            if cache_path.exists():
-                print(f"Loading cached teacher embeddings from: {cache_path}")
-                teacher_cls_list, cached_metadata = load_cached_embeddings(
-                    str(cache_path)
-                )
-                # The cache is keyed by its path alone, so this is the only place a
-                # teacher/pooling swap behind an unchanged --cache_path gets caught.
-                validate_cached_embeddings(
-                    teacher_cls_list,
-                    cached_metadata,
-                    str(cache_path),
-                    teacher_model_name=cfg.teacher_model_name,
-                    pooling_method=cfg.pooling_method,
-                    normalize=bool(cfg.normalize_cache),
-                    teacher_dim=teacher_dim,
-                    rows=len(df),
-                    max_length=int(cfg.max_length),
-                    train_data_digest=digest,
-                )
-                print(
-                    f"Loaded {len(teacher_cls_list)} cached embeddings "
-                    "(teacher not run for this training)"
-                )
-            else:
-                print("Cache not found. Pre-computing teacher embeddings...")
-                os.makedirs(cache_path.parent, exist_ok=True)
-
-                # Create temporary dataset for caching
-                temp_ds = TextPairRaw(df, cfg.task_type)
-                temp_collate = DualTokenizerCollate(
-                    self.tok_student, self.tok_teacher, cfg.task_type, cfg.max_length
-                )
-                cache_loader = DataLoader(
-                    temp_ds,
-                    batch_size=cfg.batch_size,
-                    shuffle=False,  # Don't shuffle for caching
-                    collate_fn=temp_collate,
-                    pin_memory=True,
-                    num_workers=cfg.num_workers,
-                    persistent_workers=cfg.num_workers > 0,
-                )
-
-                # Cache teacher embeddings
-                teacher_cls_list = cache_teacher_embeddings(
-                    model_teacher=self.model_teacher,
-                    dataloader=cache_loader,
-                    device=self.device_t,
-                    pooling_method=cfg.pooling_method,
-                    normalize=cfg.normalize_cache,
-                    dtype=torch.float32
-                    if cfg.cache_dtype == "float32"
-                    else torch.float16,
-                    cache_path=str(cache_path),
-                    metadata=cache_metadata,
-                )
-                print(
-                    f"Cached {len(teacher_cls_list)} teacher embeddings to {cache_path}"
-                )
-
-            if len(teacher_cls_list) != len(df):
-                raise ValueError(
-                    f"Cached teacher embeddings length mismatch: cache has {len(teacher_cls_list)} "
-                    f"rows but training data has {len(df)} rows. Remove or regenerate {cache_path}."
-                )
-
-            teacher_topo_list = None
-            if cfg.distill_method == "geoode":
-                if float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0:
-                    # The H0 term compares point-cloud shapes, so it needs no shared
-                    # basis and reads the teacher *before* P_T narrows it to d_S --
-                    # the one supervision signal in the run that P_T cannot colour.
-                    teacher_topo_list = (
-                        teacher_cls_list.clone().contiguous().share_memory_()
-                    )
-                teacher_cls_list = self._project_teacher_targets(
-                    teacher_cls_list, df["premise"].astype(str).tolist()
-                )
-                # The gauge refit rewrites the targets in place between epochs; the
-                # persistent DataLoader workers only see that through shared memory.
-                teacher_cls_list = teacher_cls_list.contiguous().share_memory_()
-            self.teacher_cls_all = teacher_cls_list
-
-            # Free teacher model to save GPU memory (teacher not needed after caching)
-            del self.model_teacher
-            self.model_teacher = None
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            print("Teacher model freed from GPU memory")
-
-            self.train_ds = TextPairWithTeacher(
-                df, cfg.task_type, teacher_cls_list, teacher_topo_list
-            )
-            self.collate_fn = DualTokenizerCollateWithTeacher(
-                self.tok_student, cfg.task_type, cfg.max_length
-            )
+            self._setup_cached_teacher_data(df)
         else:
-            # Standard distillation methods
             self.train_ds = TextPairRaw(df, cfg.task_type)
-
             self.collate_fn = DualTokenizerCollate(
                 self.tok_student,
                 self.tok_teacher,
@@ -740,6 +649,141 @@ class KnowledgeDistiller:
         print(f"Training samples: {len(self.train_ds)}")
         print(f"Training batches: {len(self.train_loader)}")
         print("Done setup_data")
+
+    def _build_task_head(self, df: pd.DataFrame) -> nn.Module | None:
+        """The supervised head EMO trains next to its KD terms, when the corpus
+        carries labels. Every other method's task term is unsupervised."""
+        cfg = self.config
+        if cfg.distill_method != "emo" or "label" not in df.columns:
+            return None
+        hidden_size = self.model_student.config.hidden_size
+        num_labels = int(df["label"].nunique())
+        if cfg.task_type == "single_cls":
+            return nn.Linear(hidden_size, num_labels).to(self.device_s)
+        if cfg.task_type == "pair_cls":
+            # [u, v, |u - v|, u * v], the sentence-pair feature of InferSent/SBERT.
+            return nn.Linear(hidden_size * 4, num_labels).to(self.device_s)
+        return None
+
+    def _teacher_cache(self, df: pd.DataFrame) -> torch.Tensor:
+        """The teacher's embedding of every training row, loaded or computed once.
+
+        Identity of the signal is checked on load: the corpus enters by its
+        *contents*, since a file rebuilt to the same path with the same row count
+        would pass every other check.
+        """
+        cfg = self.config
+        digest = corpus_digest(cfg.train_data_path)
+        cache_path = self._resolve_cache_path(digest)
+        teacher_dim = self._embedding_dim_of(
+            self.model_teacher.config, cfg.teacher_model_name
+        )
+
+        if cache_path.exists():
+            print(f"Loading cached teacher embeddings from: {cache_path}")
+            teacher_cls, cached_metadata = load_cached_embeddings(str(cache_path))
+            # The cache is keyed by its path alone, so this is the only place a
+            # teacher/pooling swap behind an unchanged --cache_path gets caught.
+            validate_cached_embeddings(
+                teacher_cls,
+                cached_metadata,
+                str(cache_path),
+                teacher_model_name=cfg.teacher_model_name,
+                pooling_method=cfg.pooling_method,
+                normalize=bool(cfg.normalize_cache),
+                teacher_dim=teacher_dim,
+                rows=len(df),
+                max_length=int(cfg.max_length),
+                train_data_digest=digest,
+            )
+            print(
+                f"Loaded {len(teacher_cls)} cached embeddings "
+                "(teacher not run for this training)"
+            )
+            self._check_cache_rows(teacher_cls, df, cache_path)
+            return teacher_cls
+
+        print("Cache not found. Pre-computing teacher embeddings...")
+        os.makedirs(cache_path.parent, exist_ok=True)
+        cache_loader = DataLoader(
+            TextPairRaw(df, cfg.task_type),
+            batch_size=cfg.batch_size,
+            shuffle=False,  # row i of the cache must stay row i of the corpus
+            collate_fn=DualTokenizerCollate(
+                self.tok_student, self.tok_teacher, cfg.task_type, cfg.max_length
+            ),
+            pin_memory=True,
+            num_workers=cfg.num_workers,
+            persistent_workers=cfg.num_workers > 0,
+        )
+        teacher_cls = cache_teacher_embeddings(
+            model_teacher=self.model_teacher,
+            dataloader=cache_loader,
+            device=self.device_t,
+            pooling_method=cfg.pooling_method,
+            normalize=cfg.normalize_cache,
+            dtype=torch.float32 if cfg.cache_dtype == "float32" else torch.float16,
+            cache_path=str(cache_path),
+            metadata={
+                "teacher_model_name": cfg.teacher_model_name,
+                "pooling_method": cfg.pooling_method,
+                "normalize": bool(cfg.normalize_cache),
+                "train_data_path": str(cfg.train_data_path),
+                "train_data_digest": digest,
+                "max_length": int(cfg.max_length),
+            },
+        )
+        print(f"Cached {len(teacher_cls)} teacher embeddings to {cache_path}")
+        self._check_cache_rows(teacher_cls, df, cache_path)
+        return teacher_cls
+
+    @staticmethod
+    def _check_cache_rows(
+        teacher_cls: torch.Tensor, df: pd.DataFrame, cache_path: Path
+    ) -> None:
+        if len(teacher_cls) != len(df):
+            raise ValueError(
+                f"Cached teacher embeddings length mismatch: cache has "
+                f"{len(teacher_cls)} rows but training data has {len(df)} rows. "
+                f"Remove or regenerate {cache_path}."
+            )
+
+    def _setup_cached_teacher_data(self, df: pd.DataFrame) -> None:
+        """Dataset and collate for the methods that read a frozen teacher cache.
+
+        The teacher model is released here: once the cache exists it is never run
+        again, and on a single-GPU box its weights are the memory the student needs.
+        """
+        cfg = self.config
+        teacher_cls_list = self._teacher_cache(df)
+
+        teacher_topo_list = None
+        if cfg.distill_method == "geoode":
+            if float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0:
+                # The H0 term compares point-cloud shapes, so it needs no shared
+                # basis and reads the teacher *before* P_T narrows it to d_S --
+                # the one supervision signal in the run that P_T cannot colour.
+                teacher_topo_list = teacher_cls_list.clone().contiguous().share_memory_()
+            teacher_cls_list = self._project_teacher_targets(
+                teacher_cls_list, df["premise"].astype(str).tolist()
+            )
+            # The gauge refit rewrites the targets in place between epochs; the
+            # persistent DataLoader workers only see that through shared memory.
+            teacher_cls_list = teacher_cls_list.contiguous().share_memory_()
+        self.teacher_cls_all = teacher_cls_list
+
+        del self.model_teacher
+        self.model_teacher = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        print("Teacher model freed from GPU memory")
+
+        self.train_ds = TextPairWithTeacher(
+            df, cfg.task_type, teacher_cls_list, teacher_topo_list
+        )
+        self.collate_fn = DualTokenizerCollateWithTeacher(
+            self.tok_student, cfg.task_type, cfg.max_length
+        )
 
     def _resolve_cache_path(self, digest: str) -> Path:
         """Where this run's teacher cache lives.
@@ -790,10 +834,7 @@ class KnowledgeDistiller:
                 attention_mask=encoded["attention_mask"],
                 return_dict=True,
             ).last_hidden_state
-            if cfg.student_pooling == "mean":
-                pooled = mean_pooling(last, encoded["attention_mask"])
-            else:
-                pooled = last[:, 0, :]
+            pooled = self._pool_student(last, encoded["attention_mask"])
             chunks.append(F.normalize(pooled.float(), dim=-1).cpu())
         self.model_student.train(was_training)
         return torch.cat(chunks, dim=0)
@@ -1133,6 +1174,66 @@ class KnowledgeDistiller:
             return mean_pooling(last_hidden_state, attention_mask)
         return last_hidden_state[:, 0, :]
 
+    def _pooled_forward(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """One student forward, returned as a pooled sentence vector."""
+        out = self.model_student(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=False,
+            return_dict=True,
+        )
+        return self._pool_student(out.last_hidden_state, attention_mask)
+
+    @staticmethod
+    def _view_inputs(
+        batch_s: dict[str, torch.Tensor], mode: str, setting: str
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Inputs of the second view of a contrastive term.
+
+        "dropout" re-encodes the same sentence, so the two views differ only by the
+        dropout masks; "pair" takes the row's second sentence as the positive.
+        """
+        if mode == "dropout":
+            return batch_s["input_ids1_stu"], batch_s["attention_mask1_stu"]
+        if mode == "pair":
+            return batch_s["input_ids2_stu"], batch_s["attention_mask2_stu"]
+        raise ValueError(
+            f"Unsupported {setting}={mode!r}; expected 'dropout' or 'pair'"
+        )
+
+    def _student_batch(
+        self, batch: dict, extra: tuple[str, ...] = ()
+    ) -> dict[str, torch.Tensor]:
+        """The student-side tensors of a batch, on the student device.
+
+        ``extra`` names the cached-teacher tensors a method also reads there
+        (``teacher_cls``, ``teacher_topo``): they supervise the student, so they
+        travel with the student half of the batch.
+        """
+        return {
+            key: value.to(self.device_s, non_blocking=True)
+            for key, value in batch.items()
+            if torch.is_tensor(value)
+            and (key.endswith("_stu") or key == "labels" or key in extra)
+        }
+
+    def _teacher_batch(self, batch: dict) -> dict[str, torch.Tensor]:
+        """The teacher-side tensors of a batch, on the teacher device."""
+        return {
+            key: value.to(self.device_t, non_blocking=True)
+            for key, value in batch.items()
+            if torch.is_tensor(value) and key.endswith("_tea")
+        }
+
+    def _optimizer_step(self, loss: torch.Tensor) -> None:
+        """Backward, step under the grad scaler, and advance the LR schedule."""
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        self.scheduler.step()
+
     def _compute_task_loss(
         self,
         student_cls1: torch.Tensor,
@@ -1186,640 +1287,507 @@ class KnowledgeDistiller:
         loss, _ = info_nce(student_cls1, student_cls2, temperature=cfg.temperature)
         return loss, {}
 
+    # ------------------------------------------------------------------ train step
+
     def train_step(self, batch: dict) -> tuple[torch.Tensor, dict]:
+        """One optimizer step of the selected method.
+
+        The cached-teacher methods (talas/geoode/rkd) and the teacher-free control
+        (simcse) each have their own step; cdm/dskd/emo/stella share one, because
+        they all run the teacher online and differ only in the KD term.
+        """
+        steps = {
+            "talas": self._train_step_talas,
+            "geoode": self._train_step_geoode,
+            "rkd": self._train_step_rkd,
+            "simcse": self._train_step_simcse,
+        }
+        return steps.get(self.config.distill_method, self._train_step_online)(batch)
+
+    # -- cached-teacher methods ------------------------------------------------
+
+    def _talas_forward(self, batch_s: dict) -> tuple[torch.Tensor, dict]:
+        """One TALAS pass: the task loss plus the states its criterion reads.
+
+        SAM takes two forward/backward passes per step over the same batch, and this
+        is the pass both of them run.
+        """
+        s_out1 = self.model_student(
+            input_ids=batch_s["input_ids1_stu"],
+            attention_mask=batch_s["attention_mask1_stu"],
+            output_hidden_states=True,
+            return_dict=True,
+        )
+        s_out2 = self.model_student(
+            input_ids=batch_s["input_ids2_stu"],
+            attention_mask=batch_s["attention_mask2_stu"],
+            output_hidden_states=False,
+            return_dict=True,
+        )
+        task_loss, _ = info_nce(
+            s_out1.last_hidden_state[:, 0, :],
+            s_out2.last_hidden_state[:, 0, :],
+            temperature=self.config.temperature,
+        )
+        return task_loss, {
+            "hidden_states": s_out1.hidden_states,
+            "last_hidden_state": s_out1.last_hidden_state,
+        }
+
+    def _init_talas(self, hidden_states, teacher_cls: torch.Tensor) -> None:
+        """Build the TALAS criterion, its SAM optimizer and the schedule.
+
+        Deferred to the first batch because the criterion needs one projection head
+        per student layer, and the layer count is read off the first forward pass.
+        """
+        cfg = self.config
+        num_layers = len(hidden_states)
+        self.criterion = TeacherAnchorKD(
+            student_dim=self.model_student.config.hidden_size,
+            teacher_dim=teacher_cls.shape[-1],
+            num_layers=num_layers,
+            last_layer_idx=cfg.last_layer_idx,
+            start_rkd=cfg.start_rkd,
+            w_task=cfg.w_task,
+            w_kd=cfg.w_kd,
+            w_struct=cfg.w_struct,
+            eps_norm=cfg.eps_norm,
+        ).to(self.device_s)
+
+        if not SAM_AVAILABLE:
+            raise RuntimeError(
+                "SAM optimizer not available. Install pytorch_optimizer."
+            )
+        rho = getattr(cfg, "rho", 0.05)
+        self.optimizer = SAM(
+            [
+                {
+                    "params": self.model_student.parameters(),
+                    "lr": cfg.learning_rate,
+                    "weight_decay": 0.01,
+                },
+                {
+                    "params": self.criterion.parameters(),
+                    "lr": cfg.learning_rate * 5,
+                },
+            ],
+            optim.AdamW,
+            rho=rho,
+            adaptive=True,
+        )
+        self.scheduler = self._build_scheduler()
+
+        total_steps = len(self.train_loader) * cfg.epochs
+        print(
+            f"Initialized TeacherAnchorKD: {self.model_student.config.hidden_size} -> "
+            f"{teacher_cls.shape[-1]}, num_layers={num_layers}, "
+            f"last_layer_idx={cfg.last_layer_idx}, start_rkd={cfg.start_rkd}"
+        )
+        print(f"Initialized SAM optimizer with rho={rho}")
+        print(
+            f"Initialized scheduler: {total_steps} steps, "
+            f"warmup={int(total_steps * cfg.warmup_ratio)}"
+        )
+
+    def _train_step_talas(self, batch: dict) -> tuple[torch.Tensor, dict]:
+        batch_s = self._student_batch(batch, extra=("teacher_cls",))
+        teacher_cls = batch_s["teacher_cls"]
+
+        # ========== FIRST PASS ==========
+        with autocast("cuda", enabled=torch.cuda.is_available()):
+            task_loss, student_outputs = self._talas_forward(batch_s)
+            if self.criterion is None:
+                self._init_talas(student_outputs["hidden_states"], teacher_cls)
+            loss, metrics = self.criterion(
+                student_outputs=student_outputs,
+                teacher_cls=teacher_cls,
+                task_loss=task_loss,
+            )
+            loss = loss.float()
+
+        self.scaler.scale(loss).backward()
+        self.scaler.unscale_(self.optimizer)
+        if not grads_are_finite(self.optimizer):
+            self.optimizer.zero_grad(set_to_none=True)
+            self.scaler.update()
+            return loss, {**metrics, "skip": "grad_inf_p1"}
+
+        self.optimizer.first_step(zero_grad=True)
+
+        # ========== SECOND PASS ==========
+        with autocast("cuda", enabled=torch.cuda.is_available()):
+            task_loss_2, student_outputs_2 = self._talas_forward(batch_s)
+            loss_2, _ = self.criterion(
+                student_outputs=student_outputs_2,
+                teacher_cls=teacher_cls,
+                task_loss=task_loss_2,
+            )
+            loss_2 = loss_2.float()
+
+        if not is_finite(loss_2):
+            raise RuntimeError(
+                f"loss_2 NaN/Inf at epoch={self.current_epoch} step={self.current_step}"
+            )
+
+        # The second backward is deliberately unscaled: the parameters are already
+        # at the SAM-perturbed point and the scaler has spent its scale on pass 1.
+        loss_2.backward()
+
+        if not grads_are_finite(self.optimizer):
+            self.optimizer.zero_grad(set_to_none=True)
+            self.scaler.update()
+            return loss, {**metrics, "skip": "grad_inf_p2"}
+
+        self.optimizer.second_step(zero_grad=True)
+        self.scaler.update()
+        self.scheduler.step()
+
+        return loss, metrics
+
+    def _train_step_geoode(self, batch: dict) -> tuple[torch.Tensor, dict]:
+        cfg = self.config
+        batch_s = self._student_batch(batch, extra=("teacher_cls", "teacher_topo"))
+        self.optimizer.zero_grad(set_to_none=True)
+
+        with autocast("cuda", enabled=torch.cuda.is_available()):
+            attention_mask = batch_s["attention_mask1_stu"]
+            s_out = self.model_student(
+                input_ids=batch_s["input_ids1_stu"],
+                attention_mask=attention_mask,
+                output_hidden_states=True,
+                return_dict=True,
+            )
+
+            # Eq. (37) needs a second view of the *same* sentence. The default
+            # runs the encoder twice so the two views differ only by dropout;
+            # "pair" instead reuses the paired sentence already in the batch.
+            second_view = None
+            if cfg.lambda_ctr > 0:
+                view_ids, view_mask = self._view_inputs(
+                    batch_s, cfg.contrastive_view, "contrastive_view"
+                )
+                second_view = self._pooled_forward(view_ids, view_mask)
+
+            loss, metrics = self.criterion(
+                hidden_states=s_out.hidden_states,
+                teacher=batch_s["teacher_cls"],
+                attention_mask=attention_mask,
+                second_view=second_view,
+                teacher_topo=batch_s.get("teacher_topo"),
+            )
+            loss = loss.float()
+
+        self._optimizer_step(loss)
+        return loss, metrics
+
+    def _train_step_rkd(self, batch: dict) -> tuple[torch.Tensor, dict]:
+        cfg = self.config
+        batch_s = self._student_batch(batch, extra=("teacher_cls",))
+        self.optimizer.zero_grad(set_to_none=True)
+
+        with autocast("cuda", enabled=torch.cuda.is_available()):
+            student_cls = self._pooled_forward(
+                batch_s["input_ids1_stu"], batch_s["attention_mask1_stu"]
+            )
+            # The same in-batch contrastive term every other cached-teacher
+            # method carries, so this row differs from them by its KD term only.
+            second_cls = self._pooled_forward(
+                batch_s["input_ids2_stu"], batch_s["attention_mask2_stu"]
+            )
+            task_loss, _ = info_nce(
+                student_cls, second_cls, temperature=cfg.temperature
+            )
+
+            loss, metrics = self.criterion(
+                student_cls, batch_s["teacher_cls"], task_loss
+            )
+            loss = loss.float()
+
+        self._optimizer_step(loss)
+        return loss, metrics
+
+    def _train_step_simcse(self, batch: dict) -> tuple[torch.Tensor, dict]:
+        cfg = self.config
+        batch_s = self._student_batch(batch)
+        self.optimizer.zero_grad(set_to_none=True)
+        view_ids, view_mask = self._view_inputs(batch_s, cfg.simcse_view, "simcse_view")
+
+        with autocast("cuda", enabled=torch.cuda.is_available()):
+            view1 = self._pooled_forward(
+                batch_s["input_ids1_stu"], batch_s["attention_mask1_stu"]
+            )
+            view2 = self._pooled_forward(view_ids, view_mask)
+            loss, metrics = self.criterion(view1, view2)
+            loss = loss.float()
+
+        self._optimizer_step(loss)
+        return loss, metrics
+
+    # -- online-teacher methods (cdm, dskd, emo, stella) ------------------------
+
+    @torch.no_grad()
+    def _encode_teacher(self, batch_t: dict, need_atts: bool) -> SimpleNamespace:
+        """Run the frozen teacher and move its outputs onto the student device.
+
+        ``no_grad``, not ``inference_mode``: these tensors are consumed by losses
+        that save them for backward, and inference tensors cannot be.
+        """
+        def to_student(tensor):
+            return tensor.to(self.device_s, non_blocking=True)
+
+        t_out1 = self.model_teacher(
+            input_ids=batch_t["input_ids1_tea"],
+            attention_mask=batch_t["attention_mask1_tea"],
+            output_attentions=need_atts,
+            return_dict=True,
+        )
+        encoded = SimpleNamespace(
+            last1=to_student(t_out1.last_hidden_state),
+            cls1=to_student(
+                self._pool_teacher(
+                    t_out1.last_hidden_state, batch_t["attention_mask1_tea"]
+                )
+            ),
+            atts1=None,
+            last2=None,
+            atts2=None,
+        )
+
+        if need_atts:
+            encoded.atts1 = tuple(to_student(att) for att in t_out1.attentions)
+            if "input_ids2_tea" in batch_t:
+                t_out2 = self.model_teacher(
+                    input_ids=batch_t["input_ids2_tea"],
+                    attention_mask=batch_t["attention_mask2_tea"],
+                    output_attentions=True,
+                    return_dict=True,
+                )
+                encoded.last2 = to_student(t_out2.last_hidden_state)
+                encoded.atts2 = tuple(to_student(att) for att in t_out2.attentions)
+        return encoded
+
+    def _encode_student(self, batch_s: dict, method: str) -> SimpleNamespace:
+        """Run the student over both sides of the batch.
+
+        The three student shapes differ only in their forward signature: StellaModel
+        takes neither ``output_attentions`` nor ``return_dict`` and returns its heads
+        in a dict, EMO needs the attention maps, and cdm/dskd take a plain forward.
+        """
+        if method == "stella":
+            out1 = self.model_student(
+                input_ids=batch_s["input_ids1_stu"],
+                attention_mask=batch_s["attention_mask1_stu"],
+            )
+            out2 = self.model_student(
+                input_ids=batch_s["input_ids2_stu"],
+                attention_mask=batch_s["attention_mask2_stu"],
+            )
+            return SimpleNamespace(
+                out1=out1, out2=out2, last1=None, last2=None,
+                cls1=out1["pooled"], cls2=out2["pooled"],
+            )
+
+        extra = {"output_attentions": True} if method == "emo" else {}
+        out1 = self.model_student(
+            input_ids=batch_s["input_ids1_stu"],
+            attention_mask=batch_s["attention_mask1_stu"],
+            return_dict=True,
+            **extra,
+        )
+        out2 = None
+        if method != "emo" or "input_ids2_stu" in batch_s:
+            out2 = self.model_student(
+                input_ids=batch_s["input_ids2_stu"],
+                attention_mask=batch_s["attention_mask2_stu"],
+                return_dict=True,
+                **extra,
+            )
+        last2 = None if out2 is None else out2.last_hidden_state
+        return SimpleNamespace(
+            out1=out1,
+            out2=out2,
+            last1=out1.last_hidden_state,
+            last2=last2,
+            cls1=out1.last_hidden_state[:, 0, :],
+            cls2=None if last2 is None else last2[:, 0, :],
+        )
+
+    def _train_step_online(self, batch: dict) -> tuple[torch.Tensor, dict]:
         cfg = self.config
         method = cfg.distill_method
-
-        if method == "talas":
-            batch_s = {}
-            for k, v in batch.items():
-                if not torch.is_tensor(v):
-                    continue
-                if k.endswith("_stu") or k == "labels" or k == "teacher_cls":
-                    batch_s[k] = v.to(self.device_s, non_blocking=True)
-
-            # ========== FIRST PASS ==========
-            with autocast("cuda", enabled=torch.cuda.is_available()):
-                teacher_cls = batch_s["teacher_cls"]
-
-                s_out1 = self.model_student(
-                    input_ids=batch_s["input_ids1_stu"],
-                    attention_mask=batch_s["attention_mask1_stu"],
-                    output_hidden_states=True,
-                    return_dict=True,
-                )
-                s_out2 = self.model_student(
-                    input_ids=batch_s["input_ids2_stu"],
-                    attention_mask=batch_s["attention_mask2_stu"],
-                    output_hidden_states=False,
-                    return_dict=True,
-                )
-
-                S_last1 = s_out1.last_hidden_state
-                S_last2 = s_out2.last_hidden_state
-                S_cls1 = S_last1[:, 0, :]
-                S_cls2 = S_last2[:, 0, :]
-
-                loss_task, _ = info_nce(S_cls1, S_cls2, temperature=cfg.temperature)
-
-                # Initialize TALAS criterion if needed
-                if self.criterion is None:
-                    d_s = self.model_student.config.hidden_size
-                    d_t = teacher_cls.shape[-1]
-
-                    # BERT-base has 13 layers: embedding + 12 transformer layers
-                    num_layers = len(s_out1.hidden_states)
-
-                    self.criterion = TeacherAnchorKD(
-                        student_dim=d_s,
-                        teacher_dim=d_t,
-                        num_layers=num_layers,
-                        last_layer_idx=cfg.last_layer_idx,
-                        start_rkd=cfg.start_rkd,
-                        w_task=cfg.w_task,
-                        w_kd=cfg.w_kd,
-                        w_struct=cfg.w_struct,
-                        eps_norm=cfg.eps_norm,
-                    ).to(self.device_s)
-
-                    # Initialize SAM optimizer with both student and criterion parameters
-                    if not SAM_AVAILABLE:
-                        raise RuntimeError(
-                            "SAM optimizer not available. Install pytorch_optimizer."
-                        )
-
-                    base_optimizer = optim.AdamW
-                    self.optimizer = SAM(
-                        [
-                            {
-                                "params": self.model_student.parameters(),
-                                "lr": cfg.learning_rate,
-                                "weight_decay": 0.01,
-                            },
-                            {
-                                "params": self.criterion.parameters(),
-                                "lr": cfg.learning_rate * 5,
-                            },
-                        ],
-                        base_optimizer,
-                        rho=getattr(cfg, "rho", 0.05),
-                        adaptive=True,
-                    )
-
-                    # Initialize scheduler
-                    num_steps = len(self.train_loader)
-                    total_steps = num_steps * cfg.epochs
-                    min_lr_rate = cfg.min_lr / cfg.learning_rate
-                    self.scheduler = get_scheduler(
-                        name="cosine_with_min_lr",
-                        optimizer=self.optimizer,
-                        num_warmup_steps=int(total_steps * cfg.warmup_ratio),
-                        num_training_steps=total_steps,
-                        scheduler_specific_kwargs={"min_lr_rate": min_lr_rate},
-                    )
-
-                    print(
-                        f"Initialized TeacherAnchorKD: {d_s} -> {d_t}, num_layers={num_layers}, last_layer_idx={cfg.last_layer_idx}, start_rkd={cfg.start_rkd}"
-                    )
-                    print(
-                        f"Initialized SAM optimizer with rho={getattr(cfg, 'rho', 0.05)}"
-                    )
-                    print(
-                        f"Initialized scheduler: {total_steps} steps, warmup={int(total_steps * cfg.warmup_ratio)}"
-                    )
-
-                # Now safe to call criterion with initialized projection heads
-                student_outputs = {
-                    "hidden_states": s_out1.hidden_states,
-                    "last_hidden_state": S_last1,
-                }
-
-                loss, metrics = self.criterion(
-                    student_outputs=student_outputs,
-                    teacher_cls=teacher_cls,
-                    task_loss=loss_task,
-                )
-
-                loss = loss.float()
-
-            # Backward pass 1 (this will init gradients for first_step)
-            self.scaler.scale(loss).backward()
-
-            # Check gradients
-            self.scaler.unscale_(self.optimizer)
-            if not grads_are_finite(self.optimizer):
-                self.optimizer.zero_grad(set_to_none=True)
-                self.scaler.update()
-                return loss, {**metrics, "skip": "grad_inf_p1"}
-
-            # SAM first step
-            self.optimizer.first_step(zero_grad=True)
-
-            # ========== SECOND PASS ==========
-            with autocast("cuda", enabled=torch.cuda.is_available()):
-                s_out1_2 = self.model_student(
-                    input_ids=batch_s["input_ids1_stu"],
-                    attention_mask=batch_s["attention_mask1_stu"],
-                    output_hidden_states=True,
-                    return_dict=True,
-                )
-                s_out2_2 = self.model_student(
-                    input_ids=batch_s["input_ids2_stu"],
-                    attention_mask=batch_s["attention_mask2_stu"],
-                    output_hidden_states=False,
-                    return_dict=True,
-                )
-
-                S_last1_2 = s_out1_2.last_hidden_state
-                S_last2_2 = s_out2_2.last_hidden_state
-                S_cls1_2 = S_last1_2[:, 0, :]
-                S_cls2_2 = S_last2_2[:, 0, :]
-
-                loss_task_2, _ = info_nce(
-                    S_cls1_2, S_cls2_2, temperature=cfg.temperature
-                )
-
-                student_outputs_2 = {
-                    "hidden_states": s_out1_2.hidden_states,
-                    "last_hidden_state": S_last1_2,
-                }
-
-                loss_2, _ = self.criterion(
-                    student_outputs=student_outputs_2,
-                    teacher_cls=teacher_cls,
-                    task_loss=loss_task_2,
-                )
-
-                loss_2 = loss_2.float()
-
-            # Check loss_2 is finite
-            if not is_finite(loss_2):
-                raise RuntimeError("loss_2 NaN/Inf")
-
-            # Check loss_2 finite before backward
-            if not is_finite(loss_2):
-                raise RuntimeError(
-                    f"loss_2 NaN/Inf at epoch={self.current_epoch} step={self.current_step}"
-                )
-
-            # Backward pass 2 - IMPORTANT: Do NOT scale (plain backward)
-            loss_2.backward()
-
-            # Check gradients again
-            if not grads_are_finite(self.optimizer):
-                self.optimizer.zero_grad(set_to_none=True)
-                self.scaler.update()
-                return loss, {**metrics, "skip": "grad_inf_p2"}
-
-            # SAM second step
-            self.optimizer.second_step(zero_grad=True)
-            self.scaler.update()
-            self.scheduler.step()
-
-            # Clean up
-            del s_out1, s_out2, s_out1_2, s_out2_2
-            del student_outputs, student_outputs_2
-
-            return loss, metrics
-
-        if method == "geoode":
-            batch_s = {}
-            for k, v in batch.items():
-                if not torch.is_tensor(v):
-                    continue
-                if k.endswith("_stu") or k in ("labels", "teacher_cls", "teacher_topo"):
-                    batch_s[k] = v.to(self.device_s, non_blocking=True)
-
-            self.optimizer.zero_grad(set_to_none=True)
-
-            with autocast("cuda", enabled=torch.cuda.is_available()):
-                teacher_cls = batch_s["teacher_cls"]
-                input_ids = batch_s["input_ids1_stu"]
-                attention_mask = batch_s["attention_mask1_stu"]
-
-                s_out = self.model_student(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
-                    return_dict=True,
-                )
-
-                # Eq. (37) needs a second view of the *same* sentence. The default
-                # runs the encoder twice so the two views differ only by dropout;
-                # "pair" instead reuses the paired sentence already in the batch.
-                second_view = None
-                if cfg.lambda_ctr > 0:
-                    if cfg.contrastive_view == "dropout":
-                        view_ids, view_mask = input_ids, attention_mask
-                    elif cfg.contrastive_view == "pair":
-                        view_ids = batch_s["input_ids2_stu"]
-                        view_mask = batch_s["attention_mask2_stu"]
-                    else:
-                        raise ValueError(
-                            f"Unsupported contrastive_view={cfg.contrastive_view!r}; "
-                            "expected 'dropout' or 'pair'"
-                        )
-                    s_out_view = self.model_student(
-                        input_ids=view_ids,
-                        attention_mask=view_mask,
-                        output_hidden_states=False,
-                        return_dict=True,
-                    )
-                    view_last = s_out_view.last_hidden_state
-                    if cfg.student_pooling == "mean":
-                        second_view = mean_pooling(view_last, view_mask)
-                    else:
-                        second_view = view_last[:, 0, :]
-
-                loss, metrics = self.criterion(
-                    hidden_states=s_out.hidden_states,
-                    teacher=teacher_cls,
-                    attention_mask=attention_mask,
-                    second_view=second_view,
-                    teacher_topo=batch_s.get("teacher_topo"),
-                )
-                loss = loss.float()
-
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.scheduler.step()
-
-            return loss, metrics
-
-        if method == "rkd":
-            batch_s = {}
-            for k, v in batch.items():
-                if not torch.is_tensor(v):
-                    continue
-                if k.endswith("_stu") or k in ("labels", "teacher_cls"):
-                    batch_s[k] = v.to(self.device_s, non_blocking=True)
-
-            self.optimizer.zero_grad(set_to_none=True)
-
-            with autocast("cuda", enabled=torch.cuda.is_available()):
-                teacher_cls = batch_s["teacher_cls"]
-                input_ids = batch_s["input_ids1_stu"]
-                attention_mask = batch_s["attention_mask1_stu"]
-
-                s_out = self.model_student(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=False,
-                    return_dict=True,
-                )
-                student_cls = self._pool_student(
-                    s_out.last_hidden_state, attention_mask
-                )
-
-                # The same in-batch contrastive term every other cached-teacher
-                # method carries, so this row differs from them by its KD term only.
-                view_mask = batch_s["attention_mask2_stu"]
-                s_out_view = self.model_student(
-                    input_ids=batch_s["input_ids2_stu"],
-                    attention_mask=view_mask,
-                    output_hidden_states=False,
-                    return_dict=True,
-                )
-                second_cls = self._pool_student(s_out_view.last_hidden_state, view_mask)
-                task_loss, _ = info_nce(
-                    student_cls, second_cls, temperature=cfg.temperature
-                )
-
-                loss, metrics = self.criterion(student_cls, teacher_cls, task_loss)
-                loss = loss.float()
-
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.scheduler.step()
-
-            return loss, metrics
-
-        if method == "simcse":
-            batch_s = {}
-            for k, v in batch.items():
-                if not torch.is_tensor(v):
-                    continue
-                if k.endswith("_stu") or k == "labels":
-                    batch_s[k] = v.to(self.device_s, non_blocking=True)
-
-            self.optimizer.zero_grad(set_to_none=True)
-
-            input_ids = batch_s["input_ids1_stu"]
-            attention_mask = batch_s["attention_mask1_stu"]
-            # "dropout" re-encodes the same sentence, so the two views differ only by
-            # the dropout masks (unsupervised SimCSE); "pair" takes the row's second
-            # sentence as the positive instead.
-            if cfg.simcse_view == "dropout":
-                view_ids, view_mask = input_ids, attention_mask
-            elif cfg.simcse_view == "pair":
-                view_ids = batch_s["input_ids2_stu"]
-                view_mask = batch_s["attention_mask2_stu"]
-            else:
-                raise ValueError(
-                    f"Unsupported simcse_view={cfg.simcse_view!r}; "
-                    "expected 'dropout' or 'pair'"
-                )
-
-            with autocast("cuda", enabled=torch.cuda.is_available()):
-                out1 = self.model_student(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=False,
-                    return_dict=True,
-                )
-                out2 = self.model_student(
-                    input_ids=view_ids,
-                    attention_mask=view_mask,
-                    output_hidden_states=False,
-                    return_dict=True,
-                )
-                view1 = self._pool_student(out1.last_hidden_state, attention_mask)
-                view2 = self._pool_student(out2.last_hidden_state, view_mask)
-
-                loss, metrics = self.criterion(view1, view2)
-                loss = loss.float()
-
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.scheduler.step()
-
-            return loss, metrics
-
-        # Standard distillation methods with teacher inference
-        batch_s, batch_t = {}, {}
-        for k, v in batch.items():
-            if not torch.is_tensor(v):
-                continue
-            if k.endswith("_stu") or k == "labels":
-                batch_s[k] = v.to(self.device_s, non_blocking=True)
-            if k.endswith("_tea"):
-                batch_t[k] = v.to(self.device_t, non_blocking=True)
+        batch_s = self._student_batch(batch)
+        batch_t = self._teacher_batch(batch)
 
         self.optimizer.zero_grad(set_to_none=True)
 
         with autocast("cuda", enabled=torch.cuda.is_available()):
-            need_atts = method == "emo"
-            # no_grad, not inference_mode: these teacher tensors are consumed by
-            # losses that save them for backward, and inference tensors cannot be.
-            with torch.no_grad():
-                t_out1 = self.model_teacher(
-                    input_ids=batch_t["input_ids1_tea"],
-                    attention_mask=batch_t["attention_mask1_tea"],
-                    output_attentions=need_atts,
-                    return_dict=True,
-                )
-                T_last1 = t_out1.last_hidden_state
-                T_cls1 = self._pool_teacher(T_last1, batch_t["attention_mask1_tea"])
+            teacher = self._encode_teacher(batch_t, need_atts=method == "emo")
+            student = self._encode_student(batch_s, method)
 
-                T_last1 = T_last1.to(self.device_s, non_blocking=True)
-                T_cls1 = T_cls1.to(self.device_s, non_blocking=True)
-
-                if need_atts:
-                    T_atts = tuple(
-                        att.to(self.device_s, non_blocking=True)
-                        for att in t_out1.attentions
-                    )
-                    T_last2 = None
-                    T_atts2 = None
-                    if "input_ids2_tea" in batch_t:
-                        t_out2 = self.model_teacher(
-                            input_ids=batch_t["input_ids2_tea"],
-                            attention_mask=batch_t["attention_mask2_tea"],
-                            output_attentions=True,
-                            return_dict=True,
-                        )
-                        T_last2 = t_out2.last_hidden_state.to(
-                            self.device_s, non_blocking=True
-                        )
-                        T_atts2 = tuple(
-                            attention.to(self.device_s, non_blocking=True)
-                            for attention in t_out2.attentions
-                        )
-
-            # Different models have different forward signatures
-            if method == "stella":
-                # StellaModel doesn't accept output_attentions or return_dict
-                s_out1 = self.model_student(
-                    input_ids=batch_s["input_ids1_stu"],
-                    attention_mask=batch_s["attention_mask1_stu"],
-                )
-                s_out2 = self.model_student(
-                    input_ids=batch_s["input_ids2_stu"],
-                    attention_mask=batch_s["attention_mask2_stu"],
-                )
-            elif method == "emo":
-                # EMO needs attentions
-                s_out1 = self.model_student(
-                    input_ids=batch_s["input_ids1_stu"],
-                    attention_mask=batch_s["attention_mask1_stu"],
-                    output_attentions=True,
-                    return_dict=True,
-                )
-                s_out2 = None
-                if "input_ids2_stu" in batch_s:
-                    s_out2 = self.model_student(
-                        input_ids=batch_s["input_ids2_stu"],
-                        attention_mask=batch_s["attention_mask2_stu"],
-                        output_attentions=True,
-                        return_dict=True,
-                    )
-            else:
-                # CDM, DSKD - standard transformers models
-                s_out1 = self.model_student(
-                    input_ids=batch_s["input_ids1_stu"],
-                    attention_mask=batch_s["attention_mask1_stu"],
-                    return_dict=True,
-                )
-                s_out2 = self.model_student(
-                    input_ids=batch_s["input_ids2_stu"],
-                    attention_mask=batch_s["attention_mask2_stu"],
-                    return_dict=True,
-                )
-            if method != "stella":
-                S_last1 = s_out1.last_hidden_state
-                S_last2 = None if s_out2 is None else s_out2.last_hidden_state
-                S_cls1 = S_last1[:, 0, :]
-                S_cls2 = None if S_last2 is None else S_last2[:, 0, :]
-            else:
-                S_cls1 = s_out1["pooled"]
-                S_cls2 = s_out2["pooled"]
-
+            # EMO may train a supervised head; cdm/dskd share the in-batch
+            # contrastive term; both Stella stages carry their own task term
+            # inside the stage loss, so none is computed for it here.
+            loss_task, task_metrics = None, {}
             if method == "emo":
                 loss_task, task_metrics = self._compute_task_loss(
-                    S_cls1, S_cls2, batch_s
+                    student.cls1, student.cls2, batch_s
                 )
-            else:
-                loss_task, _ = info_nce(S_cls1, S_cls2, temperature=cfg.temperature)
-                task_metrics = {}
+            elif method != "stella":
+                loss_task, _ = info_nce(
+                    student.cls1, student.cls2, temperature=cfg.temperature
+                )
 
-            # ========== Method-specific KD loss ==========
             if method == "cdm":
-                keep_s1 = batch_s["attention_mask1_stu"].bool() & (
-                    ~batch_s["special_tokens_mask1_stu"].bool()
+                loss, metrics = self._cdm_loss(
+                    batch, batch_s, batch_t, student, teacher, loss_task
                 )
-                keep_t1 = batch_t["attention_mask1_tea"].to(self.device_s).bool() & (
-                    ~batch_t["special_tokens_mask1_tea"].to(self.device_s).bool()
-                )
-
-                kd_dtw = self.criterion.compute_cdm_loss(
-                    S_last=S_last1,
-                    T_last=T_last1,
-                    batch_input_ids_stu=batch["input_ids1_stu"],
-                    batch_input_ids_tea=batch["input_ids1_tea"],
-                    keep_mask_stu=keep_s1,
-                    keep_mask_tea=keep_t1,
-                    proj_s2t=self.proj_s2t,
-                    device_s=self.device_s,
-                    epoch=self.current_epoch,
-                    step=self.current_step,
-                )
-
-                S_proj_cls1 = self.proj_s2t(S_cls1)
-                S_proj_cls1_norm = F.normalize(S_proj_cls1, p=2, dim=-1)
-                T_cls1_norm = F.normalize(T_cls1, p=2, dim=-1)
-                kd_cls = F.mse_loss(S_proj_cls1_norm, T_cls1_norm)
-
-                loss = (
-                    cfg.w_task * loss_task
-                    + cfg.alpha_dtw * kd_dtw * 100
-                    + cfg.w_cls * kd_cls
-                )
-
-                metrics = {
-                    "loss_total": loss.item(),
-                    "loss_task": loss_task.item(),
-                    "loss_kd_dtw": kd_dtw.item()
-                    if isinstance(kd_dtw, torch.Tensor)
-                    else kd_dtw,
-                    "loss_kd_cls": kd_cls.item(),
-                }
-
             elif method == "dskd":
-                mask_s1 = batch_s["attention_mask1_stu"]
-                mask_t1 = batch_t["attention_mask1_tea"].to(self.device_s)
-
-                spec_s1 = batch_s.get("special_tokens_mask1_stu", None)
-                spec_t1 = batch_t.get("special_tokens_mask1_tea", None)
-                if spec_t1 is not None:
-                    spec_t1 = spec_t1.to(self.device_s)
-
-                loss, metrics = self.criterion.compute_dskd_loss(
-                    S_last=S_last1,
-                    T_last=T_last1,
-                    S_cls=S_cls1,
-                    T_cls=T_cls1,
-                    mask_student=mask_s1,
-                    mask_teacher=mask_t1,
-                    task_loss=loss_task,
-                    special_tokens_mask_student=spec_s1,
-                    special_tokens_mask_teacher=spec_t1,
-                    device=self.device_s,
+                loss, metrics = self._dskd_loss(
+                    batch_s, batch_t, student, teacher, loss_task
                 )
-
             elif method == "emo":
-
-                class TeacherOutput:
-                    def __init__(self, last_hidden_state, attentions):
-                        self.last_hidden_state = last_hidden_state
-                        self.attentions = attentions
-
-                class StudentOutput:
-                    def __init__(self, last_hidden_state, attentions):
-                        self.last_hidden_state = last_hidden_state
-                        self.attentions = attentions
-
-                teacher_outputs = TeacherOutput(T_last1, T_atts)
-                student_outputs = StudentOutput(S_last1, s_out1.attentions)
-
-                att_loss_weight = getattr(cfg, "att_loss_weight", 0.1)
-                ot_loss_weight = getattr(cfg, "ot_loss_weight", 1.0)
-
-                kd_loss, kd_metrics = self.criterion.compute_emo_loss(
-                    teacher_outputs=teacher_outputs,
-                    student_outputs=student_outputs,
-                    input_ids_tea=batch_t["input_ids1_tea"].to(self.device_s),
-                    input_ids_stu=batch_s["input_ids1_stu"],
-                    attention_mask_tea=batch_t["attention_mask1_tea"].to(self.device_s),
-                    attention_mask_stu=batch_s["attention_mask1_stu"],
-                    tok_teacher=self.tok_teacher,
-                    tok_student=self.tok_student,
-                    att_loss_weight=att_loss_weight,
-                    ot_loss_weight=ot_loss_weight,
+                loss, metrics = self._emo_loss(
+                    batch_s, batch_t, student, teacher, loss_task, task_metrics
                 )
-                if S_last2 is not None and T_last2 is not None:
-                    teacher_outputs2 = TeacherOutput(T_last2, T_atts2)
-                    student_outputs2 = StudentOutput(S_last2, s_out2.attentions)
-                    kd_loss2, kd_metrics2 = self.criterion.compute_emo_loss(
-                        teacher_outputs=teacher_outputs2,
-                        student_outputs=student_outputs2,
-                        input_ids_tea=batch_t["input_ids2_tea"].to(self.device_s),
-                        input_ids_stu=batch_s["input_ids2_stu"],
-                        attention_mask_tea=batch_t["attention_mask2_tea"].to(
-                            self.device_s
-                        ),
-                        attention_mask_stu=batch_s["attention_mask2_stu"],
-                        tok_teacher=self.tok_teacher,
-                        tok_student=self.tok_student,
-                        att_loss_weight=att_loss_weight,
-                        ot_loss_weight=ot_loss_weight,
-                    )
-                    kd_loss = 0.5 * (kd_loss + kd_loss2)
-                    kd_metrics = {
-                        key: 0.5 * (kd_metrics[key] + kd_metrics2[key])
-                        for key in kd_metrics
-                    }
-
-                w_task = getattr(cfg, "w_task", 0.5)
-                alpha_kd = getattr(cfg, "alpha_kd", 0.5)
-                loss = w_task * loss_task + alpha_kd * kd_loss
-
-                metrics = {
-                    "loss_total": loss.item(),
-                    "loss_task": loss_task.item(),
-                    **task_metrics,
-                    **kd_metrics,
-                }
-
             elif method == "stella":
-                if self.current_stage == 1:
-                    S_emb = s_out1["fc1"]
-                    loss, metrics = stella_stage1_loss(
-                        S_emb,
-                        T_cls1,
-                        w_cos=getattr(cfg, "w_cos_stage1", 10.0),
-                        w_sim=getattr(cfg, "w_sim_stage1", 200.0),
-                        w_tri=getattr(cfg, "w_tri_stage1", 20.0),
-                    )
-                else:
-                    loss, metrics = stella_stage2_loss(
-                        S_cls1,
-                        S_cls2,
-                        s_out1["fc1"],
-                        s_out1["fc2"],
-                        s_out1["fc3"],
-                        s_out1["fc4"],
-                        T_cls1,
-                        temperature=cfg.temperature,
-                        w_task=cfg.w_task,
-                        w_cos=getattr(cfg, "w_cos_stage2", 10.0),
-                        w_sim=getattr(cfg, "w_sim_stage2", 200.0),
-                        w_tri=getattr(cfg, "w_tri_stage2", 20.0),
-                    )
-
+                loss, metrics = self._stella_loss(student, teacher)
             else:
                 raise ValueError(f"Unknown distillation method: {method}")
 
             loss = loss.float()
 
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-        self.scheduler.step()
-
+        self._optimizer_step(loss)
         return loss, metrics
+
+    def _cdm_loss(self, batch, batch_s, batch_t, student, teacher, loss_task):
+        cfg = self.config
+        keep_s1 = batch_s["attention_mask1_stu"].bool() & (
+            ~batch_s["special_tokens_mask1_stu"].bool()
+        )
+        keep_t1 = batch_t["attention_mask1_tea"].to(self.device_s).bool() & (
+            ~batch_t["special_tokens_mask1_tea"].to(self.device_s).bool()
+        )
+
+        kd_dtw = self.criterion.compute_cdm_loss(
+            S_last=student.last1,
+            T_last=teacher.last1,
+            batch_input_ids_stu=batch["input_ids1_stu"],
+            batch_input_ids_tea=batch["input_ids1_tea"],
+            keep_mask_stu=keep_s1,
+            keep_mask_tea=keep_t1,
+            proj_s2t=self.proj_s2t,
+            device_s=self.device_s,
+            epoch=self.current_epoch,
+            step=self.current_step,
+        )
+
+        kd_cls = F.mse_loss(
+            F.normalize(self.proj_s2t(student.cls1), p=2, dim=-1),
+            F.normalize(teacher.cls1, p=2, dim=-1),
+        )
+
+        loss = (
+            cfg.w_task * loss_task + cfg.alpha_dtw * kd_dtw * 100 + cfg.w_cls * kd_cls
+        )
+        metrics = {
+            "loss_total": loss.item(),
+            "loss_task": loss_task.item(),
+            "loss_kd_dtw": kd_dtw.item()
+            if isinstance(kd_dtw, torch.Tensor)
+            else kd_dtw,
+            "loss_kd_cls": kd_cls.item(),
+        }
+        return loss, metrics
+
+    def _dskd_loss(self, batch_s, batch_t, student, teacher, loss_task):
+        special_teacher = batch_t.get("special_tokens_mask1_tea")
+        return self.criterion.compute_dskd_loss(
+            S_last=student.last1,
+            T_last=teacher.last1,
+            S_cls=student.cls1,
+            T_cls=teacher.cls1,
+            mask_student=batch_s["attention_mask1_stu"],
+            mask_teacher=batch_t["attention_mask1_tea"].to(self.device_s),
+            task_loss=loss_task,
+            special_tokens_mask_student=batch_s.get("special_tokens_mask1_stu"),
+            special_tokens_mask_teacher=None
+            if special_teacher is None
+            else special_teacher.to(self.device_s),
+            device=self.device_s,
+        )
+
+    def _emo_loss(self, batch_s, batch_t, student, teacher, loss_task, task_metrics):
+        cfg = self.config
+        att_loss_weight = getattr(cfg, "att_loss_weight", 0.1)
+        ot_loss_weight = getattr(cfg, "ot_loss_weight", 1.0)
+
+        def side(index: int, student_last, student_atts, teacher_last, teacher_atts):
+            return self.criterion.compute_emo_loss(
+                teacher_outputs=SimpleNamespace(
+                    last_hidden_state=teacher_last, attentions=teacher_atts
+                ),
+                student_outputs=SimpleNamespace(
+                    last_hidden_state=student_last, attentions=student_atts
+                ),
+                input_ids_tea=batch_t[f"input_ids{index}_tea"].to(self.device_s),
+                input_ids_stu=batch_s[f"input_ids{index}_stu"],
+                attention_mask_tea=batch_t[f"attention_mask{index}_tea"].to(
+                    self.device_s
+                ),
+                attention_mask_stu=batch_s[f"attention_mask{index}_stu"],
+                tok_teacher=self.tok_teacher,
+                tok_student=self.tok_student,
+                att_loss_weight=att_loss_weight,
+                ot_loss_weight=ot_loss_weight,
+            )
+
+        kd_loss, kd_metrics = side(
+            1, student.last1, student.out1.attentions, teacher.last1, teacher.atts1
+        )
+        if student.last2 is not None and teacher.last2 is not None:
+            kd_loss2, kd_metrics2 = side(
+                2, student.last2, student.out2.attentions, teacher.last2, teacher.atts2
+            )
+            kd_loss = 0.5 * (kd_loss + kd_loss2)
+            kd_metrics = {
+                key: 0.5 * (kd_metrics[key] + kd_metrics2[key]) for key in kd_metrics
+            }
+
+        w_task = getattr(cfg, "w_task", 0.5)
+        alpha_kd = getattr(cfg, "alpha_kd", 0.5)
+        loss = w_task * loss_task + alpha_kd * kd_loss
+        metrics = {
+            "loss_total": loss.item(),
+            "loss_task": loss_task.item(),
+            **task_metrics,
+            **kd_metrics,
+        }
+        return loss, metrics
+
+    def _stella_loss(self, student, teacher):
+        cfg = self.config
+        if self.current_stage == 1:
+            return stella_stage1_loss(
+                student.out1["fc1"],
+                teacher.cls1,
+                w_cos=getattr(cfg, "w_cos_stage1", 10.0),
+                w_sim=getattr(cfg, "w_sim_stage1", 200.0),
+                w_tri=getattr(cfg, "w_tri_stage1", 20.0),
+            )
+        return stella_stage2_loss(
+            student.cls1,
+            student.cls2,
+            student.out1["fc1"],
+            student.out1["fc2"],
+            student.out1["fc3"],
+            student.out1["fc4"],
+            teacher.cls1,
+            temperature=cfg.temperature,
+            w_task=cfg.w_task,
+            w_cos=getattr(cfg, "w_cos_stage2", 10.0),
+            w_sim=getattr(cfg, "w_sim_stage2", 200.0),
+            w_tri=getattr(cfg, "w_tri_stage2", 20.0),
+        )
 
     def train_epoch(self, epoch: int):
         self.model_student.train()
@@ -2124,7 +2092,7 @@ class KnowledgeDistiller:
         split: str,
         results: dict[str, Any],
         final: bool = False,
-    ) -> None:
+    ) -> dict[str, float]:
         primary_metrics = {
             "classification": "f1",
             "pair": "average_precision",
@@ -2313,235 +2281,222 @@ class KnowledgeDistiller:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, default=float, sort_keys=True) + "\n")
 
-    def train(self):
-        cfg = self.config
+    def _log_eval_to_wandb(self, prefix: str, results: dict | None) -> None:
+        if not getattr(self, "use_wandb", False) or not WANDB_AVAILABLE:
+            return
+        if results is None:
+            return
+        wandb.log(self._flatten_metrics(prefix, results), step=self.global_step)
 
-        if cfg.distill_method == "stella":
-            print("\n" + "=" * 70)
-            print("Starting Stella 2-Stage Training...")
-            print("=" * 70)
-            print(f"Student: {cfg.student_model_name}")
-            print(f"Teacher: {cfg.teacher_model_name}")
-            print(f"Stage 1 epochs: {cfg.epochs_stage1}")
-            print(f"Stage 2 epochs: {cfg.epochs_stage2}")
-            print(f"Batch size: {cfg.batch_size}")
-            print(f"Learning rate: {cfg.learning_rate}")
-            print("=" * 70 + "\n")
+    def _run_evaluation(self, split: str) -> dict | None:
+        """Evaluate ``split``, logging to W&B. A failed pass warns and returns None.
 
-            print("\n" + "=" * 70)
-            print("STAGE 1: Freeze backbone + fc2,3,4, train fc1 only")
-            print("=" * 70)
+        Evaluation is a report on the run, not part of it: a benchmark file that is
+        missing or malformed must not throw away the epochs already trained.
+        """
+        try:
+            results = self.evaluate(split)
+        except Exception as error:
+            print(f"Warning: {split} evaluation failed with error: {error}")
+            print("Continuing training...")
+            return None
+        self._log_eval_to_wandb(split, results)
+        return results
 
-            for p in self.model_student.backbone.parameters():
-                p.requires_grad = False
-            for head in [
-                self.model_student.fc2,
-                self.model_student.fc3,
-                self.model_student.fc4,
-            ]:
-                for p in head.parameters():
-                    p.requires_grad = False
+    def _final_test_evaluation(
+        self, reusable: dict | None = None, extra: dict | None = None
+    ) -> None:
+        """Score the test split once at the end of training and record it.
 
-            print("Frozen: backbone, fc2, fc3, fc4")
-            print("Trainable: fc1")
-
-            self.current_stage = 1
-            for epoch in range(cfg.epochs_stage1):
-                avg_loss = self.train_epoch(epoch)
-                self.log_experiment_record(
-                    {"stage": 1, "train": self.last_epoch_metrics}
-                )
-
-                if should_save_epoch(epoch, cfg.save_every):
-                    self.save_checkpoint(epoch, {"loss": avg_loss})
-
-            print("\n" + "=" * 70)
-            print("STAGE 1 COMPLETED!")
-            print("=" * 70 + "\n")
-
-            print("\n" + "=" * 70)
-            print("STAGE 2: Unfreeze all, train full model")
-            print("=" * 70)
-
-            for p in self.model_student.parameters():
-                p.requires_grad = True
-
-            print("Unfrozen: all parameters")
-            print("Trainable: backbone, fc1, fc2, fc3, fc4")
-
-            self.optimizer = optim.AdamW(
-                self.model_student.parameters(), lr=cfg.learning_rate
-            )
-            self.scheduler = get_scheduler(
-                "cosine",
-                optimizer=self.optimizer,
-                num_warmup_steps=int(len(self.train_loader) * cfg.warmup_ratio),
-                num_training_steps=len(self.train_loader) * cfg.epochs_stage2,
-            )
-
-            self.step_times = []
-            self.ma_window = deque(maxlen=50)
-
-            self.current_stage = 2
-            for epoch in range(cfg.epochs_stage2):
-                avg_loss = self.train_epoch(epoch)
-                validation_results = None
-
-                print("\n" + "=" * 60)
-                print(f"Evaluation after Stage2 Epoch {epoch + 1}")
-                print("=" * 60)
-
-                stage2_split = (
-                    "test" if cfg.evaluate_test_each_epoch else "validation"
-                )
-                try:
-                    validation_results = self.evaluate(stage2_split)
-                except Exception as e:
-                    print(f"Warning: Evaluation failed with error: {e}")
-                    print("Continuing training...")
-
-                print("=" * 60 + "\n")
-                self.log_experiment_record(
-                    {
-                        "stage": 2,
-                        "train": self.last_epoch_metrics,
-                        stage2_split: validation_results,
-                    }
-                )
-
-                if should_save_epoch(epoch, cfg.save_every):
-                    self.save_checkpoint(epoch, {"loss": avg_loss})
-
-            print("\n" + "=" * 70)
-            print("STAGE 2 COMPLETED!")
-            print("=" * 70)
-
-            self.save_checkpoint(cfg.epochs_stage2 - 1, {"loss": avg_loss})
-            try:
+        ``reusable`` is the last epoch's results when that epoch already scored the
+        test split on these same weights; re-running would only burn a second pass.
+        """
+        try:
+            if reusable is not None:
+                print("Reusing the final epoch's test evaluation")
+                test_results = reusable
+                self.print_evaluation_table("test", test_results, final=True)
+            else:
                 self._ensure_pair_thresholds()
                 test_results = self.evaluate("test", final=True)
-                if (
-                    getattr(self, "use_wandb", False)
-                    and WANDB_AVAILABLE
-                    and test_results is not None
-                ):
-                    wandb.log(
-                        self._flatten_metrics("test", test_results),
-                        step=self.global_step,
-                    )
-                self.log_experiment_record({"stage": 2, "test": test_results})
-            except Exception as e:
-                print(f"Warning: Final test evaluation failed with error: {e}")
+            self._log_eval_to_wandb("test", test_results)
+            self.log_experiment_record({**(extra or {}), "test": test_results})
+        except Exception as error:
+            print(f"Warning: Final test evaluation failed with error: {error}")
 
-            print("\n" + "=" * 70)
-            print("Training completed successfully!")
-            print("=" * 70)
-
+    def train(self):
+        if self.config.distill_method == "stella":
+            self._train_stella()
         else:
+            self._train_single_stage()
+
+    def _train_stella(self):
+        cfg = self.config
+        print("\n" + "=" * 70)
+        print("Starting Stella 2-Stage Training...")
+        print("=" * 70)
+        print(f"Student: {cfg.student_model_name}")
+        print(f"Teacher: {cfg.teacher_model_name}")
+        print(f"Stage 1 epochs: {cfg.epochs_stage1}")
+        print(f"Stage 2 epochs: {cfg.epochs_stage2}")
+        print(f"Batch size: {cfg.batch_size}")
+        print(f"Learning rate: {cfg.learning_rate}")
+        print("=" * 70 + "\n")
+
+        print("\n" + "=" * 70)
+        print("STAGE 1: Freeze backbone + fc2,3,4, train fc1 only")
+        print("=" * 70)
+
+        for p in self.model_student.backbone.parameters():
+            p.requires_grad = False
+        for head in (self.model_student.fc2, self.model_student.fc3, self.model_student.fc4):
+            for p in head.parameters():
+                p.requires_grad = False
+
+        print("Frozen: backbone, fc2, fc3, fc4")
+        print("Trainable: fc1")
+
+        self.current_stage = 1
+        for epoch in range(cfg.epochs_stage1):
+            avg_loss = self.train_epoch(epoch)
+            self.log_experiment_record({"stage": 1, "train": self.last_epoch_metrics})
+
+            if should_save_epoch(epoch, cfg.save_every):
+                self.save_checkpoint(epoch, {"loss": avg_loss})
+
+        print("\n" + "=" * 70)
+        print("STAGE 1 COMPLETED!")
+        print("=" * 70 + "\n")
+
+        print("\n" + "=" * 70)
+        print("STAGE 2: Unfreeze all, train full model")
+        print("=" * 70)
+
+        for p in self.model_student.parameters():
+            p.requires_grad = True
+
+        print("Unfrozen: all parameters")
+        print("Trainable: backbone, fc1, fc2, fc3, fc4")
+
+        self.optimizer = optim.AdamW(
+            self.model_student.parameters(), lr=cfg.learning_rate
+        )
+        self.scheduler = get_scheduler(
+            "cosine",
+            optimizer=self.optimizer,
+            num_warmup_steps=int(len(self.train_loader) * cfg.warmup_ratio),
+            num_training_steps=len(self.train_loader) * cfg.epochs_stage2,
+        )
+
+        self.step_times = []
+        self.ma_window = deque(maxlen=50)
+
+        self.current_stage = 2
+        stage2_split = "test" if cfg.evaluate_test_each_epoch else "validation"
+        for epoch in range(cfg.epochs_stage2):
+            avg_loss = self.train_epoch(epoch)
+
             print("\n" + "=" * 60)
-            print("Starting training...")
+            print(f"Evaluation after Stage2 Epoch {epoch + 1}")
             print("=" * 60)
-            print(f"Method: {cfg.distill_method}")
-            print(f"Student: {cfg.student_model_name}")
-            if cfg.distill_method == "simcse":
-                print(f"Teacher: none (control for {cfg.teacher_model_name})")
-            else:
-                print(f"Teacher: {cfg.teacher_model_name}")
-            print(f"Epochs: {cfg.epochs}")
-            print(f"Batch size: {cfg.batch_size}")
-            print(f"Learning rate: {cfg.learning_rate}")
+            epoch_results = self._run_evaluation(stage2_split)
             print("=" * 60 + "\n")
 
-            eval_split = "test" if cfg.evaluate_test_each_epoch else "validation"
+            self.log_experiment_record(
+                {
+                    "stage": 2,
+                    "train": self.last_epoch_metrics,
+                    stage2_split: epoch_results,
+                }
+            )
+
+            if should_save_epoch(epoch, cfg.save_every):
+                self.save_checkpoint(epoch, {"loss": avg_loss})
+
+        print("\n" + "=" * 70)
+        print("STAGE 2 COMPLETED!")
+        print("=" * 70)
+
+        self.save_checkpoint(cfg.epochs_stage2 - 1, {"loss": avg_loss})
+        self._final_test_evaluation(extra={"stage": 2})
+
+        print("\n" + "=" * 70)
+        print("Training completed successfully!")
+        print("=" * 70)
+
+    def _train_single_stage(self):
+        cfg = self.config
+        print("\n" + "=" * 60)
+        print("Starting training...")
+        print("=" * 60)
+        print(f"Method: {cfg.distill_method}")
+        print(f"Student: {cfg.student_model_name}")
+        if cfg.distill_method == "simcse":
+            print(f"Teacher: none (control for {cfg.teacher_model_name})")
+        else:
+            print(f"Teacher: {cfg.teacher_model_name}")
+        print(f"Epochs: {cfg.epochs}")
+        print(f"Batch size: {cfg.batch_size}")
+        print(f"Learning rate: {cfg.learning_rate}")
+        print("=" * 60 + "\n")
+
+        eval_split = "test" if cfg.evaluate_test_each_epoch else "validation"
+        epoch_results = None
+
+        for epoch in range(cfg.epochs):
+            avg_loss = self.train_epoch(epoch)
             epoch_results = None
 
-            for epoch in range(cfg.epochs):
-                avg_loss = self.train_epoch(epoch)
-                epoch_results = None
-
-                refit_every = int(getattr(cfg, "gauge_refit_every", 0) or 0)
-                if (
-                    refit_every > 0
-                    and (epoch + 1) % refit_every == 0
-                    and epoch + 1 < cfg.epochs
-                ):
-                    self._refit_gauge(epoch)
-
-                print("\n" + "=" * 60)
-                print(f"Evaluation after Epoch {epoch + 1}")
-                print("=" * 60)
-
-                if cfg.eval_every and (epoch + 1) % cfg.eval_every == 0:
-                    try:
-                        epoch_results = self.evaluate(eval_split)
-                        if (
-                            getattr(self, "use_wandb", False)
-                            and WANDB_AVAILABLE
-                            and epoch_results is not None
-                        ):
-                            wandb.log(
-                                self._flatten_metrics(eval_split, epoch_results),
-                                step=self.global_step,
-                            )
-                    except Exception as e:
-                        print(f"Warning: {eval_split} evaluation failed with error: {e}")
-                        print("Continuing training...")
-
-                print("=" * 60 + "\n")
-                # Keyed by the split that actually ran, so a reader of metrics.jsonl
-                # never has to guess which data a per-epoch number came from.
-                self.log_experiment_record(
-                    {
-                        "train": self.last_epoch_metrics,
-                        eval_split: epoch_results,
-                    }
-                )
-
-                if should_save_epoch(epoch, cfg.save_every):
-                    try:
-                        self.save_checkpoint(epoch, {"loss": avg_loss})
-                    except Exception as e:
-                        if getattr(cfg, "weights_dir", None):
-                            raise RuntimeError(
-                                f"Required epoch {epoch + 1} weights could not be saved"
-                            ) from e
-                        print(f"Warning: Saving checkpoint failed with error: {e}")
-                        print("Continuing training...")
+            refit_every = int(getattr(cfg, "gauge_refit_every", 0) or 0)
+            if (
+                refit_every > 0
+                and (epoch + 1) % refit_every == 0
+                and epoch + 1 < cfg.epochs
+            ):
+                self._refit_gauge(epoch)
 
             print("\n" + "=" * 60)
-            print("Training completed!")
+            print(f"Evaluation after Epoch {epoch + 1}")
             print("=" * 60)
-            print("Done train()")
 
-            self.save_checkpoint(cfg.epochs - 1, {"loss": avg_loss})
-            try:
-                # The last epoch already scored the test split under this setting, on
-                # the same weights: re-running it would only burn a second pass.
-                reusable = (
-                    eval_split == "test"
-                    and epoch_results is not None
-                    and cfg.eval_every
-                    and cfg.epochs % cfg.eval_every == 0
-                )
-                if reusable:
-                    print("Reusing the final epoch's test evaluation")
-                    test_results = epoch_results
-                    self.print_evaluation_table("test", test_results, final=True)
-                else:
-                    self._ensure_pair_thresholds()
-                    test_results = self.evaluate("test", final=True)
-                if (
-                    getattr(self, "use_wandb", False)
-                    and WANDB_AVAILABLE
-                    and test_results is not None
-                ):
-                    wandb.log(
-                        self._flatten_metrics("test", test_results),
-                        step=self.global_step,
-                    )
-                self.log_experiment_record({"test": test_results})
-            except Exception as e:
-                print(f"Warning: Final test evaluation failed with error: {e}")
+            if cfg.eval_every and (epoch + 1) % cfg.eval_every == 0:
+                epoch_results = self._run_evaluation(eval_split)
+
+            print("=" * 60 + "\n")
+            # Keyed by the split that actually ran, so a reader of metrics.jsonl
+            # never has to guess which data a per-epoch number came from.
+            self.log_experiment_record(
+                {"train": self.last_epoch_metrics, eval_split: epoch_results}
+            )
+
+            if should_save_epoch(epoch, cfg.save_every):
+                try:
+                    self.save_checkpoint(epoch, {"loss": avg_loss})
+                except Exception as error:
+                    if getattr(cfg, "weights_dir", None):
+                        raise RuntimeError(
+                            f"Required epoch {epoch + 1} weights could not be saved"
+                        ) from error
+                    print(f"Warning: Saving checkpoint failed with error: {error}")
+                    print("Continuing training...")
+
+        print("\n" + "=" * 60)
+        print("Training completed!")
+        print("=" * 60)
+        print("Done train()")
+
+        self.save_checkpoint(cfg.epochs - 1, {"loss": avg_loss})
+        # The last epoch already scored the test split under this setting, on the
+        # same weights, whenever the cadence lands on it.
+        reusable = (
+            epoch_results
+            if eval_split == "test"
+            and epoch_results is not None
+            and cfg.eval_every
+            and cfg.epochs % cfg.eval_every == 0
+            else None
+        )
+        self._final_test_evaluation(reusable)
 
     def close(self) -> None:
         if self.wandb_run is not None:

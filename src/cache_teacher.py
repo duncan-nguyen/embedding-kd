@@ -244,10 +244,3 @@ def validate_cached_embeddings(
             "tagged); it matches this run by shape only, so make sure it really "
             f"holds {teacher_model_name} / {pooling_method} embeddings."
         )
-
-
-def clear_cache_and_free_memory():
-    import gc
-    torch.cuda.empty_cache()
-    gc.collect()
-    print("Done clearing GPU cache and freeing memory")

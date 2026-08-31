@@ -3,7 +3,7 @@
 The three benchmarks are the retrieval side of the protocol: the student is
 distilled on unlabelled text and then scored zero-shot on nDCG@10 over corpora
 it has never seen. None of them contributes a single sentence to the training
-corpus, so `scripts/build_train_150k.py` checks its MS MARCO block against the
+corpus, so `scripts/build_train_corpus.py` checks its MS MARCO block against the
 files written here before accepting a row.
 
 The BEIR/MTEB copies on the Hub are plain JSONL, so they are downloaded directly

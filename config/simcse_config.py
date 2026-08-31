@@ -35,8 +35,3 @@ class SimCSEConfig(BaseConfig):
 
 
     save_dir = "checkpoints/simcse"
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            if hasattr(self, k):
-                setattr(self, k, v)

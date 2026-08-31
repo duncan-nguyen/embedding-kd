@@ -1,7 +1,17 @@
+"""TALAS: anchor the student's deep layers on a cached teacher sentence vector.
+
+Two terms. The KD term projects the last few student layers into the teacher
+dimension and pulls each onto the teacher embedding by cosine. The structural
+term is self-distillation: it asks consecutive student layers to agree on their
+in-batch similarity matrix, so the trajectory through the stack stays smooth.
+"""
+
+from typing import Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List, Dict, Optional, Tuple
+
 from src.loss import pair_inbatch_similarity_loss
 
 class TeacherAnchorKD(nn.Module):
@@ -64,27 +74,24 @@ class TeacherAnchorKD(nn.Module):
         self,
         cls_base: List[torch.Tensor],
         teacher_cls: torch.Tensor
-    ) -> Tuple[torch.Tensor, List[float]]:
+    ) -> torch.Tensor:
         T_kd_n = F.normalize(teacher_cls, dim=-1, eps=self.eps_norm)
-        
+
         kd_terms = []
-        kd_cos_values = []
-        
         for idx in self.last_layers_idx:
             if idx < 0:
                 continue
-            
+
             S_kd = self.kd_proj_heads[idx](cls_base[idx])  # [B, d_t]
             S_kd_n = F.normalize(S_kd, dim=-1, eps=self.eps_norm)
-            
+
             kd_terms.append(1.0 - F.cosine_similarity(S_kd_n, T_kd_n, dim=-1).mean())
-        
-        if len(kd_terms) > 0:
-            kd_loss = torch.stack(kd_terms).mean()
-        else:
-            kd_loss = torch.tensor(0.0, device=teacher_cls.device, dtype=teacher_cls.dtype)
-        
-        return kd_loss, kd_cos_values
+
+        if not kd_terms:
+            return torch.tensor(
+                0.0, device=teacher_cls.device, dtype=teacher_cls.dtype
+            )
+        return torch.stack(kd_terms).mean()
     
     def forward(
         self,
@@ -101,7 +108,7 @@ class TeacherAnchorKD(nn.Module):
         
         loss_struct = self.compute_self_kd_loss(cls_base)
         
-        loss_kd, kd_cos_values = self.compute_kd_loss(cls_base, teacher_cls)
+        loss_kd = self.compute_kd_loss(cls_base, teacher_cls)
         
         total_loss = (
             self.w_task * task_loss +
@@ -114,12 +121,5 @@ class TeacherAnchorKD(nn.Module):
             'loss_kd': float(loss_kd.detach()),
             'loss_struct': float(loss_struct.detach()),
         }
-        
-        for i, cos_val in enumerate(kd_cos_values):
-            layer_idx = self.last_layers_idx[i]
-            metrics[f'cos_layer_{layer_idx}'] = cos_val
-        
+
         return total_loss, metrics
-
-
-
