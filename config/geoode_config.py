@@ -32,15 +32,27 @@ class GeoODEConfig(BaseConfig):
     # "+ Gram" row of the recipe ablation, expected to be redundant with L_end once
     # the interface is a fixed orthonormal map. CLI: --lambda_gram.
     lambda_gram = 0.0
-    # Weight of the H0 persistence term: squared error between the sorted finite
-    # H0 death times (= MST edge weights) of the student batch and of the teacher
-    # batch. It constrains the *shape* of the cloud, not the position of any point,
-    # and is read off the teacher's own d_T-dimensional cache rather than the
-    # projected target, so it is the one term that does not depend on P_T. 0 is the
-    # recipe; > 0 is the "+ H0" row. Death times live in [0, 2] (chord), so the
-    # term is small -- sweep the weight over decades, 0.01-1.0. CLI: --lambda_topo.
+    # Weight of the topological term L_topo = L_H0 + lambda_h1 * L_H1. It constrains
+    # the *shape* of the cloud, not the position of any point, and is read off the
+    # teacher's own d_T-dimensional cache rather than the projected target, so it is
+    # the one term that does not depend on P_T. 0 is the recipe; > 0 is the "+ topo"
+    # row. L_H0 is the squared error between the sorted finite H0 death times (= MST
+    # edge weights) of the student and teacher batches; death times live in [0, 2]
+    # (chord), so the term is small -- sweep the weight over decades, 0.01-1.0.
+    # CLI: --lambda_topo.
     lambda_topo = 0.0
-    # Ground metric of the persistence diagram on the unit sphere: "chord" is the
+    # Weight lambda_1 of the H1 half of L_topo: W_2^2 between the teacher's and the
+    # student's 1-dimensional persistence diagrams, i.e. the cycles of the batch
+    # rather than its merge tree, with low-persistence cycles matched to the diagonal.
+    # 0 leaves L_topo the pure H0 term. Needs the optional `gudhi` package, and builds
+    # the batch's full 2-skeleton (O(B^3) simplices) on both sides of the loss, so it
+    # is the expensive row of the ablation and its cost is set by batch_size, not by
+    # d: ~7 ms/step at batch_size=32, ~430 ms at 128, ~6 s at 256. W_2^2 is a *sum*
+    # over matched cycles while L_H0 is a mean over B - 1 death times, so this weight
+    # carries the scale ratio as well: start an order of magnitude below lambda_topo.
+    # CLI: --lambda_h1.
+    lambda_h1 = 0.0
+    # Ground metric of both persistence diagrams on the unit sphere: "chord" is the
     # Euclidean distance sqrt(2 - 2cos), "angular" the geodesic acos(cos), "cosine"
     # the (non-metric) 1 - cos. CLI: --topo_metric.
     topo_metric = "chord"

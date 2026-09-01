@@ -53,6 +53,8 @@ def test_forward_combines_the_two_weighted_terms():
         "loss_ctr",
         "loss_gram",
         "loss_topo",
+        "loss_h0",
+        "loss_h1",
         "cos_first",
         "cos_final",
     }

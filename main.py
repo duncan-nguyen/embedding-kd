@@ -123,10 +123,20 @@ def parse_args():
         "--lambda_topo",
         type=float,
         default=None,
-        help="GeoODE-KD: weight of the H0 persistence term, matching the sorted "
-        "finite H0 death times (MST edge weights) of the student batch to those "
-        'of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ H0" '
-        "control. Death times are O(1), so sweep the weight over decades",
+        help="GeoODE-KD: weight of the topological term L_topo = L_H0 + "
+        "lambda_h1 * L_H1, comparing the student batch's persistence diagrams to "
+        'those of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ '
+        'topo" control. Death times are O(1), so sweep the weight over decades',
+    )
+    parser.add_argument(
+        "--lambda_h1",
+        type=float,
+        default=None,
+        help="GeoODE-KD: weight lambda_1 of the H1 half of L_topo -- W_2^2 between "
+        "the teacher's and the student's 1-dimensional persistence diagrams, "
+        "low-persistence cycles matched to the diagonal. 0 leaves L_topo the pure "
+        "H0 term. Requires the optional 'gudhi' package and costs O(B^3) simplices "
+        "per batch on both sides",
     )
     parser.add_argument(
         "--topo_metric",
@@ -405,6 +415,7 @@ METHOD_FLAGS = (
             "endpoint_loss",
             "lambda_gram",
             "lambda_topo",
+            "lambda_h1",
             "topo_metric",
             "projection_type",
             "projection_seed",

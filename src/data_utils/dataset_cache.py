@@ -12,14 +12,16 @@ import torch
 from torch.utils.data import Dataset
 
 from src.criterions.h0_topological_loss import h0_death_times
+from src.criterions.h1_topological_loss import MIN_BATCH as H1_MIN_BATCH
+from src.criterions.h1_topological_loss import h1_diagram
 
 
 class TextPairWithTeacher(Dataset):
     """Corpus rows paired with their cached teacher embeddings.
 
     ``teacher_topo`` is the same cache in the teacher's *own* dimension, carried
-    only when the H0 term is switched on; every other run leaves it ``None`` and
-    the batch looks exactly as it did before.
+    only when a topological term is switched on; every other run leaves it ``None``
+    and the batch looks exactly as it did before.
     """
 
     def __init__(
@@ -54,7 +56,7 @@ class TextPairWithTeacher(Dataset):
 class DualTokenizerCollateWithTeacher:
     """Tokenize for the student only; the teacher side arrives pre-computed.
 
-    Three switches say what the batch is actually going to be read for, because
+    Four switches say what the batch is actually going to be read for, because
     everything this builds is paid for on every step of every epoch:
 
     ``need_second_text``
@@ -66,12 +68,16 @@ class DualTokenizerCollateWithTeacher:
         Only the token-level methods (cdm, dskd) align token strings; the
         cached-teacher methods never look at it.
     ``topo_metric``
-        When set, the teacher's H0 diagram is built here instead of in the training
-        step. It is a constant -- a frozen cache under no_grad -- and the batch's
-        rows are known at collate time, so a DataLoader worker can build it in
-        parallel with the previous step rather than the GPU building it on the
+        When set, the teacher's persistence diagrams are built here instead of in the
+        training step. They are constants -- a frozen cache under no_grad -- and the
+        batch's rows are known at collate time, so a DataLoader worker can build them
+        in parallel with the previous step rather than the GPU building them on the
         critical path. It also replaces a ``[B, d_T]`` host-to-device copy per step
-        with a ``[B - 1]`` one.
+        with a ``[B - 1]`` one (plus a ``[K, 2]`` one when H1 is on).
+    ``need_h1``
+        Whether that also covers the H1 diagram. H1 builds the full 2-skeleton of the
+        batch -- ``O(B^3)`` simplices -- so it is the one part of the collate whose
+        cost is worth keeping off unless the run actually asked for it.
     """
 
     def __init__(
@@ -83,6 +89,7 @@ class DualTokenizerCollateWithTeacher:
         need_second_text: bool = True,
         need_special_tokens_mask: bool = False,
         topo_metric: str | None = None,
+        need_h1: bool = False,
     ):
         self.ts = tok_student
         self.task = task
@@ -90,6 +97,7 @@ class DualTokenizerCollateWithTeacher:
         self.need_second_text = bool(need_second_text)
         self.need_special_tokens_mask = bool(need_special_tokens_mask)
         self.topo_metric = topo_metric
+        self.need_h1 = bool(need_h1)
 
     def _encode(self, texts, side: int, out: dict) -> None:
         encoding = self.ts(
@@ -110,21 +118,24 @@ class DualTokenizerCollateWithTeacher:
             out[f"token_type_ids{suffix}"] = encoding["token_type_ids"]
 
     def _teacher_topo(self, topo: torch.Tensor, out: dict) -> None:
-        """Either the raw teacher cache, or the diagram that is all anyone reads."""
+        """Either the raw teacher cache, or the diagrams that are all anyone reads."""
         if self.topo_metric is None:
             out["teacher_topo"] = topo
             return
         with torch.no_grad():
+            topo = topo.float()
             out["teacher_deaths"] = h0_death_times(
-                topo.float(), metric=self.topo_metric, sort=True
+                topo, metric=self.topo_metric, sort=True
             )
+            if self.need_h1 and topo.shape[0] >= H1_MIN_BATCH:
+                out["teacher_h1"] = h1_diagram(topo, metric=self.topo_metric)
 
     def __call__(self, batch):
         columns = list(zip(*batch))
         samples = columns[0]
         out = {"teacher_cls": torch.stack(columns[1], dim=0)}  # [B, d_t]
         # Present only when the dataset also carries the unprojected teacher cache
-        # (the H0 term); every other method sees the batch exactly as before.
+        # (the topological terms); every other method sees the batch as before.
         if len(columns) > 2:
             topo = torch.stack(columns[2], dim=0)
             # A single-row tail batch has no MST, so there is no diagram to build.

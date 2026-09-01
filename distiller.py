@@ -349,6 +349,7 @@ class KnowledgeDistiller:
             endpoint_loss=getattr(cfg, "endpoint_loss", "cosine"),
             lambda_gram=float(getattr(cfg, "lambda_gram", 0.0) or 0.0),
             lambda_topo=float(getattr(cfg, "lambda_topo", 0.0) or 0.0),
+            lambda_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0),
             topo_metric=getattr(cfg, "topo_metric", "chord"),
             pooling=cfg.student_pooling,
             include_embedding_layer=cfg.include_embedding_layer,
@@ -371,7 +372,8 @@ class KnowledgeDistiller:
             f"lambda_end={cfg.lambda_end}, lambda_ctr={cfg.lambda_ctr}, "
             f"endpoint_loss={getattr(cfg, 'endpoint_loss', 'cosine')}, "
             f"lambda_gram={float(getattr(cfg, 'lambda_gram', 0.0) or 0.0)}, "
-            f"lambda_topo={float(getattr(cfg, 'lambda_topo', 0.0) or 0.0)} "
+            f"lambda_topo={float(getattr(cfg, 'lambda_topo', 0.0) or 0.0)}, "
+            f"lambda_h1={float(getattr(cfg, 'lambda_h1', 0.0) or 0.0)} "
             f"({getattr(cfg, 'topo_metric', 'chord')})"
         )
         return criterion
@@ -860,8 +862,8 @@ class KnowledgeDistiller:
         teacher_topo_list = None
         if cfg.distill_method == "geoode":
             if float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0:
-                # The H0 term compares point-cloud shapes, so it needs no shared
-                # basis and reads the teacher *before* P_T narrows it to d_S --
+                # The topological terms compare point-cloud shapes, so they need no
+                # shared basis and read the teacher *before* P_T narrows it to d_S --
                 # the one supervision signal in the run that P_T cannot colour.
                 teacher_topo_list = (
                     teacher_cls_list.clone().contiguous().share_memory_()
@@ -896,6 +898,7 @@ class KnowledgeDistiller:
                 if teacher_topo_list is not None
                 else None
             ),
+            need_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0) > 0.0,
         )
 
     def _needs_second_text(self) -> bool:
@@ -1399,8 +1402,8 @@ class KnowledgeDistiller:
         """The student-side tensors of a batch, on the student device.
 
         ``extra`` names the cached-teacher tensors a method also reads there
-        (``teacher_cls``, ``teacher_topo``): they supervise the student, so they
-        travel with the student half of the batch.
+        (``teacher_cls``, ``teacher_topo`` and the diagrams derived from it): they
+        supervise the student, so they travel with the student half of the batch.
         """
         return {
             key: value.to(self.device_s, non_blocking=True)
@@ -1637,7 +1640,8 @@ class KnowledgeDistiller:
     def _train_step_geoode(self, batch: dict) -> tuple[torch.Tensor, dict]:
         cfg = self.config
         batch_s = self._student_batch(
-            batch, extra=("teacher_cls", "teacher_topo", "teacher_deaths")
+            batch,
+            extra=("teacher_cls", "teacher_topo", "teacher_deaths", "teacher_h1"),
         )
         self.optimizer.zero_grad(set_to_none=True)
 
@@ -1672,6 +1676,7 @@ class KnowledgeDistiller:
                 second_view=second_view,
                 teacher_topo=batch_s.get("teacher_topo"),
                 teacher_deaths=batch_s.get("teacher_deaths"),
+                teacher_h1=batch_s.get("teacher_h1"),
             )
             loss = loss.float()
 

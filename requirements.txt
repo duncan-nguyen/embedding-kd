@@ -28,6 +28,10 @@ pyparsing==3.3.2
 scikit-learn>=1.2.0
 scipy>=1.10.0
 
+# Persistent homology: only the H1 term (--lambda_h1 > 0) imports it, and it does
+# so lazily, so the rest of the repo runs without it.
+gudhi>=3.9.0
+
 # String Similarity & Distance Metrics
 Levenshtein>=0.21.0
 editdistance>=0.6.0

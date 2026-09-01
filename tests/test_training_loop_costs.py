@@ -590,6 +590,35 @@ def test_the_topology_arm_reads_the_teachers_own_dimension(tmp_path, monkeypatch
     assert batch["teacher_deaths"].shape == (rows - 1,)
 
 
+def test_the_h1_arm_ships_a_diagram_too(tmp_path, monkeypatch):
+    """With lambda_h1 on, the collate also reduces the teacher's cache to its H1
+    diagram, and the epoch's L_topo carries both halves."""
+    pytest.importorskip("gudhi")
+    distiller = _run_distiller(
+        tmp_path, monkeypatch, lambda_topo=0.5, lambda_h1=0.25
+    )
+
+    batch = next(iter(distiller.train_loader))
+    assert "teacher_topo" not in batch
+    assert batch["teacher_deaths"].shape == (batch["teacher_cls"].shape[0] - 1,)
+    # An empty diagram is a legitimate outcome for a small batch, so only the shape
+    # is pinned here; the term's own tests cover what it contains.
+    assert batch["teacher_h1"].ndim == 2 and batch["teacher_h1"].shape[1] == 2
+
+    distiller.train_epoch(0)
+    metrics = distiller.last_epoch_metrics
+    assert metrics["loss_topo"] > 0.0
+    assert metrics["loss_topo"] == pytest.approx(
+        metrics["loss_h0"] + 0.25 * metrics["loss_h1"], rel=1e-4
+    )
+
+
+def test_the_h1_arm_stays_off_by_default(tmp_path, monkeypatch):
+    """The H0 arm must not start paying for the 2-skeleton it never asked for."""
+    distiller = _run_distiller(tmp_path, monkeypatch, lambda_topo=0.5)
+    assert "teacher_h1" not in next(iter(distiller.train_loader))
+
+
 def test_turning_fusion_off_changes_nothing_but_the_trajectory(tmp_path, monkeypatch):
     """Both orders train; they simply consume the RNG differently."""
     other = tmp_path / "b"

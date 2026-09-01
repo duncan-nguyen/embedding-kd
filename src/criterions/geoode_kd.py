@@ -30,6 +30,11 @@ from src.criterions.h0_topological_loss import (
     h0_loss_against_deaths,
     h0_topological_loss,
 )
+from src.criterions.h1_topological_loss import (
+    MIN_BATCH as H1_MIN_BATCH,
+    h1_loss_against_diagram,
+    h1_topological_loss,
+)
 from src.loss import info_nce
 from src.metrics import scalar_metrics
 from src.pooling import mean_pooling
@@ -70,12 +75,20 @@ class GeoODEKD(nn.Module):
             teacher and the student's final state are brought into a shared space by
             it, and its parameters are trained with the student. ``None`` (the
             default) means the targets arrive already mapped and frozen.
-        lambda_topo: weight of the H0 persistence term. It matches the *shape* of
-            the batch -- the sorted finite death times of the H0 Vietoris-Rips
-            diagram, i.e. the MST edge weights -- rather than any individual point,
-            so it is invariant to the width of the space and reads the teacher's own
-            geometry when ``teacher_topo`` is given. 0 is the recipe.
-        topo_metric: ground metric of that diagram on the unit sphere: ``"chord"``
+        lambda_topo: weight of the topological term
+            ``L_topo = L_H0 + lambda_h1 * L_H1``. It matches the *shape* of the batch
+            rather than any individual point, so it is invariant to the width of the
+            space and reads the teacher's own geometry when ``teacher_topo`` is
+            given. 0 is the recipe.
+        lambda_h1: weight of the H1 (cycle) half of ``L_topo``: the squared
+            2-Wasserstein distance between the teacher's and the student's
+            1-dimensional persistence diagrams, low-persistence features matched to
+            the diagonal. 0 -- the default -- leaves ``L_topo`` the pure H0 term it
+            was, and the H1 machinery (and its gudhi dependency) is never touched.
+            The two halves are on different scales by construction -- ``L_H0`` is a
+            mean over ``B - 1`` death times, ``W_2^2`` is a sum over matched cycles --
+            so this weight carries that ratio as well as the relative importance.
+        topo_metric: ground metric of both diagrams on the unit sphere: ``"chord"``
             (Euclidean), ``"angular"`` (geodesic) or ``"cosine"``.
         pooling: pooling used to turn each layer's token states into a sentence vector.
         include_embedding_layer: treat the embedding output as depth 0 state as well.
@@ -96,12 +109,20 @@ class GeoODEKD(nn.Module):
         endpoint_loss: str = "cosine",
         lambda_gram: float = 0.0,
         lambda_topo: float = 0.0,
+        lambda_h1: float = 0.0,
         topo_metric: Metric = "chord",
     ):
         super().__init__()
-        if lambda_end < 0 or lambda_ctr < 0 or lambda_gram < 0 or lambda_topo < 0:
+        if (
+            lambda_end < 0
+            or lambda_ctr < 0
+            or lambda_gram < 0
+            or lambda_topo < 0
+            or lambda_h1 < 0
+        ):
             raise ValueError(
-                "lambda_end, lambda_ctr, lambda_gram and lambda_topo must be non-negative"
+                "lambda_end, lambda_ctr, lambda_gram, lambda_topo and lambda_h1 "
+                "must be non-negative"
             )
         if topo_metric not in ("chord", "angular", "cosine"):
             raise ValueError(
@@ -120,6 +141,7 @@ class GeoODEKD(nn.Module):
         self.endpoint_loss_form = endpoint_loss
         self.lambda_gram = float(lambda_gram)
         self.lambda_topo = float(lambda_topo)
+        self.lambda_h1 = float(lambda_h1)
         self.topo_metric = topo_metric
 
         self.lambda_end = float(lambda_end)
@@ -260,6 +282,28 @@ class GeoODEKD(nn.Module):
         """
         return h0_topological_loss(final_state, teacher, metric=self.topo_metric)
 
+    def h1_loss_against_diagram(
+        self, final_state: torch.Tensor, teacher_diagram: torch.Tensor
+    ) -> torch.Tensor:
+        """The H1 term against a teacher diagram built outside the training step."""
+        return h1_loss_against_diagram(
+            final_state, teacher_diagram, metric=self.topo_metric
+        )
+
+    def h1_loss(
+        self, final_state: torch.Tensor, teacher: torch.Tensor
+    ) -> torch.Tensor:
+        """``W_2^2`` between the two batches' 1-dimensional persistence diagrams.
+
+        Where the H0 term reads how the cloud merges, this reads what it encloses:
+        the birth and death of every 1-cycle of the Vietoris-Rips filtration, matched
+        against the teacher's with low-persistence cycles allowed to fall onto the
+        diagonal. Like H0 it is a statement about scalar filtration values only, so it
+        needs no correspondence between the two spaces' axes and ``teacher`` here may
+        be the *unprojected* teacher cache. The teacher side is a constant.
+        """
+        return h1_topological_loss(final_state, teacher, metric=self.topo_metric)
+
     def contrastive_loss(
         self, view_a: torch.Tensor, view_b: torch.Tensor
     ) -> torch.Tensor:
@@ -277,6 +321,7 @@ class GeoODEKD(nn.Module):
         second_view: torch.Tensor | None = None,
         teacher_topo: torch.Tensor | None = None,
         teacher_deaths: torch.Tensor | None = None,
+        teacher_h1: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute L_total of Eq. (38).
 
@@ -289,13 +334,16 @@ class GeoODEKD(nn.Module):
             second_view: pooled (unnormalised) final representation of a second
                 dropout view, used only for the contrastive term.
             teacher_topo: optional cached teacher embeddings in the teacher's *own*
-                dimension ``[B, d_T]``, read only by the H0 term. ``None`` falls
-                back to the projected targets, which makes the term a statement
+                dimension ``[B, d_T]``, read only by the topological terms. ``None``
+                falls back to the projected targets, which makes them a statement
                 about the shape P_T left behind rather than the teacher's own.
             teacher_deaths: the same H0 term's teacher side, already reduced to its
                 ``[B - 1]`` sorted death times by the collate. It supersedes
                 ``teacher_topo`` when given -- it is what ``teacher_topo`` would have
                 been turned into here, computed off the training step's critical path.
+            teacher_h1: the H1 term's teacher side, already reduced by the collate to
+                its ``[K, 2]`` diagram of ``(birth, death)`` pairs, for the same
+                reason. It supersedes ``teacher_topo`` for that term when given.
         """
         hidden_states = list(hidden_states)
         states = self.endpoint_states(hidden_states, attention_mask)
@@ -336,24 +384,45 @@ class GeoODEKD(nn.Module):
         else:
             loss_gram = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
+        zero = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
+        # ``teacher_topo`` is the teacher cache in its *own* d_T; falling back to the
+        # projected target would supervise the run through P_T twice over. Both
+        # halves of L_topo read the same cloud.
+        topo_target = teacher if teacher_topo is None else teacher_topo.float()
+
         # A single-sample tail batch has no MST, so the term is simply absent there.
         if self.lambda_topo > 0.0 and states[-1].shape[0] >= 2:
             if teacher_deaths is not None:
-                loss_topo = self.topological_loss_against_deaths(
+                loss_h0 = self.topological_loss_against_deaths(
                     states[-1], teacher_deaths
                 )
             else:
-                topo_target = teacher if teacher_topo is None else teacher_topo.float()
-                loss_topo = self.topological_loss(states[-1], topo_target)
+                loss_h0 = self.topological_loss(states[-1], topo_target)
         else:
-            loss_topo = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
+            loss_h0 = zero
+
+        # A 1-cycle needs three points, so H1 sits out one batch more than H0 does.
+        if (
+            self.lambda_topo > 0.0
+            and self.lambda_h1 > 0.0
+            and states[-1].shape[0] >= H1_MIN_BATCH
+        ):
+            if teacher_h1 is not None:
+                loss_h1 = self.h1_loss_against_diagram(states[-1], teacher_h1)
+            else:
+                loss_h1 = self.h1_loss(states[-1], topo_target)
+        else:
+            loss_h1 = zero
+
+        # L_topo = L_H0 + lambda_1 L_H1; lambda_topo below weights the pair.
+        loss_topo = loss_h0 + self.lambda_h1 * loss_h1
 
         if self.lambda_ctr > 0.0 and second_view is not None:
             loss_ctr = self.contrastive_loss(
                 student_view, self.normalize(second_view.float())
             )
         else:
-            loss_ctr = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
+            loss_ctr = zero
 
         total = (
             self.lambda_end * loss_end
@@ -369,6 +438,8 @@ class GeoODEKD(nn.Module):
                 loss_ctr=loss_ctr,
                 loss_gram=loss_gram,
                 loss_topo=loss_topo,
+                loss_h0=loss_h0,
+                loss_h1=loss_h1,
                 # Only the final layer is supervised; the shallow cosine is logged
                 # next to it as a free sanity check on the untouched lower stack.
                 cos_first=(states[0] * teacher).sum(dim=-1).mean(),
