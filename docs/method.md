@@ -7,7 +7,7 @@ Cho teacher đóng băng $f_T:\mathcal{X}\rightarrow\mathbb{R}^{d_T}$ và studen
 Teacher được chạy một lần trên toàn bộ tập train và embedding câu cuối được chuẩn hóa, cache lại:
 
 $$
-\tilde{t}_i=\operatorname{norm}(f_T(x_i)).
+\tilde{t}_i=\text{norm}(f_T(x_i)).
 $$
 
 Từ cache, lấy $d_S$ principal directions bằng PCA để tạo $P_{\mathrm{PCA}}\in\mathbb{R}^{d_T\times d_S}$. PCA được fit trên dữ liệu đã trừ mean; theo cấu hình mặc định, mean không bị trừ khi áp dụng phép chiếu.
@@ -20,10 +20,10 @@ R^*=\arg\min_{R\in O(d_S)}\|T_{\mathrm{PCA}}R-Z_0\|_F,
 R^*=UV^\top,
 $$
 
-trong đó $U\Sigma V^\top=\operatorname{SVD}(T_{\mathrm{PCA}}^\top Z_0)$. Target cuối cùng là
+trong đó $U\Sigma V^\top=\text{SVD}(T_{\mathrm{PCA}}^\top Z_0)$. Target cuối cùng là
 
 $$
-\tau_i=\operatorname{norm}(\tilde{t}_iP_{\mathrm{PCA}}R^*).
+\tau_i=\text{norm}(\tilde{t}_iP_{\mathrm{PCA}}R^*).
 $$
 
 $P_{\mathrm{PCA}}$, $R^*$ và toàn bộ $\tau_i$ được đóng băng trong suốt quá trình train.
@@ -33,7 +33,7 @@ $P_{\mathrm{PCA}}$, $R^*$ và toàn bộ $\tau_i$ được đóng băng trong su
 GeoODE-KD chỉ giám sát embedding ở Transformer layer cuối. Mặc định student dùng CLS pooling và chuẩn hóa L2:
 
 $$
-z_i=\operatorname{norm}(\operatorname{Pool}(h_i^{(L)})).
+z_i=\text{norm}(\text{Pool}(h_i^{(L)})).
 $$
 
 Loss gồm endpoint distillation, contrastive regularization và bảo toàn topology:
