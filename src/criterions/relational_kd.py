@@ -41,7 +41,12 @@ class RelationalKD(nn.Module):
             benchmark scores cosine similarity, so this puts both sides of the
             comparison on the same sphere; off is the raw-Euclidean ablation.
         eps: floor applied under the square root of the pairwise distances, whose
-            gradient is unbounded at zero.
+            gradient is unbounded at zero. It has to survive being cast to the
+            training dtype to floor anything: 1e-12 rounds to exactly 0.0 in
+            fp16, which turns the clamp into a no-op and the sqrt at the zero
+            diagonal into an infinite derivative. ``forward`` runs in fp32 so
+            this never fires there, and the value is kept representable in half
+            precision anyway, for any caller outside that guard.
     """
 
     def __init__(
@@ -51,7 +56,7 @@ class RelationalKD(nn.Module):
         w_angle: float = 50.0,
         huber_delta: float = 1.0,
         normalize_student: bool = True,
-        eps: float = 1e-12,
+        eps: float = 1e-6,
     ):
         super().__init__()
         if huber_delta <= 0:
@@ -134,27 +139,35 @@ class RelationalKD(nn.Module):
             )
 
         # Both potentials are quadratic in inner products, and half precision
-        # loses the small distances that carry the relations.
-        student = student.float()
-        teacher = teacher.float()
-        if self.normalize_student:
-            student = F.normalize(student, p=2, dim=-1, eps=self.eps)
+        # loses the small distances that carry the relations. Casting to fp32 is
+        # not enough on its own: autocast dispatches on the *operator*, so the
+        # matmul and the bmm below would be run in fp16 again on fp32 inputs.
+        # The whole potential is therefore computed with autocast switched off,
+        # the same way the H0 term builds its Gram matrix. Without this the
+        # zero diagonal of the distance matrix backpropagates as NaN -- the loss
+        # value still looks reasonable, and the grad scaler silently skips every
+        # step, so the student never leaves its initialisation.
+        with torch.autocast(device_type=student.device.type, enabled=False):
+            student = student.float()
+            teacher = teacher.float()
+            if self.normalize_student:
+                student = F.normalize(student, p=2, dim=-1, eps=self.eps)
 
-        loss_dist = (
-            self.distance_loss(student, teacher)
-            if self.w_dist != 0
-            else student.new_zeros(())
-        )
-        loss_angle = (
-            self.angle_loss(student, teacher)
-            if self.w_angle != 0
-            else student.new_zeros(())
-        )
+            loss_dist = (
+                self.distance_loss(student, teacher)
+                if self.w_dist != 0
+                else student.new_zeros(())
+            )
+            loss_angle = (
+                self.angle_loss(student, teacher)
+                if self.w_angle != 0
+                else student.new_zeros(())
+            )
 
-        total = self.w_dist * loss_dist + self.w_angle * loss_angle
-        reported = {"loss_dist": loss_dist, "loss_angle": loss_angle}
-        if task_loss is not None:
-            total = total + self.w_task * task_loss
-            reported["loss_task"] = task_loss
-        reported["loss_total"] = total
+            total = self.w_dist * loss_dist + self.w_angle * loss_angle
+            reported = {"loss_dist": loss_dist, "loss_angle": loss_angle}
+            if task_loss is not None:
+                total = total + self.w_task * task_loss.float()
+                reported["loss_task"] = task_loss
+            reported["loss_total"] = total
         return total, scalar_metrics(**reported)

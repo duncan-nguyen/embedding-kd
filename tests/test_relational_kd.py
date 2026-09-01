@@ -151,3 +151,58 @@ def test_an_all_identical_batch_has_no_relations_to_match():
 def test_batch_mismatch_is_rejected():
     with pytest.raises(ValueError, match="Batch mismatch"):
         RelationalKD()(_points(4, 8, seed=13).float(), _points(5, 16, seed=14).float())
+
+
+# -- the potentials must survive the training loop's autocast region -----------
+#
+# ``_train_step_rkd`` calls the criterion inside ``autocast("cuda")``. Autocast
+# dispatches on the operator, not on the dtype of its inputs, so the ``.float()``
+# in ``forward`` does not by itself keep the matmul and the bmm in fp32 -- and in
+# half precision the ``eps`` floor under the square root rounds to exactly zero,
+# which makes the derivative at the zero diagonal infinite. The loss *value*
+# barely changes when that happens, so nothing in a training log gives it away:
+# the grad scaler just skips every step and the student stays at its
+# initialisation. These tests pin the backward, not the forward.
+
+
+def _autocast_batch():
+    # Deliberately anisotropic, the way a pretrained encoder's CLS vectors are:
+    # every pair is nearly parallel, so the squared distances are small
+    # differences of inner products near 1 -- the regime half precision loses.
+    generator = torch.Generator().manual_seed(15)
+    direction = torch.randn(1, 64, generator=generator)
+    student = (
+        direction + 0.05 * torch.randn(12, 64, generator=generator)
+    ).requires_grad_(True)
+    teacher = F.normalize(torch.randn(12, 96, generator=generator), dim=-1)
+    return student, teacher
+
+
+def test_eps_still_floors_the_square_root_in_half_precision():
+    # 1e-12 is exactly 0.0 as an fp16 value, which turns the clamp into a no-op.
+    assert torch.tensor(RelationalKD().eps, dtype=torch.float16) > 0
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_gradients_stay_finite_inside_an_autocast_region(dtype):
+    student, teacher = _autocast_batch()
+
+    with torch.autocast("cpu", dtype=dtype):
+        loss, _ = RelationalKD(w_task=0.0)(student, teacher)
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert torch.isfinite(student.grad).all()
+    assert student.grad.abs().sum() > 0
+
+
+def test_autocast_does_not_change_the_potentials():
+    # The guard has to actually hold the computation in fp32, not merely avoid
+    # NaN: a reduced-precision Gram matrix would still report a plausible loss.
+    student, teacher = _autocast_batch()
+    reference, _ = RelationalKD(w_task=0.0)(student, teacher)
+
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        under_autocast, _ = RelationalKD(w_task=0.0)(student, teacher)
+
+    assert float(under_autocast) == pytest.approx(float(reference), rel=1e-6)

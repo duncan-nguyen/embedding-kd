@@ -11,7 +11,7 @@ class RKDConfig(BaseConfig):
     teacher_dtype = "bfloat16"
 
     student_special_token = "##"
-    teacher_special_token = "G"
+    teacher_special_token = "Ġ"
 
     # Park et al. (2019), Sec. 4: the two relational potentials are added to the
     # student's own loss with lambda_RKD-D = 25 and lambda_RKD-A = 50.
@@ -31,7 +31,10 @@ class RKDConfig(BaseConfig):
 
     # Temperature of the in-batch contrastive task loss.
     temperature = 0.1
-    eps_norm = 1e-12
+    # Floor under the square root of the pairwise distances. Larger than the
+    # 1e-12 the other methods use because this one has to stay a floor after a
+    # cast to half precision, where 1e-12 is exactly zero -- see RelationalKD.
+    eps_norm = 1e-6
 
     batch_size = 32
     epochs = 5

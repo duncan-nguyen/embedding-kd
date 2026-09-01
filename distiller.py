@@ -1687,8 +1687,12 @@ class KnowledgeDistiller:
             student_cls = self._pooled_forward(
                 batch_s["input_ids1_stu"], batch_s["attention_mask1_stu"]
             )
-            # The same in-batch contrastive term every other cached-teacher
-            # method carries, so this row differs from them by its KD term only.
+            # The same in-batch contrastive term the other cached-teacher
+            # methods carry, but not at the same strength: TALAS weights it
+            # 0.001 and GeoODE-KD reads it through lambda_ctr at temperature
+            # 0.05, against w_task=1.0 at temperature 0.1 here. The rows
+            # therefore differ by how much of the student's own objective is in
+            # the total, not by the KD term alone.
             second_cls = self._pooled_forward(
                 batch_s["input_ids2_stu"], batch_s["attention_mask2_stu"]
             )
