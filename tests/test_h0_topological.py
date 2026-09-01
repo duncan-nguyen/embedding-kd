@@ -16,6 +16,7 @@ from src.criterions.geoode_kd import GeoODEKD
 from src.criterions.h0_topological_loss import (
     H0TopologicalLoss,
     h0_death_times,
+    h0_loss_against_deaths,
     h0_topological_loss,
     mst_edge_weights,
     pairwise_distance,
@@ -148,3 +149,115 @@ def test_rejects_a_negative_weight_and_an_unknown_metric():
         GeoODEKD(lambda_topo=-1.0)
     with pytest.raises(ValueError):
         GeoODEKD(topo_metric="euclidean")
+
+
+# --------------------------------------------------------------------------- #
+# The MST that reads the diagram: same tree, taken off the kernel-launch path
+# --------------------------------------------------------------------------- #
+
+
+def _prim_reference(dist: torch.Tensor) -> torch.Tensor:
+    """The B-1 step torch loop the scipy selection replaced, kept as the oracle."""
+    B = dist.shape[0]
+    d_select = dist.detach()
+    in_tree = torch.zeros(B, dtype=torch.bool, device=dist.device)
+    in_tree[0] = True
+    min_cost = d_select[0].clone()
+    parent = torch.zeros(B, dtype=torch.long, device=dist.device)
+    min_cost[0] = float("inf")
+
+    edge_i, edge_j = [], []
+    for _ in range(B - 1):
+        candidate = min_cost.masked_fill(in_tree, float("inf"))
+        j = torch.argmin(candidate)
+        edge_i.append(parent[j])
+        edge_j.append(j)
+        in_tree[j] = True
+        better = (d_select[j] < min_cost) & (~in_tree)
+        min_cost = torch.where(better, d_select[j], min_cost)
+        parent = torch.where(better, j.expand_as(parent), parent)
+
+    return dist[torch.stack(edge_i), torch.stack(edge_j)]
+
+
+@pytest.mark.parametrize("metric", ["chord", "angular", "cosine"])
+@pytest.mark.parametrize("batch", [2, 3, 5, 17, 32])
+def test_the_scipy_mst_is_the_tree_the_prim_loop_found(metric, batch):
+    generator = torch.Generator().manual_seed(batch)
+    for _ in range(10):
+        dist = pairwise_distance(
+            torch.randn(batch, 8, generator=generator), metric=metric
+        )
+        assert torch.allclose(
+            torch.sort(mst_edge_weights(dist)).values,
+            torch.sort(_prim_reference(dist)).values,
+            atol=1e-6,
+        )
+
+
+@pytest.mark.parametrize("metric", ["chord", "angular", "cosine"])
+def test_duplicate_rows_still_agree(metric):
+    """A corpus repeats sentences, and equal texts cache to equal vectors, so a
+    batch really does contain rows at distance zero from each other -- the case
+    scipy would read as "no edge" if the weights were not shifted off zero first."""
+    generator = torch.Generator().manual_seed(7)
+    base = torch.randn(5, 8, generator=generator)
+    for _ in range(25):
+        rows = torch.randint(0, 5, (24,), generator=generator)
+        dist = pairwise_distance(base[rows], metric=metric)
+        assert torch.allclose(
+            torch.sort(mst_edge_weights(dist)).values,
+            torch.sort(_prim_reference(dist)).values,
+            atol=1e-6,
+        )
+
+
+@pytest.mark.parametrize("metric", ["chord", "angular", "cosine"])
+def test_the_distance_matrix_is_exactly_symmetric(metric):
+    """``sim[i, j]`` and ``sim[j, i]`` are one dot product summed in two orders, so
+    the matmul disagrees with itself in the last bit -- and at the clamp floor, where
+    near-identical rows land, that bit decides whether a distance is clamped. An
+    asymmetric matrix is not a metric graph: the tree it defines then depends on
+    which triangle the algorithm reads, which is exactly how the two MST routines
+    came to disagree on duplicate rows."""
+    generator = torch.Generator().manual_seed(11)
+    for rows in (2, 9, 33):
+        dist = pairwise_distance(torch.randn(rows, 8, generator=generator), metric=metric)
+        assert torch.equal(dist, dist.T)
+
+
+def test_the_mst_weights_stay_differentiable():
+    """Selecting the tree is detached; the weights it selects are not."""
+    embeddings = torch.randn(12, 8, requires_grad=True)
+    mst_edge_weights(pairwise_distance(embeddings, metric="chord")).sum().backward()
+
+    assert torch.isfinite(embeddings.grad).all()
+    assert embeddings.grad.abs().sum() > 0
+
+
+def test_a_precomputed_teacher_diagram_gives_the_same_loss():
+    """Where the teacher's diagram is built is a scheduling choice: it reads a
+    frozen cache under no_grad and depends on nothing the step computes."""
+    generator = torch.Generator().manual_seed(3)
+    student = torch.randn(16, 8, generator=generator, requires_grad=True)
+    teacher = torch.randn(16, 32, generator=generator)
+
+    joint = h0_topological_loss(student, teacher, metric="chord")
+    with torch.no_grad():
+        deaths = h0_death_times(teacher, metric="chord", sort=True)
+    split = h0_loss_against_deaths(student, deaths, metric="chord")
+
+    assert torch.allclose(joint, split, atol=1e-7)
+    joint.backward()
+    reference = student.grad.clone()
+    student.grad = None
+    split.backward()
+    assert torch.allclose(reference, student.grad, atol=1e-7)
+
+
+def test_a_diagram_from_a_different_batch_is_refused():
+    """B - 1 death times belong to the batch of B they were built from; a shape that
+    does not match means the collate and the step disagree about the batch."""
+    student = torch.randn(8, 4)
+    with pytest.raises(ValueError, match="death times"):
+        h0_loss_against_deaths(student, torch.zeros(5))

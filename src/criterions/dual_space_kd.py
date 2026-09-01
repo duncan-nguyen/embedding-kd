@@ -14,6 +14,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.metrics import scalar_metrics
+
 
 class DualSpaceKD(nn.Module):
     def __init__(
@@ -147,16 +149,16 @@ class DualSpaceKD(nn.Module):
         kd_all = kd_cls + kd_tok
         total_loss = (self.w_task * task_loss + self.alpha_dtw * kd_all).float()
         
-        metrics = {
-            'loss_total': float(total_loss.detach()),
-            'loss_task': float(task_loss.detach()),
-            'kd_cls': float(kd_cls.detach()),
-            'kd_s2t': float(kd_s2t.detach()),
-            'kd_t2s': float(kd_t2s.detach()),
-            'kd_tok': float(kd_tok.detach()),
-            'kd_tok_s1': float(kd_tok_s1.detach()),
-            'kd_tok_t1': float(kd_tok_t1.detach()),
-        }
+        metrics = scalar_metrics(
+            loss_total=total_loss,
+            loss_task=task_loss,
+            kd_cls=kd_cls,
+            kd_s2t=kd_s2t,
+            kd_t2s=kd_t2s,
+            kd_tok=kd_tok,
+            kd_tok_s1=kd_tok_s1,
+            kd_tok_t1=kd_tok_t1,
+        )
         
         return total_loss, metrics
 

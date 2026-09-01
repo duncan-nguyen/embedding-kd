@@ -13,6 +13,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.loss import pair_inbatch_similarity_loss
+from src.metrics import scalar_metrics
+
 
 class TeacherAnchorKD(nn.Module):
     def __init__(
@@ -115,11 +117,11 @@ class TeacherAnchorKD(nn.Module):
             self.w_kd * loss_kd +
             self.w_struct * loss_struct
         )
-        metrics = {
-            'loss_total': float(total_loss.detach()),
-            'loss_task': float(task_loss.detach()),
-            'loss_kd': float(loss_kd.detach()),
-            'loss_struct': float(loss_struct.detach()),
-        }
+        metrics = scalar_metrics(
+            loss_total=total_loss,
+            loss_task=task_loss,
+            loss_kd=loss_kd,
+            loss_struct=loss_struct,
+        )
 
         return total_loss, metrics

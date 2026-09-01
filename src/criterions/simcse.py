@@ -22,6 +22,7 @@ import torch
 from torch import nn
 
 from src.loss import info_nce
+from src.metrics import scalar_metrics
 
 
 class SimCSEOnly(nn.Module):
@@ -65,17 +66,15 @@ class SimCSEOnly(nn.Module):
                 cosine.shape[0], dtype=torch.bool, device=cosine.device
             )
             targets = torch.arange(cosine.shape[0], device=cosine.device)
-            metrics = {
-                "loss_total": float(loss.detach()),
+            metrics = scalar_metrics(
+                loss_total=loss,
                 # How often the positive view is the batch's nearest neighbour.
-                "inbatch_accuracy": float(
-                    (cosine.argmax(dim=-1) == targets).float().mean()
-                ),
-                "pos_cos": float(positive.mean()),
+                inbatch_accuracy=(cosine.argmax(dim=-1) == targets).float().mean(),
+                pos_cos=positive.mean(),
                 # Watches for representation collapse, which this objective is the
                 # one most exposed to: a negative cosine drifting towards pos_cos
                 # means the encoder stopped separating sentences at all.
-                "neg_cos": float(cosine[off_diagonal].mean()),
-            }
+                neg_cos=cosine[off_diagonal].mean(),
+            )
 
         return loss, metrics

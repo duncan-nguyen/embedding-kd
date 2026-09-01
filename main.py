@@ -18,386 +18,347 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Knowledge Distillation for Embeddings Model"
     )
-    
+
     parser.add_argument(
-        '--method',
+        "--method",
         type=str,
-        default='cdm',
-        choices=['cdm', 'dskd', 'emo', 'stella', 'talas', 'geoode', 'rkd', 'simcse'],
-        help='Distillation method to use'
+        default="cdm",
+        choices=["cdm", "dskd", "emo", "stella", "talas", "geoode", "rkd", "simcse"],
+        help="Distillation method to use",
     )
-    
+
     parser.add_argument(
-        '--train_data',
-        type=str,
+        "--train_data", type=str, default=None, help="Path to training data CSV file"
+    )
+    parser.add_argument(
+        "--eval_data", type=str, default=None, help="Path to evaluation data CSV file"
+    )
+
+    parser.add_argument(
+        "--student_model", type=str, default=None, help="Student model name or path"
+    )
+    parser.add_argument(
+        "--teacher_model", type=str, default=None, help="Teacher model name or path"
+    )
+    parser.add_argument(
+        "--teacher_pooling",
+        choices=["last_token", "mean", "cls"],
         default=None,
-        help='Path to training data CSV file'
+        help="Pooling of the teacher sentence vector: applied once at cache time by "
+        "talas/geoode/rkd and every step by cdm/dskd/emo/stella. Qwen3-Embedding "
+        "reads last_token, encoder teachers such as BGE-M3 read cls",
     )
     parser.add_argument(
-        '--eval_data',
-        type=str,
-        default=None,
-        help='Path to evaluation data CSV file'
-    )
-    
-    parser.add_argument(
-        '--student_model',
-        type=str,
-        default=None,
-        help='Student model name or path'
-    )
-    parser.add_argument(
-        '--teacher_model',
-        type=str,
-        default=None,
-        help='Teacher model name or path'
-    )
-    parser.add_argument(
-        '--teacher_pooling',
-        choices=['last_token', 'mean', 'cls'],
-        default=None,
-        help='Pooling of the teacher sentence vector: applied once at cache time by '
-             'talas/geoode/rkd and every step by cdm/dskd/emo/stella. Qwen3-Embedding '
-             'reads last_token, encoder teachers such as BGE-M3 read cls'
-    )
-    parser.add_argument(
-        '--teacher_special_token',
+        "--teacher_special_token",
         type=str,
         default=None,
-        help='Sub-word marker of the teacher tokenizer that the CDM token alignment '
-             'strips before comparing token strings ("Ġ" for Qwen3 byte-level BPE, '
-             '"▁" for SentencePiece teachers such as BGE-M3). EMO reads it as the '
-             'teacher BOS token string instead ("<s>")'
+        help="Sub-word marker of the teacher tokenizer that the CDM token alignment "
+        'strips before comparing token strings ("Ġ" for Qwen3 byte-level BPE, '
+        '"▁" for SentencePiece teachers such as BGE-M3). EMO reads it as the '
+        'teacher BOS token string instead ("<s>")',
     )
     parser.add_argument(
-        '--student_special_token',
+        "--student_special_token",
         type=str,
         default=None,
         help='Sub-word marker of the student tokenizer ("##" for WordPiece students; '
-             'EMO reads it as the student CLS token string, "[CLS]")'
+        'EMO reads it as the student CLS token string, "[CLS]")',
     )
-    
+
     parser.add_argument(
-        '--batch_size',
+        "--batch_size", type=int, default=None, help="Training batch size"
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=None, help="Number of training epochs"
+    )
+    parser.add_argument(
+        "--save_every",
         type=int,
         default=None,
-        help='Training batch size'
+        help="Save a periodic checkpoint every N epochs (must be positive)",
+    )
+    parser.add_argument("--lr", type=float, default=None, help="Learning rate")
+    parser.add_argument(
+        "--max_length", type=int, default=None, help="Maximum sequence length"
+    )
+
+    parser.add_argument("--w_task", type=float, default=None, help="Task loss weight")
+    parser.add_argument(
+        "--alpha_dtw", type=float, default=None, help="DTW KD loss weight"
     )
     parser.add_argument(
-        '--epochs',
-        type=int,
-        default=None,
-        help='Number of training epochs'
-    )
-    parser.add_argument(
-        '--save_every',
-        type=int,
-        default=None,
-        help='Save a periodic checkpoint every N epochs (must be positive)'
-    )
-    parser.add_argument(
-        '--lr',
+        "--lambda_end",
         type=float,
         default=None,
-        help='Learning rate'
+        help="GeoODE-KD: weight of the endpoint distillation loss",
     )
     parser.add_argument(
-        '--max_length',
-        type=int,
-        default=None,
-        help='Maximum sequence length'
-    )
-    
-    parser.add_argument(
-        '--w_task',
+        "--lambda_ctr",
         type=float,
         default=None,
-        help='Task loss weight'
+        help="GeoODE-KD: weight of the contrastive regularizer",
     )
     parser.add_argument(
-        '--alpha_dtw',
-        type=float,
-        default=None,
-        help='DTW KD loss weight'
-    )
-    parser.add_argument(
-        '--lambda_end',
-        type=float,
-        default=None,
-        help='GeoODE-KD: weight of the endpoint distillation loss'
-    )
-    parser.add_argument(
-        '--lambda_ctr',
-        type=float,
-        default=None,
-        help='GeoODE-KD: weight of the contrastive regularizer'
-    )
-    parser.add_argument(
-        '--endpoint_loss',
-        choices=['cosine', 'mse', 'procrustes'],
+        "--endpoint_loss",
+        choices=["cosine", "mse", "procrustes"],
         default=None,
         help='GeoODE-KD: form of the endpoint term. "cosine" is the recipe; "mse" is '
-             'the sentence-transformers <= v5.4 baseline (squared error between the '
-             'unnormalised student state and the projected, un-renormalised teacher '
-             'target; per-sample sum over dimensions, batch mean, so it is on the '
-             'scale of the cosine term). Combine with --lambda_ctr 0 --no-gauge_align '
-             'for the pure PCA + MSE recipe. '
-             '"procrustes" re-solves an orthogonal alignment of the batch every step '
-             '(per-step re-alignment control)'
+        "the sentence-transformers <= v5.4 baseline (squared error between the "
+        "unnormalised student state and the projected, un-renormalised teacher "
+        "target; per-sample sum over dimensions, batch mean, so it is on the "
+        "scale of the cosine term). Combine with --lambda_ctr 0 --no-gauge_align "
+        "for the pure PCA + MSE recipe. "
+        '"procrustes" re-solves an orthogonal alignment of the batch every step '
+        "(per-step re-alignment control)",
     )
     parser.add_argument(
-        '--lambda_gram',
+        "--lambda_gram",
         type=float,
         default=None,
-        help='GeoODE-KD: weight of a pairwise-similarity (Gram) term between student '
-             'and target batch Gram matrices. 0 is the recipe; > 0 is the "+ Gram" '
-             'control of the recipe ablation'
+        help="GeoODE-KD: weight of a pairwise-similarity (Gram) term between student "
+        'and target batch Gram matrices. 0 is the recipe; > 0 is the "+ Gram" '
+        "control of the recipe ablation",
     )
     parser.add_argument(
-        '--lambda_topo',
+        "--lambda_topo",
         type=float,
         default=None,
-        help='GeoODE-KD: weight of the H0 persistence term, matching the sorted '
-             'finite H0 death times (MST edge weights) of the student batch to those '
-             'of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ H0" '
-             'control. Death times are O(1), so sweep the weight over decades'
+        help="GeoODE-KD: weight of the H0 persistence term, matching the sorted "
+        "finite H0 death times (MST edge weights) of the student batch to those "
+        'of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ H0" '
+        "control. Death times are O(1), so sweep the weight over decades",
     )
     parser.add_argument(
-        '--topo_metric',
-        choices=['chord', 'angular', 'cosine'],
+        "--topo_metric",
+        choices=["chord", "angular", "cosine"],
         default=None,
-        help='GeoODE-KD: ground metric of the H0 diagram on the unit sphere -- '
-             '"chord" (Euclidean), "angular" (geodesic) or "cosine" (1 - cos)'
+        help="GeoODE-KD: ground metric of the H0 diagram on the unit sphere -- "
+        '"chord" (Euclidean), "angular" (geodesic) or "cosine" (1 - cos)',
     )
     parser.add_argument(
-        '--projection_type',
-        choices=['pca', 'random', 'random_gaussian', 'mrl_prefix', 'learned_t2s', 'learned_s2t'],
+        "--projection_type",
+        choices=[
+            "pca",
+            "random",
+            "random_gaussian",
+            "mrl_prefix",
+            "learned_t2s",
+            "learned_s2t",
+        ],
         default=None,
         help='GeoODE-KD: how the teacher targets reach the student dimension. "pca" '
-             'is the paper\'s frozen spectral map; "random" draws a Haar-random '
-             'orthonormal subspace and "random_gaussian" an unnormalised '
-             'Johnson-Lindenstrauss map -- the two data-independent controls for the '
-             'Eckart-Young claim; "mrl_prefix" keeps the teacher\'s leading '
-             'coordinates (the Matryoshka-prefix interface); "learned_t2s" and '
-             '"learned_s2t" replace the frozen map with a linear layer trained '
-             'alongside the student (teacher mapped down, or student mapped up into '
-             'the teacher space) -- the adaptive baselines'
+        'is the paper\'s frozen spectral map; "random" draws a Haar-random '
+        'orthonormal subspace and "random_gaussian" an unnormalised '
+        "Johnson-Lindenstrauss map -- the two data-independent controls for the "
+        'Eckart-Young claim; "mrl_prefix" keeps the teacher\'s leading '
+        'coordinates (the Matryoshka-prefix interface); "learned_t2s" and '
+        '"learned_s2t" replace the frozen map with a linear layer trained '
+        "alongside the student (teacher mapped down, or student mapped up into "
+        "the teacher space) -- the adaptive baselines",
     )
     parser.add_argument(
-        '--projection_seed',
+        "--projection_seed",
         type=int,
         default=None,
-        help='GeoODE-KD: draw index of the random teacher projection. Different '
-             'seeds are different draws of the same control, so their spread is the '
-             'null band the PCA map has to clear'
+        help="GeoODE-KD: draw index of the random teacher projection. Different "
+        "seeds are different draws of the same control, so their spread is the "
+        "null band the PCA map has to clear",
     )
     parser.add_argument(
-        '--learned_projector_lr_scale',
+        "--learned_projector_lr_scale",
         type=float,
         default=None,
-        help='GeoODE-KD: learning rate of a learned target map (--projection_type '
-             'learned_*) as a multiple of the student\'s. The learned arms are the '
-             'baselines the frozen map is measured against, so they get a sweep '
-             '(e.g. 1 and 5) rather than a single untuned setting'
+        help="GeoODE-KD: learning rate of a learned target map (--projection_type "
+        "learned_*) as a multiple of the student's. The learned arms are the "
+        "baselines the frozen map is measured against, so they get a sweep "
+        "(e.g. 1 and 5) rather than a single untuned setting",
     )
     parser.add_argument(
-        '--pca_center_fit',
+        "--pca_center_fit",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help='GeoODE-KD: centre the cache before the SVD that picks the directions. '
-             '--no-pca_center_fit is the uncentered-SVD ablation, in which the '
-             'teacher mean vector may itself be the first retained direction'
+        help="GeoODE-KD: centre the cache before the SVD that picks the directions. "
+        "--no-pca_center_fit is the uncentered-SVD ablation, in which the "
+        "teacher mean vector may itself be the first retained direction",
     )
     parser.add_argument(
-        '--pca_subtract_mean',
+        "--pca_subtract_mean",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help='GeoODE-KD: subtract the corpus mean before applying P_T (textbook PCA, '
-             'removes the common component of the teacher embeddings)'
+        help="GeoODE-KD: subtract the corpus mean before applying P_T (textbook PCA, "
+        "removes the common component of the teacher embeddings)",
     )
     parser.add_argument(
-        '--gauge_align',
+        "--gauge_align",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help='GeoODE-KD: Procrustes-align the PCA target coordinates to the untrained '
-             'student (P_T = P_PCA R). --no-gauge_align is the ablation'
+        help="GeoODE-KD: Procrustes-align the PCA target coordinates to the untrained "
+        "student (P_T = P_PCA R). --no-gauge_align is the ablation",
     )
     parser.add_argument(
-        '--gauge_rotation',
-        choices=['procrustes', 'random', 'interpolate', 'rank_one'],
+        "--gauge_rotation",
+        choices=["procrustes", "random", "interpolate", "rank_one"],
         default=None,
         help='GeoODE-KD: which rotation --gauge_align applies. "procrustes" is the '
-             'informative gauge fitted to the student init; "random" is a '
-             'Haar-random rotation of identical cost, the control that separates '
-             '"the right orientation" from "an orientation"; "interpolate" is the '
-             'geodesic point --gauge_theta of the way from the Procrustes gauge to the '
-             'random one; "rank_one" is the Householder map aligning only the two '
-             'mean directions'
+        'informative gauge fitted to the student init; "random" is a '
+        "Haar-random rotation of identical cost, the control that separates "
+        '"the right orientation" from "an orientation"; "interpolate" is the '
+        "geodesic point --gauge_theta of the way from the Procrustes gauge to the "
+        'random one; "rank_one" is the Householder map aligning only the two '
+        "mean directions",
     )
     parser.add_argument(
-        '--gauge_theta',
+        "--gauge_theta",
         type=float,
         default=None,
-        help='GeoODE-KD: theta in [0, 1] for --gauge_rotation interpolate '
-             '(0 = Procrustes, 1 = random)'
+        help="GeoODE-KD: theta in [0, 1] for --gauge_rotation interpolate "
+        "(0 = Procrustes, 1 = random)",
     )
     parser.add_argument(
-        '--gauge_random_seed',
+        "--gauge_random_seed",
         type=int,
         default=None,
-        help='GeoODE-KD: draw index of the random gauge rotation Q'
+        help="GeoODE-KD: draw index of the random gauge rotation Q",
     )
     parser.add_argument(
-        '--gauge_refit_every',
+        "--gauge_refit_every",
         type=int,
         default=None,
-        help='GeoODE-KD: re-estimate the gauge R against the current student every N '
-             'epochs (0 = keep the initial gauge)'
+        help="GeoODE-KD: re-estimate the gauge R against the current student every N "
+        "epochs (0 = keep the initial gauge)",
     )
     parser.add_argument(
-        '--w_dist',
+        "--w_dist",
         type=float,
         default=None,
-        help='RKD: weight of the distance-wise relational loss (lambda_RKD-D)'
+        help="RKD: weight of the distance-wise relational loss (lambda_RKD-D)",
     )
     parser.add_argument(
-        '--w_angle',
+        "--w_angle",
         type=float,
         default=None,
-        help='RKD: weight of the angle-wise relational loss (lambda_RKD-A)'
+        help="RKD: weight of the angle-wise relational loss (lambda_RKD-A)",
     )
     parser.add_argument(
-        '--normalize_student',
+        "--normalize_student",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help='RKD: L2-normalise the student embeddings before measuring relations, '
-             'so they are compared on the same sphere as the normalised teacher '
-             'cache. --no-normalize_student is the raw-Euclidean ablation'
+        help="RKD: L2-normalise the student embeddings before measuring relations, "
+        "so they are compared on the same sphere as the normalised teacher "
+        "cache. --no-normalize_student is the raw-Euclidean ablation",
     )
     parser.add_argument(
-        '--simcse_view',
-        choices=['dropout', 'pair'],
+        "--simcse_view",
+        choices=["dropout", "pair"],
         default=None,
         help='SimCSE-only: positive view. "dropout" encodes the same sentence twice '
-             '(unsupervised SimCSE); "pair" uses the paired sentence of the row'
+        '(unsupervised SimCSE); "pair" uses the paired sentence of the row',
     )
     parser.add_argument(
-        '--student_pooling',
-        choices=['cls', 'mean'],
+        "--student_pooling",
+        choices=["cls", "mean"],
         default=None,
-        help='GeoODE-KD/RKD/SimCSE: pooling of the student sentence vector '
-             '(GeoODE-KD applies it at every layer)'
+        help="GeoODE-KD/RKD/SimCSE: pooling of the student sentence vector "
+        "(GeoODE-KD applies it at every layer)",
     )
     parser.add_argument(
-        '--evaluate_test_each_epoch',
-        action='store_true',
+        "--evaluate_test_each_epoch",
+        action="store_true",
         help=(
-            'Evaluate the test split after every eval_every epochs instead of the '
-            'validation split, and skip validation entirely. Requires '
-            '--pair_threshold_source test; no reported number is held out'
-        )
+            "Evaluate the test split after every eval_every epochs instead of the "
+            "validation split, and skip validation entirely. Requires "
+            "--pair_threshold_source test; no reported number is held out"
+        ),
     )
     parser.add_argument(
-        '--pair_threshold_source',
-        choices=['validation', 'test'],
+        "--pair_threshold_source",
+        choices=["validation", "test"],
         default=None,
         help=(
-            'Split used to sweep the pair-classification threshold before the final '
+            "Split used to sweep the pair-classification threshold before the final "
             'test evaluation. "test" calibrates on the test split itself, so its pair '
-            'accuracy/F1 are an upper bound, not a held-out score'
-        )
+            "accuracy/F1 are an upper bound, not a held-out score"
+        ),
     )
     parser.add_argument(
-        '--no_eval_retrieval',
-        action='store_true',
-        help='Skip the ArguAna/FiQA/SCIDOCS nDCG@10 pass in the final test '
-             'evaluation (it embeds ~92k documents)'
+        "--no_eval_retrieval",
+        action="store_true",
+        help="Skip the ArguAna/FiQA/SCIDOCS nDCG@10 pass in the final test "
+        "evaluation (it embeds ~92k documents)",
     )
     parser.add_argument(
-        '--eval_every',
+        "--eval_every",
         type=int,
         default=None,
-        help='Run the per-epoch evaluation every N epochs (0 disables it; only the final test '
-             'evaluation runs, preceded by one validation pass when the pair thresholds '
-             'are calibrated on validation)'
+        help="Run the per-epoch evaluation every N epochs (0 disables it; only the final test "
+        "evaluation runs, preceded by one validation pass when the pair thresholds "
+        "are calibrated on validation)",
     )
     parser.add_argument(
-        '--task_type',
-        choices=['single_cls', 'pair_cls', 'pair_reg'],
+        "--task_type",
+        choices=["single_cls", "pair_cls", "pair_reg"],
         default=None,
-        help='Training task contract'
+        help="Training task contract",
     )
-    
+
     parser.add_argument(
-        '--save_dir',
+        "--save_dir", type=str, default=None, help="Directory to save checkpoints"
+    )
+    parser.add_argument(
+        "--weights_dir",
         type=str,
         default=None,
-        help='Directory to save checkpoints'
+        help="Optional durable directory for per-epoch student weights",
     )
     parser.add_argument(
-        '--weights_dir',
+        "--cache_dir",
         type=str,
         default=None,
-        help='Optional durable directory for per-epoch student weights'
+        help="Shared directory for cached teacher embeddings (talas/geoode/rkd). The "
+        "filename is derived from the teacher, pooling, max_length and the "
+        "corpus contents, so runs of the same pair reuse one cache and runs of "
+        "different pairs never collide. Overrides --cache_path",
     )
     parser.add_argument(
-        '--cache_dir',
-        type=str,
+        "--cache_path", type=str, default=None, help="Teacher embedding cache path"
+    )
+
+    parser.add_argument(
+        "--fused_views",
+        action=argparse.BooleanOptionalAction,
         default=None,
-        help='Shared directory for cached teacher embeddings (talas/geoode/rkd). The '
-             'filename is derived from the teacher, pooling, max_length and the '
-             'corpus contents, so runs of the same pair reuse one cache and runs of '
-             'different pairs never collide. Overrides --cache_path'
+        help="Encode both dropout views in one forward over the doubled batch "
+        "(default). --no-fused_views keeps the two-pass order, which is what runs "
+        "recorded before this flag existed used",
     )
     parser.add_argument(
-        '--cache_path',
-        type=str,
-        default=None,
-        help='Teacher embedding cache path'
-    )
-    
-    parser.add_argument(
-        '--seed',
+        "--cache_batch_size",
         type=int,
         default=None,
-        help='Random seed'
+        help="Batch size of the one-off teacher caching pass (0 = use --batch_size)",
+    )
+    parser.add_argument("--seed", type=int, default=None, help="Random seed")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument(
+        "--num_workers", type=int, default=None, help="Number of dataloader workers"
     )
     parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable debug mode'
+        "--no_wandb", action="store_true", help="Disable Weights & Biases logging"
     )
     parser.add_argument(
-        '--num_workers',
-        type=int,
-        default=None,
-        help='Number of dataloader workers'
+        "--wandb_project", type=str, default=None, help="Weights & Biases project name"
     )
     parser.add_argument(
-        '--no_wandb',
-        action='store_true',
-        help='Disable Weights & Biases logging'
+        "--wandb_run_name", type=str, default=None, help="Weights & Biases run name"
     )
     parser.add_argument(
-        '--wandb_project',
+        "--wandb_mode",
         type=str,
         default=None,
-        help='Weights & Biases project name'
+        choices=["online", "offline", "disabled"],
+        help="Weights & Biases mode",
     )
-    parser.add_argument(
-        '--wandb_run_name',
-        type=str,
-        default=None,
-        help='Weights & Biases run name'
-    )
-    parser.add_argument(
-        '--wandb_mode',
-        type=str,
-        default=None,
-        choices=['online', 'offline', 'disabled'],
-        help='Weights & Biases mode'
-    )
-    
+
     return parser.parse_args()
 
 
@@ -425,6 +386,8 @@ COMMON_FLAGS = {
     "weights_dir": "weights_dir",
     "cache_path": "cache_path",
     "cache_dir": "cache_dir",
+    "cache_batch_size": "cache_batch_size",
+    "fused_views": "fused_views",
     "seed": "seed",
     "num_workers": "num_workers",
     "wandb_project": "wandb_project",
@@ -543,5 +506,5 @@ def main():
         distiller.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

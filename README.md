@@ -301,6 +301,14 @@ Colab, a directory in the mounted Drive) and every later run of the same pair â€
 the other cached methods, the ablation grid, a rerun tomorrow â€” skips the teacher
 entirely. `--cache_path` still names one file directly when you want that.
 
+The pass that builds a cache is forward-only, so it is sized apart from training:
+`--cache_batch_size` (default 128) is what the teacher encodes at a time, and
+`--batch_size` stays the student's. Batches are formed over length-sorted rows
+rather than in corpus order, which on `train_150k` is 2.1x (batch 32) to 2.5x
+(batch 128) fewer padded tokens for the teacher to attend over; the cache is still
+written back in corpus order, so row *i* is the embedding of row *i*. Drop
+`--cache_batch_size` to 0 to fall back to the training batch size on a small card.
+
 ## Rebuilding Caches
 
 Each file records the teacher name, pooling, normalisation, `max_length` and a

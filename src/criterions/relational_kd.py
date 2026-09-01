@@ -25,6 +25,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from src.metrics import scalar_metrics
+
 
 class RelationalKD(nn.Module):
     """Distance-wise plus angle-wise relational distillation (Eq. 8).
@@ -150,12 +152,9 @@ class RelationalKD(nn.Module):
         )
 
         total = self.w_dist * loss_dist + self.w_angle * loss_angle
-        metrics = {
-            "loss_dist": float(loss_dist.detach()),
-            "loss_angle": float(loss_angle.detach()),
-        }
+        reported = {"loss_dist": loss_dist, "loss_angle": loss_angle}
         if task_loss is not None:
             total = total + self.w_task * task_loss
-            metrics["loss_task"] = float(task_loss.detach())
-        metrics["loss_total"] = float(total.detach())
-        return total, metrics
+            reported["loss_task"] = task_loss
+        reported["loss_total"] = total
+        return total, scalar_metrics(**reported)

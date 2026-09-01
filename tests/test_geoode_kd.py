@@ -320,3 +320,132 @@ def test_projection_can_skip_the_final_renormalisation():
     assert torch.allclose(raw, teacher @ projection)
     assert torch.allclose(unit, torch.nn.functional.normalize(raw, dim=-1))
     assert (raw.norm(dim=-1) <= 1.0 + 1e-6).all()
+
+
+# --------------------------------------------------------------------------- #
+# Reading only the depths the objective uses, and the diagram built elsewhere
+# --------------------------------------------------------------------------- #
+
+
+def _hidden_stack(layers: int, batch: int = 4, tokens: int = 5, dim: int = 8, seed: int = 5):
+    generator = torch.Generator().manual_seed(seed)
+    return [
+        torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)
+    ]
+
+
+@pytest.mark.parametrize("layers", [1, 2, 6, 12])
+@pytest.mark.parametrize("pooling", ["cls", "mean"])
+@pytest.mark.parametrize("include_embedding_layer", [False, True])
+def test_endpoint_states_are_the_two_ends_of_layer_states(
+    layers, pooling, include_embedding_layer
+):
+    """Every loss term reads Z^(L) and cos_first reads Z^(1); the L-2 depths in
+    between were pooled and normalised only to be dropped."""
+    criterion = _criterion(
+        pooling=pooling, include_embedding_layer=include_embedding_layer
+    )
+    hidden_states = _hidden_stack(layers)
+    mask = torch.ones(4, 5, dtype=torch.long)
+    mask[1, 3:] = 0
+
+    full = criterion.layer_states(hidden_states, mask)
+    endpoints = criterion.endpoint_states(hidden_states, mask)
+
+    assert torch.equal(endpoints[0], full[0])
+    assert torch.equal(endpoints[-1], full[-1])
+    assert len(endpoints) == (1 if len(full) == 1 else 2)
+
+
+def test_endpoint_states_on_a_single_depth_is_one_state():
+    """With one supervised depth ``states[0]`` and ``states[-1]`` are the same
+    state, exactly as they were when every depth was pooled."""
+    criterion = _criterion()
+    endpoints = criterion.endpoint_states([torch.randn(3, 4, 8)], None)
+
+    assert len(endpoints) == 1
+    assert endpoints[0] is endpoints[-1]
+
+
+def test_the_forward_reads_the_shallow_depth_for_cos_first():
+    """cos_first has to keep meaning the first supervised depth, not the last."""
+    criterion = _criterion(lambda_ctr=0.0)
+    hidden_states = _hidden_stack(6)
+    teacher = torch.nn.functional.normalize(torch.randn(4, 8), dim=-1)
+
+    _, metrics = criterion(hidden_states=hidden_states, teacher=teacher)
+    states = criterion.layer_states(hidden_states, None)
+    normalised_teacher = criterion.normalize(teacher)
+
+    assert metrics["cos_first"] == pytest.approx(
+        float((states[0] * normalised_teacher).sum(dim=-1).mean()), abs=1e-6
+    )
+    assert metrics["cos_final"] == pytest.approx(
+        float((states[-1] * normalised_teacher).sum(dim=-1).mean()), abs=1e-6
+    )
+    assert metrics["cos_first"] != pytest.approx(metrics["cos_final"], abs=1e-6)
+
+
+def test_a_learned_projector_still_sees_both_endpoints():
+    """The s2t baseline maps every state it is given into the teacher space; it has
+    to be handed the shallow one too or cos_first reports an unmapped vector."""
+    from src.target_projector import LearnedTargetProjector
+
+    projector = LearnedTargetProjector(teacher_dim=16, student_dim=8, direction="s2t")
+    criterion = _criterion(lambda_ctr=0.0, target_projector=projector)
+    hidden_states = _hidden_stack(6)
+    teacher = torch.nn.functional.normalize(torch.randn(4, 16), dim=-1)
+
+    total, metrics = criterion(hidden_states=hidden_states, teacher=teacher)
+
+    assert torch.isfinite(total)
+    assert abs(metrics["cos_first"]) <= 1.0 and abs(metrics["cos_final"]) <= 1.0
+
+
+def test_a_precomputed_teacher_diagram_matches_computing_it_in_the_step():
+    """The H0 term's teacher side is a constant read from a frozen cache, so the
+    collate may build it in a worker instead of the GPU building it mid-step."""
+    from src.criterions.h0_topological_loss import h0_death_times
+
+    criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0, lambda_topo=0.5)
+    hidden_states = _hidden_stack(4)
+    teacher = torch.nn.functional.normalize(torch.randn(4, 8), dim=-1)
+    teacher_topo = torch.randn(4, 32)
+
+    in_step, in_step_metrics = criterion(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    with torch.no_grad():
+        deaths = h0_death_times(teacher_topo, metric="chord", sort=True)
+    precomputed, precomputed_metrics = criterion(
+        hidden_states=hidden_states, teacher=teacher, teacher_deaths=deaths
+    )
+
+    assert float(in_step) == pytest.approx(float(precomputed), abs=1e-7)
+    assert in_step_metrics["loss_topo"] == pytest.approx(
+        precomputed_metrics["loss_topo"], abs=1e-7
+    )
+    assert precomputed_metrics["loss_topo"] > 0.0
+
+
+def test_a_precomputed_diagram_wins_over_the_raw_cache():
+    """Given both, the reduced one is what the raw one would have been reduced to,
+    so it is read and the raw copy is ignored rather than recomputed."""
+    from src.criterions.h0_topological_loss import h0_death_times
+
+    criterion = _criterion(lambda_end=0.0, lambda_ctr=0.0, lambda_topo=1.0)
+    hidden_states = _hidden_stack(4)
+    teacher = torch.nn.functional.normalize(torch.randn(4, 8), dim=-1)
+    topo = torch.randn(4, 32)
+
+    _, metrics = criterion(
+        hidden_states=hidden_states,
+        teacher=teacher,
+        teacher_topo=torch.zeros(4, 32),  # would give a different diagram
+        teacher_deaths=h0_death_times(topo, metric="chord", sort=True),
+    )
+    _, reference = criterion(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=topo
+    )
+
+    assert metrics["loss_topo"] == pytest.approx(reference["loss_topo"], abs=1e-7)

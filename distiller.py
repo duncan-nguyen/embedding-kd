@@ -60,7 +60,6 @@ from src.data_utils.dataset_cache import (
     DualTokenizerCollateWithTeacher,
     TextPairWithTeacher,
 )
-
 from src.evaluation.evaluation_automodel import (
     eval_classification_task,
     eval_cls_tasks,
@@ -154,6 +153,78 @@ def grads_are_finite(optim) -> bool:
                 current if finite_status is None else finite_status & current
             )
     return finite_status is None or bool(finite_status.item())
+
+
+class StepTimer:
+    """Per-step duration measured on the CUDA stream instead of by stalling on it.
+
+    The straightforward way to time a step -- ``synchronize(); t0 = perf_counter();
+    step(); synchronize()`` -- measures the right thing and costs the pipeline the
+    very overlap it is there to report. Both synchronisations drain the whole queued
+    backlog, so while they run the DataLoader cannot prefetch, the next batch cannot
+    start its host-to-device copy, and the CPU cannot enqueue anything: on a small
+    student the step is a few milliseconds and the stall is a visible fraction of it.
+
+    A pair of CUDA events records the same interval as timestamps *inside* the
+    stream, so the gap they measure still includes any time the GPU spent idle
+    waiting for the CPU. The reading is simply taken later: each iteration collects
+    whichever earlier steps have since completed (``query()`` never blocks), and
+    :meth:`finish` drains the rest at the end of the epoch, where one
+    synchronisation costs nothing. Durations come back in step order either way.
+
+    Events are recorded on the current device. For the methods that run a teacher on
+    a second GPU the teacher's kernels are enqueued from the same host thread and
+    the student's work depends on their output, so they serialise into this interval
+    rather than hiding from it.
+    """
+
+    def __init__(self) -> None:
+        self.cuda = torch.cuda.is_available()
+        self._pending: deque = deque()
+        self._seconds: list[float] = []
+        self._read = 0
+        self._start = None
+
+    def start(self) -> None:
+        if self.cuda:
+            self._start = torch.cuda.Event(enable_timing=True)
+            self._start.record()
+        else:
+            self._start = time.perf_counter()
+
+    def stop(self) -> None:
+        if self._start is None:
+            raise RuntimeError("StepTimer.stop() without a matching start()")
+        if self.cuda:
+            end = torch.cuda.Event(enable_timing=True)
+            end.record()
+            self._pending.append((self._start, end))
+            self._collect()
+        else:
+            self._seconds.append(time.perf_counter() - self._start)
+        self._start = None
+
+    def _collect(self, block: bool = False) -> None:
+        while self._pending:
+            start, end = self._pending[0]
+            # query() is a non-blocking "has the GPU reached this marker yet".
+            if not block and not end.query():
+                break
+            end.synchronize()
+            self._seconds.append(start.elapsed_time(end) / 1000.0)
+            self._pending.popleft()
+
+    def take_new(self) -> list[float]:
+        """Durations that have completed since the last call, in step order."""
+        fresh = self._seconds[self._read :]
+        self._read = len(self._seconds)
+        return fresh
+
+    def finish(self) -> list[float]:
+        """Every step's duration, waiting for the stragglers. One synchronisation."""
+        self._collect(block=True)
+        self._read = len(self._seconds)
+        return self._seconds
 
 
 class KnowledgeDistiller:
@@ -451,7 +522,9 @@ class KnowledgeDistiller:
             trust_remote_code=True,
         )
         try:
-            return self._embedding_dim_of(teacher_config, self.config.teacher_model_name)
+            return self._embedding_dim_of(
+                teacher_config, self.config.teacher_model_name
+            )
         except ValueError as error:
             raise ValueError(f"{error}; set output_dim1 to it manually.") from error
 
@@ -705,21 +778,15 @@ class KnowledgeDistiller:
 
         print("Cache not found. Pre-computing teacher embeddings...")
         os.makedirs(cache_path.parent, exist_ok=True)
-        cache_loader = DataLoader(
-            TextPairRaw(df, cfg.task_type),
-            batch_size=cfg.batch_size,
-            shuffle=False,  # row i of the cache must stay row i of the corpus
-            collate_fn=DualTokenizerCollate(
-                self.tok_student, self.tok_teacher, cfg.task_type, cfg.max_length
-            ),
-            pin_memory=True,
-            num_workers=cfg.num_workers,
-            persistent_workers=cfg.num_workers > 0,
-        )
         teacher_cls = cache_teacher_embeddings(
             model_teacher=self.model_teacher,
-            dataloader=cache_loader,
+            texts=self._cache_texts(df),
+            tokenizer=self.tok_teacher,
             device=self.device_t,
+            max_length=int(cfg.max_length),
+            # Forward-only and under inference mode, so the batch that fits is much
+            # larger than the training batch, which is what cfg.batch_size sizes.
+            batch_size=self._cache_batch_size(),
             pooling_method=cfg.pooling_method,
             normalize=cfg.normalize_cache,
             dtype=torch.float32 if cfg.cache_dtype == "float32" else torch.float16,
@@ -736,6 +803,39 @@ class KnowledgeDistiller:
         print(f"Cached {len(teacher_cls)} teacher embeddings to {cache_path}")
         self._check_cache_rows(teacher_cls, df, cache_path)
         return teacher_cls
+
+    @staticmethod
+    def _cache_texts(df: pd.DataFrame) -> list[str]:
+        """The one string per corpus row that the teacher cache is built from.
+
+        The cached methods supervise the student on the embedding of the row's
+        *first* text, so that is the only column the teacher ever has to encode --
+        for a one-column corpus read as a degenerate pair, the second column is a
+        copy of it anyway.
+        """
+        if "premise" in df.columns:
+            column = "premise"
+        elif "sentence1" in df.columns:
+            column = "sentence1"
+        elif "text" in df.columns:
+            column = "text"
+        else:
+            raise ValueError(
+                "training data needs a 'premise', 'sentence1' or 'text' column to "
+                f"build a teacher cache from; got {list(df.columns)}"
+            )
+        return df[column].astype(str).tolist()
+
+    def _cache_batch_size(self) -> int:
+        """Batch size of the teacher pass, which is not the training batch size.
+
+        Nothing in this pass is kept for backward, so it fits a far larger batch
+        than training does, and the batches are length-sorted so all but the last
+        few are short. ``cache_batch_size = 0`` falls back to the training batch
+        size for anyone who needs the old behaviour on a small card.
+        """
+        configured = int(getattr(self.config, "cache_batch_size", 0) or 0)
+        return configured if configured > 0 else int(self.config.batch_size)
 
     @staticmethod
     def _check_cache_rows(
@@ -763,7 +863,9 @@ class KnowledgeDistiller:
                 # The H0 term compares point-cloud shapes, so it needs no shared
                 # basis and reads the teacher *before* P_T narrows it to d_S --
                 # the one supervision signal in the run that P_T cannot colour.
-                teacher_topo_list = teacher_cls_list.clone().contiguous().share_memory_()
+                teacher_topo_list = (
+                    teacher_cls_list.clone().contiguous().share_memory_()
+                )
             teacher_cls_list = self._project_teacher_targets(
                 teacher_cls_list, df["premise"].astype(str).tolist()
             )
@@ -782,8 +884,37 @@ class KnowledgeDistiller:
             df, cfg.task_type, teacher_cls_list, teacher_topo_list
         )
         self.collate_fn = DualTokenizerCollateWithTeacher(
-            self.tok_student, cfg.task_type, cfg.max_length
+            self.tok_student,
+            cfg.task_type,
+            cfg.max_length,
+            need_second_text=self._needs_second_text(),
+            # Only the token-level methods (cdm, dskd) align token strings, and none
+            # of them reads a teacher cache.
+            need_special_tokens_mask=False,
+            topo_metric=(
+                getattr(cfg, "topo_metric", "chord")
+                if teacher_topo_list is not None
+                else None
+            ),
         )
+
+    def _needs_second_text(self) -> bool:
+        """Whether the second sentence of each row is read at all this run.
+
+        Tokenising it, padding it, stacking it and copying it to the GPU is a per
+        step cost, so it is worth knowing that GeoODE's default contrastive view --
+        two dropout passes over the *first* sentence -- never touches it. TALAS and
+        RKD do: their in-batch contrastive term takes the paired sentence as the
+        positive.
+        """
+        cfg = self.config
+        if cfg.task_type == "single_cls":
+            return False
+        if cfg.distill_method != "geoode":
+            return True
+        if float(getattr(cfg, "lambda_ctr", 0.0) or 0.0) <= 0.0:
+            return False
+        return getattr(cfg, "contrastive_view", "dropout") == "pair"
 
     def _resolve_cache_path(self, digest: str) -> Path:
         """Where this run's teacher cache lives.
@@ -1130,9 +1261,7 @@ class KnowledgeDistiller:
             optimizer_parameters = list(self.model_student.parameters())
             if self.task_head is not None:
                 optimizer_parameters.extend(self.task_head.parameters())
-            param_groups = [
-                {"params": optimizer_parameters, "lr": cfg.learning_rate}
-            ]
+            param_groups = [{"params": optimizer_parameters, "lr": cfg.learning_rate}]
 
             # CDM maps the student CLS into the teacher space. The projection is
             # built here rather than on the first step because a param group added
@@ -1185,6 +1314,56 @@ class KnowledgeDistiller:
             return_dict=True,
         )
         return self._pool_student(out.last_hidden_state, attention_mask)
+
+    def _dropout_pair_forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        *,
+        hidden_states: bool,
+    ):
+        """Both dropout views of one batch, in a single forward over ``2B`` rows.
+
+        A "dropout view" is the same sentence encoded again: the two passes differ
+        only by the dropout masks they draw. Stacking the batch on itself draws an
+        independent mask per row exactly as two passes do -- dropout is sampled
+        per element, not per call -- so the pair is the same pair, at one kernel
+        launch per operation instead of two and at a batch size that keeps a small
+        student's matmuls out of the launch-bound regime.
+
+        What it is not is bit-identical to two passes: one RNG draw of ``2B`` masks
+        consumes the generator differently from two draws of ``B``. The trajectory
+        of a seeded run therefore changes, which is why ``--no-fused_views`` exists
+        for reproducing numbers collected before it.
+
+        Returns ``(output, second_view)`` where ``output`` holds the *first* view's
+        states, sliced back to ``B`` rows, and ``second_view`` is the second view's
+        pooled (unnormalised) final state.
+        """
+        rows = input_ids.shape[0]
+        out = self.model_student(
+            input_ids=torch.cat([input_ids, input_ids], dim=0),
+            attention_mask=torch.cat([attention_mask, attention_mask], dim=0),
+            output_hidden_states=hidden_states,
+            return_dict=True,
+        )
+        first = SimpleNamespace(
+            last_hidden_state=out.last_hidden_state[:rows],
+            hidden_states=(
+                tuple(state[:rows] for state in out.hidden_states)
+                if hidden_states
+                else None
+            ),
+        )
+        second_view = self._pool_student(out.last_hidden_state[rows:], attention_mask)
+        return first, second_view
+
+    def _fuses_dropout_views(self, view_setting: str) -> bool:
+        """Whether the two views of this step are the same input under dropout."""
+        return (
+            bool(getattr(self.config, "fused_views", True))
+            and view_setting == "dropout"
+        )
 
     @staticmethod
     def _view_inputs(
@@ -1446,27 +1625,34 @@ class KnowledgeDistiller:
 
     def _train_step_geoode(self, batch: dict) -> tuple[torch.Tensor, dict]:
         cfg = self.config
-        batch_s = self._student_batch(batch, extra=("teacher_cls", "teacher_topo"))
+        batch_s = self._student_batch(
+            batch, extra=("teacher_cls", "teacher_topo", "teacher_deaths")
+        )
         self.optimizer.zero_grad(set_to_none=True)
 
         with autocast("cuda", enabled=torch.cuda.is_available()):
             attention_mask = batch_s["attention_mask1_stu"]
-            s_out = self.model_student(
-                input_ids=batch_s["input_ids1_stu"],
-                attention_mask=attention_mask,
-                output_hidden_states=True,
-                return_dict=True,
-            )
 
             # Eq. (37) needs a second view of the *same* sentence. The default
             # runs the encoder twice so the two views differ only by dropout;
             # "pair" instead reuses the paired sentence already in the batch.
             second_view = None
-            if cfg.lambda_ctr > 0:
-                view_ids, view_mask = self._view_inputs(
-                    batch_s, cfg.contrastive_view, "contrastive_view"
+            if cfg.lambda_ctr > 0 and self._fuses_dropout_views(cfg.contrastive_view):
+                s_out, second_view = self._dropout_pair_forward(
+                    batch_s["input_ids1_stu"], attention_mask, hidden_states=True
                 )
-                second_view = self._pooled_forward(view_ids, view_mask)
+            else:
+                s_out = self.model_student(
+                    input_ids=batch_s["input_ids1_stu"],
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
+                    return_dict=True,
+                )
+                if cfg.lambda_ctr > 0:
+                    view_ids, view_mask = self._view_inputs(
+                        batch_s, cfg.contrastive_view, "contrastive_view"
+                    )
+                    second_view = self._pooled_forward(view_ids, view_mask)
 
             loss, metrics = self.criterion(
                 hidden_states=s_out.hidden_states,
@@ -1474,6 +1660,7 @@ class KnowledgeDistiller:
                 attention_mask=attention_mask,
                 second_view=second_view,
                 teacher_topo=batch_s.get("teacher_topo"),
+                teacher_deaths=batch_s.get("teacher_deaths"),
             )
             loss = loss.float()
 
@@ -1510,13 +1697,25 @@ class KnowledgeDistiller:
         cfg = self.config
         batch_s = self._student_batch(batch)
         self.optimizer.zero_grad(set_to_none=True)
-        view_ids, view_mask = self._view_inputs(batch_s, cfg.simcse_view, "simcse_view")
 
         with autocast("cuda", enabled=torch.cuda.is_available()):
-            view1 = self._pooled_forward(
-                batch_s["input_ids1_stu"], batch_s["attention_mask1_stu"]
-            )
-            view2 = self._pooled_forward(view_ids, view_mask)
+            if self._fuses_dropout_views(cfg.simcse_view):
+                out, view2 = self._dropout_pair_forward(
+                    batch_s["input_ids1_stu"],
+                    batch_s["attention_mask1_stu"],
+                    hidden_states=False,
+                )
+                view1 = self._pool_student(
+                    out.last_hidden_state, batch_s["attention_mask1_stu"]
+                )
+            else:
+                view_ids, view_mask = self._view_inputs(
+                    batch_s, cfg.simcse_view, "simcse_view"
+                )
+                view1 = self._pooled_forward(
+                    batch_s["input_ids1_stu"], batch_s["attention_mask1_stu"]
+                )
+                view2 = self._pooled_forward(view_ids, view_mask)
             loss, metrics = self.criterion(view1, view2)
             loss = loss.float()
 
@@ -1532,6 +1731,7 @@ class KnowledgeDistiller:
         ``no_grad``, not ``inference_mode``: these tensors are consumed by losses
         that save them for backward, and inference tensors cannot be.
         """
+
         def to_student(tensor):
             return tensor.to(self.device_s, non_blocking=True)
 
@@ -1583,8 +1783,12 @@ class KnowledgeDistiller:
                 attention_mask=batch_s["attention_mask2_stu"],
             )
             return SimpleNamespace(
-                out1=out1, out2=out2, last1=None, last2=None,
-                cls1=out1["pooled"], cls2=out2["pooled"],
+                out1=out1,
+                out2=out2,
+                last1=None,
+                last2=None,
+                cls1=out1["pooled"],
+                cls2=out2["pooled"],
             )
 
         extra = {"output_attentions": True} if method == "emo" else {}
@@ -1796,7 +2000,6 @@ class KnowledgeDistiller:
         total_loss = 0.0
         n_items = 0
         metric_totals = {}
-        epoch_step_times = []
         peak_memory_mb = 0.0
         # Per-step diagnostics, buffered here and written once at the end of the epoch.
         # Epoch means alone cannot show *when* inside an epoch a curve flattened, so
@@ -1809,22 +2012,33 @@ class KnowledgeDistiller:
             desc=f"Epoch {epoch + 1}/{self.config.epochs}",
         )
 
+        timer = StepTimer()
+        timed = 0  # steps whose duration has been read back so far
+
         for step, batch in enumerate(pbar):
             self.current_step = step
 
-            self.sync_all()
-            t0 = time.perf_counter()
-
+            timer.start()
             loss, metrics = self.train_step(batch)
+            timer.stop()
 
-            self.sync_all()
-            dt = time.perf_counter() - t0
-            epoch_step_times.append(dt)
+            # Whatever the GPU has finished by now, at no cost; the rest is drained
+            # once at the end of the epoch.
+            for seconds in timer.take_new():
+                if timed >= self.warmup_steps:
+                    self.step_times.append(seconds)
+                    self.ma_window.append(seconds)
+                timed += 1
+            dt = self.ma_window[-1] if self.ma_window else 0.0
             self.global_step += 1
             if getattr(self, "use_wandb", False) and WANDB_AVAILABLE:
                 log_payload = {
                     "train/epoch": epoch + 1,
                     "train/global_step": self.global_step,
+                    # The most recent step whose CUDA events have completed, which
+                    # trails the current one by however deep the queue is. It is a
+                    # real step duration either way; the exactly-aligned series is
+                    # in the per-step records written at the end of the epoch.
                     "train/step_seconds": dt,
                 }
                 log_payload.update(self._flatten_metrics("train", metrics))
@@ -1845,7 +2059,8 @@ class KnowledgeDistiller:
                 "step": step,
                 "batch_size": int(bs),
                 "loss": float(loss_value),
-                "step_seconds": float(dt),
+                # Filled in below, once the epoch's event timings have been drained.
+                "step_seconds": 0.0,
                 # train_step() has already called scheduler.step(), so this is the rate
                 # the *next* step will use.
                 "lr_next": float(self.optimizer.param_groups[0]["lr"]),
@@ -1866,9 +2081,7 @@ class KnowledgeDistiller:
                 peak_memory_mb = max(peak_memory_mb, mem_alloc)
                 mem_info[f"gpu{dev_id}"] = f"{mem_alloc:.0f}/{mem_reserved:.0f}MB"
 
-            if step >= self.warmup_steps:
-                self.step_times.append(dt)
-                self.ma_window.append(dt)
+            if step >= self.warmup_steps and self.step_times:
                 avg_step = sum(self.step_times) / len(self.step_times)
                 ma_step = sum(self.ma_window) / len(self.ma_window)
 
@@ -1892,6 +2105,12 @@ class KnowledgeDistiller:
                 pbar.set_postfix({"avg_loss": f"{avg_loss:.4f}", **mem_info})
 
         avg_loss = total_loss / max(1, n_items)
+
+        # The one synchronisation of the epoch: read back every step's duration and
+        # put it on the record that was buffered for it.
+        epoch_step_times = timer.finish()
+        for record, seconds in zip(step_records, epoch_step_times):
+            record["step_seconds"] = float(seconds)
 
         if len(self.step_times) > 0:
             epoch_avg = sum(self.step_times) / len(self.step_times)
@@ -2069,9 +2288,7 @@ class KnowledgeDistiller:
             "avg_retrieval": (
                 "AVG (RETRIEVAL)",
                 sorted(
-                    name
-                    for name in scores_by_benchmark
-                    if name in RETRIEVAL_BENCHMARKS
+                    name for name in scores_by_benchmark if name in RETRIEVAL_BENCHMARKS
                 ),
             ),
             "avg_all": ("AVG (ALL)", sorted(scores_by_benchmark)),
@@ -2349,7 +2566,11 @@ class KnowledgeDistiller:
 
         for p in self.model_student.backbone.parameters():
             p.requires_grad = False
-        for head in (self.model_student.fc2, self.model_student.fc3, self.model_student.fc4):
+        for head in (
+            self.model_student.fc2,
+            self.model_student.fc3,
+            self.model_student.fc4,
+        ):
             for p in head.parameters():
                 p.requires_grad = False
 

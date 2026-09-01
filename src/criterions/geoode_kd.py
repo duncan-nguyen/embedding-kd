@@ -22,11 +22,16 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
-from src.criterions.h0_topological_loss import Metric, h0_topological_loss
+from src.criterions.h0_topological_loss import (
+    Metric,
+    h0_loss_against_deaths,
+    h0_topological_loss,
+)
 from src.loss import info_nce
+from src.metrics import scalar_metrics
 from src.pooling import mean_pooling
 
 
@@ -146,6 +151,33 @@ class GeoODEKD(nn.Module):
             for state in states
         ]
 
+    def endpoint_states(
+        self,
+        hidden_states: Sequence[torch.Tensor],
+        attention_mask: torch.Tensor | None,
+    ) -> list[torch.Tensor]:
+        """``[Z^(1), Z^(L)]`` -- the only two depths anything downstream reads.
+
+        The objective is an endpoint one: every loss term reads ``Z^(L)`` and
+        nothing else, and ``Z^(1)`` exists only for the ``cos_first`` diagnostic.
+        :meth:`layer_states` pools and normalises all L depths, which on a 12-layer
+        student is ten sentence-poolings per step whose results are then dropped --
+        and under mean pooling each one is a full ``[B, L, d]`` reduction.
+
+        A single supervised depth returns one state, so ``states[0] is states[-1]``
+        exactly as it does for :meth:`layer_states`.
+        """
+        states = list(hidden_states)
+        if not self.include_embedding_layer and len(states) > 1:
+            states = states[1:]
+        if not states:
+            return []
+        endpoints = states if len(states) == 1 else [states[0], states[-1]]
+        return [
+            self.normalize(_pool(state, attention_mask, self.pooling).float())
+            for state in endpoints
+        ]
+
     # ------------------------------------------------------------------ losses
 
     def endpoint_loss(
@@ -155,7 +187,9 @@ class GeoODEKD(nn.Module):
         return (1.0 - (final_state * teacher).sum(dim=-1)).mean()
 
     @staticmethod
-    def endpoint_mse(raw_final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
+    def endpoint_mse(
+        raw_final_state: torch.Tensor, teacher: torch.Tensor
+    ) -> torch.Tensor:
         """Squared-error endpoint of the sentence-transformers baseline.
 
         Both arguments are read as they come: no normalisation on either side, so
@@ -170,7 +204,9 @@ class GeoODEKD(nn.Module):
         return ((raw_final_state - teacher) ** 2).sum(dim=-1).mean()
 
     @staticmethod
-    def batch_procrustes(final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
+    def batch_procrustes(
+        final_state: torch.Tensor, teacher: torch.Tensor
+    ) -> torch.Tensor:
         """Per-step orthogonal re-alignment (the EdgePoint2 / Bhattarai family).
 
         Solves ``R_b = argmin_{R in O(d)} ||Z R - T||_F`` for the current batch in
@@ -197,6 +233,19 @@ class GeoODEKD(nn.Module):
         gram_t = teacher @ teacher.transpose(0, 1)
         mask = ~torch.eye(gram_s.shape[0], dtype=torch.bool, device=gram_s.device)
         return ((gram_s - gram_t)[mask] ** 2).mean()
+
+    def topological_loss_against_deaths(
+        self, final_state: torch.Tensor, teacher_deaths: torch.Tensor
+    ) -> torch.Tensor:
+        """The H0 term against a teacher diagram built outside the training step.
+
+        The teacher side of this loss is a constant, so where it is computed is a
+        scheduling question, not a modelling one; see
+        :func:`src.criterions.h0_topological_loss.h0_loss_against_deaths`.
+        """
+        return h0_loss_against_deaths(
+            final_state, teacher_deaths, metric=self.topo_metric
+        )
 
     def topological_loss(
         self, final_state: torch.Tensor, teacher: torch.Tensor
@@ -227,6 +276,7 @@ class GeoODEKD(nn.Module):
         attention_mask: torch.Tensor | None = None,
         second_view: torch.Tensor | None = None,
         teacher_topo: torch.Tensor | None = None,
+        teacher_deaths: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute L_total of Eq. (38).
 
@@ -242,9 +292,13 @@ class GeoODEKD(nn.Module):
                 dimension ``[B, d_T]``, read only by the H0 term. ``None`` falls
                 back to the projected targets, which makes the term a statement
                 about the shape P_T left behind rather than the teacher's own.
+            teacher_deaths: the same H0 term's teacher side, already reduced to its
+                ``[B - 1]`` sorted death times by the collate. It supersedes
+                ``teacher_topo`` when given -- it is what ``teacher_topo`` would have
+                been turned into here, computed off the training step's critical path.
         """
         hidden_states = list(hidden_states)
-        states = self.layer_states(hidden_states, attention_mask)
+        states = self.endpoint_states(hidden_states, attention_mask)
         if not states:
             raise ValueError("hidden_states contained no supervised layer")
 
@@ -271,7 +325,9 @@ class GeoODEKD(nn.Module):
         if self.endpoint_loss_form == "mse":
             loss_end = loss_end_mse
         elif self.endpoint_loss_form == "procrustes":
-            loss_end = self.endpoint_loss(self.batch_procrustes(states[-1], teacher), teacher)
+            loss_end = self.endpoint_loss(
+                self.batch_procrustes(states[-1], teacher), teacher
+            )
         else:
             loss_end = self.endpoint_loss(states[-1], teacher)
 
@@ -282,8 +338,13 @@ class GeoODEKD(nn.Module):
 
         # A single-sample tail batch has no MST, so the term is simply absent there.
         if self.lambda_topo > 0.0 and states[-1].shape[0] >= 2:
-            topo_target = teacher if teacher_topo is None else teacher_topo.float()
-            loss_topo = self.topological_loss(states[-1], topo_target)
+            if teacher_deaths is not None:
+                loss_topo = self.topological_loss_against_deaths(
+                    states[-1], teacher_deaths
+                )
+            else:
+                topo_target = teacher if teacher_topo is None else teacher_topo.float()
+                loss_topo = self.topological_loss(states[-1], topo_target)
         else:
             loss_topo = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
@@ -302,16 +363,16 @@ class GeoODEKD(nn.Module):
         )
 
         with torch.no_grad():
-            metrics = {
-                "loss_total": float(total.detach()),
-                "loss_end": float(loss_end.detach()),
-                "loss_ctr": float(loss_ctr.detach()),
-                "loss_gram": float(loss_gram.detach()),
-                "loss_topo": float(loss_topo.detach()),
+            metrics = scalar_metrics(
+                loss_total=total,
+                loss_end=loss_end,
+                loss_ctr=loss_ctr,
+                loss_gram=loss_gram,
+                loss_topo=loss_topo,
                 # Only the final layer is supervised; the shallow cosine is logged
                 # next to it as a free sanity check on the untouched lower stack.
-                "cos_first": float((states[0] * teacher).sum(dim=-1).mean()),
-                "cos_final": float((states[-1] * teacher).sum(dim=-1).mean()),
-            }
+                cos_first=(states[0] * teacher).sum(dim=-1).mean(),
+                cos_final=(states[-1] * teacher).sum(dim=-1).mean(),
+            )
 
         return total, metrics

@@ -1,17 +1,24 @@
 import hashlib
 import os
 import re
+from collections import deque
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn.functional as F
 from torch.amp import autocast
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel
 
 from .pooling import pool_sentence_embedding
+
+# How many batches ahead the tokenizer thread runs. Fast tokenizers release the
+# GIL, so a thread is enough to keep the next batch ready while the GPU works on
+# the current one, and it avoids the process fork a second DataLoader would cost.
+CACHE_PREFETCH = 2
 
 # Metadata fields that identify *which* teacher signal a cache file holds. A cache
 # is reused only when every one of them matches the run asking for it: two
@@ -49,7 +56,7 @@ def cache_filename(
     train_data_path: str | os.PathLike[str],
     max_length: int,
     normalize: bool,
-    train_data_digest: Optional[str] = None,
+    train_data_digest: str | None = None,
 ) -> str:
     """A filename that encodes everything a cache's reusability depends on.
 
@@ -76,18 +83,52 @@ def cache_filename(
     return f"{slug}__{corpus}__{pooling_method}__{key}.pt"
 
 
+def _length_sorted_batches(texts: Sequence[str], batch_size: int) -> list[list[int]]:
+    """Corpus row indices grouped into batches of similar length.
+
+    With ``padding=True`` a batch costs ``len(batch) * max_len_in_batch``, so a
+    batch drawn in corpus order pays for its single longest sentence on every row
+    it holds. This corpus is heavily skewed -- median ~17 tokens against a p99 of
+    ~144 -- and grouping by length removes 2.1x (batch 32) to 2.5x (batch 128) of
+    the padded tokens the teacher would otherwise attend over.
+
+    Character length stands in for token length: it needs no tokenizer pass of its
+    own and it is the same proxy the evaluation encoder already sorts on. Batching
+    is a grouping decision only -- padding is masked out, so each row's embedding
+    is what it would have been in any other batch -- and the returned indices carry
+    the original positions so the cache can be written back in corpus order.
+    """
+    order = sorted(range(len(texts)), key=lambda index: len(texts[index]))
+    return [
+        order[start : start + batch_size] for start in range(0, len(order), batch_size)
+    ]
+
+
 def cache_teacher_embeddings(
     model_teacher: AutoModel,
-    dataloader: DataLoader,
+    texts: Sequence[str],
+    tokenizer,
     device: torch.device,
+    *,
+    max_length: int,
+    batch_size: int,
     pooling_method: str = "last_token",
-    cache_path: Optional[str] = None,
+    cache_path: str | None = None,
     dtype: torch.dtype = torch.float32,
     use_amp: bool = True,
     normalize: bool = False,
-    metadata: Optional[dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> torch.Tensor:
-    """Run the teacher once over ``dataloader`` and cache the pooled embeddings.
+    """Run the teacher once over ``texts`` and cache the pooled embeddings.
+
+    Row ``i`` of the result is the teacher's embedding of ``texts[i]``, whatever
+    order the batches were formed in.
+
+    The teacher tokenizer is applied here rather than in a shared collate: the
+    training collate encodes both sides of a pair for both models, and this pass
+    reads exactly one of those four encodings, so going through it would tokenize
+    four times (twice over the *same* string, since a one-column corpus is read as
+    a degenerate pair) and copy twice as many tensors to the GPU as it uses.
 
     ``metadata`` (teacher name, corpus, ...) is stored next to the tensor so a
     later run can tell whether the file is the cache it expects; see
@@ -102,42 +143,79 @@ def cache_teacher_embeddings(
     for p in model_teacher.parameters():
         p.requires_grad_(False)
 
-    data_cls = []
-    pbar = tqdm(dataloader, desc="Caching teacher CLS embeddings")
+    texts = list(texts)
+    batches = _length_sorted_batches(texts, batch_size)
 
-    with torch.inference_mode():
-        for batch in pbar:
-            batch_t = {}
-            for k, v in batch.items():
-                if not torch.is_tensor(v):
-                    continue
-                if k.endswith("_tea"):
-                    batch_t[k] = v.to(device, non_blocking=True)
+    def tokenize(indices: list[int]):
+        return tokenizer(
+            [texts[index] for index in indices],
+            max_length=max_length,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )
 
-            with autocast(
-                "cuda",
-                enabled=use_amp and torch.cuda.is_available(),
-            ):
-                t_out1 = model_teacher(
-                    input_ids=batch_t["input_ids1_tea"],
-                    attention_mask=batch_t["attention_mask1_tea"],
-                    return_dict=True
+    # Allocated on the first batch, but deliberately *outside* inference mode: a
+    # tensor created inside it is an inference tensor, and the targets go on to be
+    # read by a loss that saves them for backward, which inference tensors refuse.
+    # Writing inference tensors into a normal buffer is fine, only the buffer's own
+    # origin matters.
+    teacher_cls_all: torch.Tensor | None = None
+    amp = autocast("cuda", enabled=use_amp and torch.cuda.is_available())
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending: deque = deque()
+        next_batch = 0
+        while next_batch < len(batches) and len(pending) <= CACHE_PREFETCH:
+            pending.append(
+                (batches[next_batch], pool.submit(tokenize, batches[next_batch]))
+            )
+            next_batch += 1
+
+        for _ in tqdm(range(len(batches)), desc="Caching teacher embeddings"):
+            indices, future = pending.popleft()
+            if next_batch < len(batches):
+                pending.append(
+                    (batches[next_batch], pool.submit(tokenize, batches[next_batch]))
                 )
-                T_last1 = t_out1.last_hidden_state  # [B, L, d_t]
-                T_cls1 = pool_sentence_embedding(
-                    T_last1, batch_t["attention_mask1_tea"], pooling_method
-                )
+                next_batch += 1
 
+            encoded = future.result()
+
+            with torch.inference_mode(), amp:
+                input_ids = encoded["input_ids"].to(device, non_blocking=True)
+                attention_mask = encoded["attention_mask"].to(device, non_blocking=True)
+                out = model_teacher(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    return_dict=True,
+                )
+                pooled = pool_sentence_embedding(
+                    out.last_hidden_state, attention_mask, pooling_method
+                )
                 if normalize:
-                    T_cls1 = F.normalize(T_cls1, p=2, dim=-1)
-                T_cls1 = T_cls1.to(dtype)
-            data_cls.append(T_cls1.cpu())
-    teacher_cls_all = torch.cat(data_cls, dim=0)
+                    pooled = F.normalize(pooled, p=2, dim=-1)
+                pooled = pooled.to(dtype).cpu()
+
+            if teacher_cls_all is None:
+                teacher_cls_all = torch.empty(
+                    (len(texts), pooled.shape[-1]), dtype=pooled.dtype
+                )
+            # Undo the length sort: the cache is indexed by corpus row.
+            teacher_cls_all[indices] = pooled
+
+    if teacher_cls_all is None:
+        raise ValueError("cache_teacher_embeddings was given no texts to encode")
+
     if cache_path:
         save_cached_embeddings(
             cache_path,
             teacher_cls_all,
-            {"pooling_method": pooling_method, "normalize": bool(normalize), **(metadata or {})},
+            {
+                "pooling_method": pooling_method,
+                "normalize": bool(normalize),
+                **(metadata or {}),
+            },
         )
         print(f"Saved cached teacher embeddings to: {cache_path}")
 
@@ -195,10 +273,10 @@ def validate_cached_embeddings(
     teacher_model_name: str,
     pooling_method: str,
     normalize: bool,
-    teacher_dim: Optional[int] = None,
-    rows: Optional[int] = None,
-    max_length: Optional[int] = None,
-    train_data_digest: Optional[str] = None,
+    teacher_dim: int | None = None,
+    rows: int | None = None,
+    max_length: int | None = None,
+    train_data_digest: str | None = None,
 ) -> None:
     """Refuse a cache that was built for a different teacher, pooling or corpus.
 
@@ -220,7 +298,9 @@ def validate_cached_embeddings(
         # Either side may be absent: an older cache carries fewer fields, and a
         # caller may not know one. Only two *known and different* values are a clash.
         if actual is not None and expected[key] is not None and actual != expected[key]:
-            problems.append(f"{key}: cache has {actual!r}, this run uses {expected[key]!r}")
+            problems.append(
+                f"{key}: cache has {actual!r}, this run uses {expected[key]!r}"
+            )
     if teacher_dim is not None and int(embeddings.shape[-1]) != int(teacher_dim):
         problems.append(
             f"embedding dim: cache has {int(embeddings.shape[-1])}, "

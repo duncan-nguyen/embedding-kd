@@ -8,18 +8,18 @@ class BaseConfig:
 
     task_type = "pair_cls"
     max_length = 256
-    
-    batch_size = 32
+
+    batch_size = 64
     epochs = 5
     learning_rate = 2e-5
     min_lr = 2e-6
     warmup_ratio = 0.06
-    
+
     w_task = 0.5
     alpha_dtw = 0.5
     w_cls = 1.0
     temperature = 0.07
-    
+
     student_model_name = "bert-base-uncased"
     teacher_model_name = "sentence-transformers/all-MiniLM-L6-v2"
     teacher_dtype = "float32"
@@ -28,7 +28,7 @@ class BaseConfig:
     # ones (cdm/dskd/emo/stella) every step. "last_token" is the Qwen3-Embedding
     # convention; encoder teachers such as BGE-M3 read "cls". CLI: --teacher_pooling.
     pooling_method = "last_token"
-    
+
     # Sub-word markers the token-level alignments strip before comparing token
     # strings: "##" for WordPiece students, "Ġ" for byte-level BPE teachers
     # (Qwen3), "▁" for SentencePiece teachers (BGE-M3). EMO reads
@@ -36,7 +36,7 @@ class BaseConfig:
     # CLI: --student_special_token / --teacher_special_token.
     student_special_token = "##"
     teacher_special_token = "_"
-    
+
     # Every method in the paper is distilled on this one corpus: 100k benchmark
     # sentences plus 25k MS MARCO queries and 25k MS MARCO passages, all raw
     # text. Built by scripts/build_train_corpus.py.
@@ -50,16 +50,26 @@ class BaseConfig:
     # teacher is the most expensive thing in the pipeline and never changes between
     # runs of the same pair. CLI: --cache_dir.
     cache_dir = None
+    # Batch size of the one-off teacher pass that builds that cache. It is not the
+    # training batch size: nothing in that pass is kept for backward, and the
+    # batches are formed over length-sorted rows, so it fits far more rows at once.
+    # 0 falls back to batch_size. CLI: --cache_batch_size.
+    cache_batch_size = 128
     eval_data_path = None
     num_workers = 2
-    
+    # Encode both dropout views of a batch in one forward over the doubled batch
+    # rather than in two forwards over the batch. Same pair of views, same FLOPs,
+    # half the kernel launches -- but one RNG draw instead of two, so a seeded run
+    # follows a different (equally valid) trajectory. --no-fused_views restores the
+    # two-pass order for reproducing numbers collected before it.
+    fused_views = True
+
     distill_method = "cdm"
-    
+
     save_dir = "checkpoints"
     weights_dir = None
     save_every = 1
     save_best = True
-    
 
     # Where the pair-classification decision threshold is swept. "validation" keeps
     # the test score held out; "test" sweeps it on the test split itself, which turns
@@ -75,7 +85,7 @@ class BaseConfig:
     evaluate_test_each_epoch = False
     # Per-epoch evaluation cadence; 0 disables it (only the final test eval runs).
     eval_every = 1
-    
+
     seed = 42
 
     def __init__(self, **kwargs):
@@ -86,7 +96,7 @@ class BaseConfig:
     def __repr__(self):
         attrs = [f"{k}={v}" for k, v in self.to_dict().items()]
         return f"{self.__class__.__name__}({', '.join(attrs)})"
-    
+
     def to_dict(self):
         values = {}
         for cls in reversed(type(self).mro()):
