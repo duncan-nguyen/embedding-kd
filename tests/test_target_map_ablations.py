@@ -41,6 +41,7 @@ from src.teacher_projection import (
     fit_pca_projection,
     fit_random_projection,
     fit_teacher_projection,
+    interpolate_rotation,
     project_teacher_embeddings,
     random_orthogonal,
     retained_energy,
@@ -350,25 +351,80 @@ def test_a_random_gauge_cannot_be_refit():
         _targets_for(gauge_rotation="random", gauge_refit_every=1)
 
 
-def test_the_interpolated_gauge_walks_from_procrustes_to_the_random_one():
+def test_the_interpolated_gauge_walks_from_procrustes_to_the_random_one(tmp_path):
     """Q(theta) is the geodesic between the two gauges the paper compares, so the
     interpolation arm has to reduce to each of them at its endpoints -- otherwise the
-    curve in Figure A1 would not connect the two points it is drawn between."""
+    curve in Figure A1 would not connect the two points it is drawn between.
+
+    At theta = 1 that identity holds only up to the component of O(d). The geodesic
+    cannot leave the component it starts in, so when the Procrustes gauge is a
+    reflection and this seed's Haar draw is a rotation no continuous path between
+    them exists at all, and the walk ends at that draw with its last column negated
+    -- an equally valid Haar matrix, but not the one --gauge_rotation random would
+    use. The run records which of the two cases it was, so this asserts against the
+    endpoint the arm actually claims rather than the one it cannot always reach.
+    """
     procrustes = _targets_for(gauge_rotation="procrustes")
     random_gauge = _targets_for(gauge_rotation="random", gauge_random_seed=0)
 
     at_zero = _targets_for(gauge_rotation="interpolate", gauge_theta=0.0, gauge_random_seed=0)
-    at_one = _targets_for(gauge_rotation="interpolate", gauge_theta=1.0, gauge_random_seed=0)
+    at_one = _targets_for(
+        save_dir=str(tmp_path),
+        gauge_rotation="interpolate", gauge_theta=1.0, gauge_random_seed=0,
+    )
     halfway = _targets_for(gauge_rotation="interpolate", gauge_theta=0.5, gauge_random_seed=0)
 
     assert torch.allclose(at_zero, procrustes, atol=1e-4)
-    assert torch.allclose(at_one, random_gauge, atol=1e-4)
+
+    saved = torch.load(tmp_path / "teacher_projection.pt", map_location="cpu")
+    endpoint = random_gauge.clone()
+    if saved["gauge_stats"]["endpoint_reflected"]:
+        # T @ (Q with its last column negated) is T @ Q with its last column negated.
+        endpoint[:, -1] *= -1
+    assert torch.allclose(at_one, endpoint, atol=1e-4)
+
     assert not torch.allclose(halfway, procrustes, atol=1e-3)
     assert not torch.allclose(halfway, random_gauge, atol=1e-3)
     # Every point of the path is still an orthogonal map, so the Gram matrix of the
     # targets -- and with it the whole one-factor reading of the ablation -- is untouched.
     ungauged = _targets_for(gauge_align=False)
     assert torch.allclose(halfway @ halfway.T, ungauged @ ungauged.T, atol=1e-4)
+    # ... including at the endpoint, whichever component it landed in.
+    assert torch.allclose(at_one @ at_one.T, ungauged @ ungauged.T, atol=1e-4)
+
+
+def test_the_geodesic_cannot_leave_the_component_of_o_d_it_starts_in():
+    """The topology behind the endpoint caveat above, stated directly.
+
+    det = +1 and det = -1 are the two connected components of O(d), and a continuous
+    path within O(d) cannot cross between them. So a request to interpolate from a
+    reflection to a rotation is not something an implementation can satisfy: it
+    reports that it walked to the reflected image of the endpoint instead. When both
+    lie in the same component nothing is touched and theta = 1 is exact.
+    """
+    def _draw(seed: int, positive: bool) -> torch.Tensor:
+        """An independent Haar draw forced into the requested component of O(6)."""
+        matrix = random_orthogonal(6, seed=seed).clone()
+        if (float(torch.det(matrix.double())) > 0) != positive:
+            matrix[:, 0] *= -1
+        return matrix
+
+    start = _draw(1, positive=True)
+    same_component = _draw(2, positive=True)
+    other_component = _draw(3, positive=False)
+
+    reached, reflected = interpolate_rotation(start, same_component, 1.0)
+    assert not reflected
+    assert torch.allclose(reached, same_component, atol=1e-5)
+
+    crossed, reflected = interpolate_rotation(start, other_component, 1.0)
+    assert reflected
+    expected = other_component.clone()
+    expected[:, -1] *= -1
+    assert torch.allclose(crossed, expected, atol=1e-5)
+    # Whatever it walked to is still exactly orthogonal, and in the start's component.
+    assert torch.allclose(crossed.T @ crossed, torch.eye(6), atol=1e-5)
+    assert float(torch.det(crossed.double())) > 0
 
 
 def test_the_rank_one_gauge_only_aligns_the_two_mean_directions():
@@ -412,6 +468,8 @@ def test_the_run_records_which_arm_it_used(tmp_path):
     assert saved["gauge_random_seed"] == 3
     assert saved["gauge_matrix"].shape == (8, 8)
     assert "cos_procrustes" in saved["gauge_stats"]
+    # Only the interpolate arm has an endpoint that can need reflecting.
+    assert "endpoint_reflected" not in saved["gauge_stats"]
     assert saved["explained_energy"] < 1.0
 
 

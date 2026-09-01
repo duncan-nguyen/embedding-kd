@@ -1087,6 +1087,17 @@ class KnowledgeDistiller:
                     f"{gauge_stats['cos_before']:+.3f} -> "
                     f"{gauge_stats['cos_after']:+.3f}{reference}"
                 )
+                if gauge_stats.get("endpoint_reflected"):
+                    # Said out loud because it changes what theta = 1 *means*: the
+                    # curve's right-hand end is a different Haar draw from the one
+                    # the 'random' arm with this seed plots, and no continuous path
+                    # to that one exists. See interpolate_rotation.
+                    print(
+                        "  theta=1 endpoint reflected: the Procrustes gauge and this "
+                        f"seed's Haar draw lie in different components of O({student_dim}), "
+                        "so the geodesic ends at that draw with its last column negated, "
+                        "not at the gauge --gauge_rotation random would use"
+                    )
                 # PR ~ 1 means the cross-covariance is rank-one and the gauge can
                 # only match the two mean vectors, so a null R ablation on this pair
                 # is predicted rather than surprising.

@@ -357,15 +357,28 @@ def fit_gauge_alignment(
 GAUGE_ROTATIONS = ("procrustes", "random", "interpolate", "rank_one")
 
 
-def interpolate_rotation(start: torch.Tensor, end: torch.Tensor, theta: float) -> torch.Tensor:
+def interpolate_rotation(
+    start: torch.Tensor, end: torch.Tensor, theta: float
+) -> tuple[torch.Tensor, bool]:
     """Geodesic on the rotation group from ``start`` (theta = 0) to ``end`` (theta = 1):
     ``Q(theta) = start expm(theta logm(start^T end))``.
 
-    A reflection has no real logarithm, so when the two matrices lie in different
-    components of O(d) the last column of ``end`` is negated first; ``end`` is a Haar
-    draw, so the flipped matrix is one just as well. The logarithm is projected onto
-    its skew-symmetric part before exponentiation, which makes every ``Q(theta)``
-    exactly orthogonal rather than orthogonal up to rounding.
+    Returns ``(Q(theta), endpoint_reflected)``.
+
+    O(d) has two connected components and a geodesic cannot leave the one it starts
+    in, so when ``start`` is a reflection and ``end`` a rotation (or the other way
+    round) **no continuous path between them exists at all** -- equivalently, a
+    reflection has no real logarithm. The last column of ``end`` is then negated,
+    which moves it into ``start``'s component; ``end`` is a Haar draw, so the flipped
+    matrix is one just as well, and it is the nearest thing to the requested endpoint
+    that O(d) actually contains. What it is *not* is the matrix a ``random`` arm with
+    the same seed would use, so the caller is told whether this happened rather than
+    left to assume the two ends of the curve coincide. Determinants of a Haar draw
+    are +-1 with equal probability, so it happens for about half of all seeds.
+
+    The logarithm is projected onto its skew-symmetric part before exponentiation,
+    which makes every ``Q(theta)`` exactly orthogonal rather than orthogonal up to
+    rounding.
     """
     import scipy.linalg
 
@@ -373,12 +386,13 @@ def interpolate_rotation(start: torch.Tensor, end: torch.Tensor, theta: float) -
         raise ValueError(f"theta must lie in [0, 1], got {theta!r}")
     a = start.detach().to(torch.float64).cpu().numpy()
     b = end.detach().to(torch.float64).cpu().numpy().copy()
-    if np.linalg.det(a) * np.linalg.det(b) < 0:
+    reflected = bool(np.linalg.det(a) * np.linalg.det(b) < 0)
+    if reflected:
         b[:, -1] *= -1.0
     log = np.real(scipy.linalg.logm(a.T @ b))
     log = (log - log.T) / 2.0
     rotation = a @ scipy.linalg.expm(float(theta) * log)
-    return torch.from_numpy(np.ascontiguousarray(rotation)).to(start.dtype)
+    return torch.from_numpy(np.ascontiguousarray(rotation)).to(start.dtype), reflected
 
 
 def rank_one_rotation(targets: torch.Tensor, student: torch.Tensor) -> torch.Tensor:
@@ -436,9 +450,15 @@ def fit_gauge_rotation(
     elif mode == "interpolate":
         if theta is None:
             raise ValueError("gauge rotation 'interpolate' needs theta in [0, 1]")
-        rotation = interpolate_rotation(procrustes, random_orthogonal(targets.shape[1], seed=seed), theta)
+        rotation, reflected = interpolate_rotation(
+            procrustes, random_orthogonal(targets.shape[1], seed=seed), theta
+        )
         stats["rotation_seed"] = int(seed)
         stats["theta"] = float(theta)
+        # True means theta = 1 is *not* the gauge the 'random' arm with this seed
+        # uses, so the right-hand end of the interpolation curve does not sit on the
+        # random arm's plotted point. See interpolate_rotation.
+        stats["endpoint_reflected"] = reflected
     else:
         rotation = rank_one_rotation(T, Z)
     # cos_after is always the cosine under the rotation that was actually applied.

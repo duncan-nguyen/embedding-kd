@@ -1,15 +1,15 @@
 # Fdb version 4
-["bibtex main"] 1788023672.11328 "main.aux" "main.bbl" "main" 1788024726.4428 0
-  "./references/references.bib" 1788022940.45115 13549 2d16af41b9eb54ce9fe8cb447cb010b4 ""
+["bibtex main"] 1788237646.00876 "main.aux" "main.bbl" "main" 1788237820.04624 0
+  "./references/references.bib" 1788034998.82415 13549 2d16af41b9eb54ce9fe8cb447cb010b4 ""
   "./template/iclr2027_conference.bst" 1787823766.4663 26973 af983813ca1a1414954dbceae7baa2a1 ""
-  "main.aux" 1788024726.2539 3054 9cd137b808ccb10d7b759dd01ce4aa02 "pdflatex"
+  "main.aux" 1788237819.87183 3054 9cd137b808ccb10d7b759dd01ce4aa02 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1788024725.85245 "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" "main.pdf" "main" 1788024726.44295 0
+["pdflatex"] 1788237819.56484 "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" "main.pdf" "main" 1788237820.04639 0
   "/etc/texmf/web2c/texmf.cnf" 1773138757.194 475 c0e671620eb5563b2130f56340a5fde8 ""
-  "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" 1788024725.68557 1349 a2af5cf20d51ed6ef210abb8f37cdb00 ""
+  "/home/duncan-nguyen/research/embedding-kd/docs/latex_iclr/main.tex" 1788237819.37863 1419 ce52d24eb0322bdad664ae98675bdc43 ""
   "/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc" 1165713224 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
   "/usr/share/texlive/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/adobe/helvetic/phvb.tfm" 1136768653 2300 14616918391efa49ac8b481a75fbdc1a ""
@@ -115,18 +115,18 @@
   "/usr/share/texmf/web2c/texmf.cnf" 1707919699 40399 f2c302f7d2af602abb742093540a5834 ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1773138781.56912 5472669 54eaf61a88b6b7896ebd0dac973cb29c ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1773138815 8213355 5c73132d1f44e382582447bfc6ff5c5e ""
-  "main.aux" 1788024726.2539 3054 9cd137b808ccb10d7b759dd01ce4aa02 "pdflatex"
-  "main.bbl" 1788023672.22491 1091 5cc36fc7367916d7287da02393aa63c3 "bibtex main"
-  "main.out" 1788024726.2539 875 8f44b3e86986ca2f1389bd3f9d7ca456 "pdflatex"
-  "main.tex" 1788024725.68557 1349 a2af5cf20d51ed6ef210abb8f37cdb00 ""
-  "sections/abstract.tex" 1788023141.36525 38 e36c4e57c68c71e2884b18c9aabbf045 ""
-  "sections/analysis.tex" 1788023159.14045 41 2265864202cd4f453fe45da0cb26533e ""
+  "main.aux" 1788237819.87183 3054 9cd137b808ccb10d7b759dd01ce4aa02 "pdflatex"
+  "main.bbl" 1788237646.08017 1091 5cc36fc7367916d7287da02393aa63c3 "bibtex main"
+  "main.out" 1788237819.87543 875 8f44b3e86986ca2f1389bd3f9d7ca456 "pdflatex"
+  "main.tex" 1788237819.37863 1419 ce52d24eb0322bdad664ae98675bdc43 ""
+  "sections/abstract.tex" 1788034998.82415 38 e36c4e57c68c71e2884b18c9aabbf045 ""
+  "sections/analysis.tex" 1788034998.82415 41 2265864202cd4f453fe45da0cb26533e ""
   "sections/conclusion.tex" 1788023155.09873 44 b0629f1731e82555da7c298cf107015a ""
-  "sections/experiments.tex" 1788023670.4141 1772 99b5170a8ca3d948970b29a66a496fe4 ""
-  "sections/introduction.tex" 1788023193.0962 48 6a834b12be5a99b81176b368c4270d8d ""
-  "sections/method.tex" 1788023051.753 3524 428cef9c5fe99c9762bb4384a72635f4 ""
-  "sections/related_work.tex" 1788023203.88334 48 0f21a06434123cab69f78334157cc5d9 ""
-  "tables/main_results.tex" 1788023643.28438 6183 75023c857808bab4a103d1cc7ed9f559 ""
+  "sections/experiments.tex" 1788034998.82415 1772 99b5170a8ca3d948970b29a66a496fe4 ""
+  "sections/introduction.tex" 1788034998.82415 48 6a834b12be5a99b81176b368c4270d8d ""
+  "sections/method.tex" 1788034998.82415 3524 428cef9c5fe99c9762bb4384a72635f4 ""
+  "sections/related_work.tex" 1788034998.82415 48 0f21a06434123cab69f78334157cc5d9 ""
+  "tables/main_results.tex" 1788034998.82415 6183 75023c857808bab4a103d1cc7ed9f559 ""
   "template/iclr2027_conference.sty" 1787823766.53691 9025 1b4bb9c2e12c712c56f4eb1232b88dd6 ""
   "template/math_commands.tex" 1787823766.98412 12284 a71653715108dc62b66e3a0bde0307d8 ""
   (generated)

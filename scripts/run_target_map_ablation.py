@@ -436,6 +436,9 @@ def read_projection(save_dir: Path) -> dict:
         "cos_before": stats.get("cos_before"),
         "cos_after": stats.get("cos_after"),
         "cos_procrustes": stats.get("cos_procrustes"),
+        # Only the interpolate arm sets this; True means this row's theta = 1 is not
+        # the gauge the random arm with the same seed used.
+        "endpoint_reflected": stats.get("endpoint_reflected"),
         "participation_ratio": stats.get("participation_ratio"),
     }
 
@@ -469,6 +472,7 @@ def collect(args: argparse.Namespace, plan: list[dict]) -> list[dict]:
         "name", "subspace", "gauge", "draw", "seed", "status",
         *SUMMARY_KEYS,
         "explained_energy", "cos_before", "cos_after", "cos_procrustes",
+        "endpoint_reflected",
         "participation_ratio", "projection_type", "pca_center_fit",
         "pca_subtract_mean", "gauge_rotation",
     ]
