@@ -93,6 +93,37 @@ class BaseConfig:
 
     seed = 42
 
+    # --- instrumentation ---------------------------------------------------
+    # None of the settings below changes what is optimised. The probe encodes in
+    # eval() under no_grad, so it draws no dropout mask and a seeded run follows the
+    # same trajectory with all of them on as with all of them off.
+    #
+    # Stride of the expensive per-step diagnostics: the criterion's per-term
+    # gradient norms, the batch's effective ranks, the signed H0 death-time residual
+    # and the student's own H1 diagram, plus the one device->host read of the
+    # gradient norm. The cheap ones (weighted per-term contributions, batch spread,
+    # alignment/uniformity, batch Gram agreement, the term-defined flags) are on
+    # every step regardless. 0 disables the stride. CLI: --diag_every.
+    diag_every = 50
+    # Stride of the structural probe: the audit ladder (Gram/CKA, k-NN overlap,
+    # mutual k-NN, H0 barcode, effective rank, TwoNN, anisotropy) on a fixed batch of
+    # corpus sentences, written to probe_metrics.jsonl. Off by default because each
+    # firing is a forward pass over probe_size sentences plus a handful of O(N^2)
+    # reductions on the host, so the stride is what decides its share of the run --
+    # set it against the measured step time rather than by feel. In exchange the
+    # post-hoc ladder, five points per run and a re-encode away, becomes a curve.
+    # Only the cached-teacher methods (talas/geoode/rkd) can run it: it reads teacher
+    # embeddings from the training cache rather than running the teacher again.
+    # CLI: --probe_every.
+    probe_every = 0
+    probe_size = 1024
+    probe_knn_k = 10
+    probe_seed = 0
+    # Per-depth relative weight drift, ||W_l - W_l^0|| / ||W_l^0||, at the probe's
+    # cadence: which layers the endpoint supervision actually reaches. Keeps an fp16
+    # copy of the initial weights on the host. CLI: --no-weight_drift.
+    log_weight_drift = True
+
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
             if hasattr(self, key):

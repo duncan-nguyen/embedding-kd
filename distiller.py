@@ -4,6 +4,7 @@ import random
 import shutil
 import tempfile
 import time
+import uuid
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +74,7 @@ from src.evaluation.evaluation_automodel import (
 )
 from src.evaluation.retrieval import eval_retrieval_task, test_retrieval_tasks
 from src.loss import info_nce
+from src.metrics import scalar_metrics
 from src.pooling import mean_pooling, pool_sentence_embedding
 from src.target_projector import LearnedTargetProjector
 from src.teacher_projection import (
@@ -82,6 +84,7 @@ from src.teacher_projection import (
     project_teacher_embeddings,
     retained_energy,
 )
+from src.training_probe import TrainingProbe, WeightDriftTracker
 
 # projection_type values whose map is trained rather than fitted, and the direction
 # each one hands to LearnedTargetProjector.
@@ -236,6 +239,18 @@ class KnowledgeDistiller:
         self.current_epoch = 0
         self.current_step = 0
         self._saved_checkpoint_epochs = set()
+        # Identity of *this* run, on every record it writes. step_metrics.jsonl is
+        # appended to, so without it two runs into one save_dir are one file of rows
+        # that cannot be told apart -- and the seeded tables are built from exactly
+        # that kind of repeated run.
+        self._run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        # On the steps the diagnostic stride lands on, the criterion reports its
+        # tier-1 measurements and the gradient norm is read back.
+        self._diagnostics_now = False
+        self._grad_stats = None
+        self._probe = None
+        self._probe_data = None
+        self._drift = None
         # Set before setup_training, which fills it in for the methods that need it.
         self.proj_s2t = None
         self.setup_seed(config.seed)
@@ -245,11 +260,30 @@ class KnowledgeDistiller:
         self.setup_training()
         self.setup_wandb()
         self.criterion = self._build_criterion()
+        self._setup_probe()
+        self._dump_config()
 
         # Metrics tracking
         self.step_times = []
         self.ma_window = deque(maxlen=50)
         self.warmup_steps = 10
+
+    @property
+    def setup_record(self) -> dict:
+        """Everything the run settles *before* the first step, as a dict.
+
+        Which interface was fitted, how much of the teacher it retained, what the
+        gauge fit found, and what the targets already score against the teacher.
+        Every one of those was printed and nothing but printed; this is where they
+        go so ``metrics.jsonl`` carries them too.
+
+        Lazily created rather than assigned in ``__init__`` so the projection code
+        can be exercised on a distiller built without one.
+        """
+        record = self.__dict__.get("_setup_record")
+        if record is None:
+            record = self.__dict__["_setup_record"] = {}
+        return record
 
     # ------------------------------------------------------------------ criterion
 
@@ -876,6 +910,18 @@ class KnowledgeDistiller:
         cfg = self.config
         teacher_cls_list = self._teacher_cache(df)
 
+        # The probe's teacher side, taken before P_T narrows anything: rungs 2-4 are
+        # invariant to the two spaces' widths, so the student is compared against the
+        # teacher's own geometry rather than against one interface's opinion of it.
+        corpus_texts = self._cache_texts(df)
+        probe_rows = self._probe_rows(corpus_texts)
+        if probe_rows is not None:
+            self._probe_data = {
+                "texts": [corpus_texts[i] for i in probe_rows.tolist()],
+                "teacher": teacher_cls_list[probe_rows].clone().float(),
+                "rows": probe_rows,
+            }
+
         teacher_topo_list = None
         if cfg.distill_method == "geoode":
             if float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0:
@@ -892,6 +938,16 @@ class KnowledgeDistiller:
             # persistent DataLoader workers only see that through shared memory.
             teacher_cls_list = teacher_cls_list.contiguous().share_memory_()
         self.teacher_cls_all = teacher_cls_list
+        if getattr(self, "_probe_data", None) is not None:
+            # Only geoode puts a map between the cache and the student; for the
+            # methods that train in the teacher's own space there is no target for a
+            # coordinate cosine to be taken against, and the probe reports the rungs
+            # above it only.
+            self._probe_data["targets"] = (
+                teacher_cls_list[self._probe_data["rows"]].clone().float()
+                if cfg.distill_method == "geoode"
+                else None
+            )
 
         del self.model_teacher
         self.model_teacher = None
@@ -917,6 +973,73 @@ class KnowledgeDistiller:
             ),
             need_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0) > 0.0,
         )
+
+    def _probe_rows(self, texts: list[str]) -> torch.Tensor | None:
+        """Seeded row indices of the structural probe, or None when it is off.
+
+        Rows of the *training* corpus, so their teacher embeddings are already in the
+        cache: the cached methods free the teacher from the GPU before the first
+        step, and re-running a 0.6B-parameter encoder to measure a student would
+        undo the one thing that makes those methods cheap.
+
+        Sampled from the corpus's *distinct* sentences. The corpus repeats sentences,
+        the cache maps equal texts to equal vectors, and a duplicated row is a zero
+        distance: it puts a zero-length edge in the minimum spanning tree, makes the
+        two nearest-neighbour radii TwoNN divides equal, and enters every point's k-NN
+        list. The measurement would be of the corpus's duplication rate, not of the
+        student.
+        """
+        cfg = self.config
+        if int(getattr(cfg, "probe_every", 0) or 0) <= 0:
+            return None
+        seen: dict[str, int] = {}
+        for row, text in enumerate(texts):
+            seen.setdefault(" ".join(str(text).strip().casefold().split()), row)
+        unique = np.array(sorted(seen.values()))
+        size = min(int(getattr(cfg, "probe_size", 1024)), len(unique))
+        generator = np.random.default_rng(int(getattr(cfg, "probe_seed", 0)))
+        picked = generator.choice(len(unique), size=size, replace=False)
+        return torch.from_numpy(np.sort(unique[picked]))
+
+    def _setup_probe(self) -> None:
+        """Build the structural probe and the weight-drift reference, if asked for.
+
+        Both are instrumentation: they read the student, never write to it, and the
+        probe encodes in ``eval()`` under ``no_grad``, so switching them on does not
+        move a seeded trajectory.
+        """
+        cfg = self.config
+        if int(getattr(cfg, "probe_every", 0) or 0) <= 0:
+            return
+        data = getattr(self, "_probe_data", None)
+        if data is None:
+            print(
+                f"probe_every is set but {cfg.distill_method} does not build a "
+                "teacher cache to take a probe from; the structural probe is off"
+            )
+            return
+        self._probe = TrainingProbe(
+            texts=data["texts"],
+            teacher=data["teacher"],
+            targets=data.get("targets"),
+            tokenizer=self.tok_student,
+            pool=self._pool_student,
+            max_length=int(cfg.max_length),
+            batch_size=self._cache_batch_size(),
+            knn_k=int(getattr(cfg, "probe_knn_k", 10)),
+            seed=int(getattr(cfg, "probe_seed", 0)),
+        )
+        self.setup_record["probe_reference"] = self._probe.reference()
+        print(
+            f"Structural probe on {len(data['texts'])} corpus sentences, every "
+            f"{cfg.probe_every} steps -> probe_metrics.jsonl"
+        )
+        if getattr(cfg, "log_weight_drift", True):
+            self._drift = WeightDriftTracker(self.model_student)
+            print(
+                f"Weight-drift reference kept for {len(self._drift.groups)} "
+                "depth groups (fp16, host memory)"
+            )
 
     def _needs_second_text(self) -> bool:
         """Whether the second sentence of each row is read at all this run.
@@ -1127,6 +1250,23 @@ class KnowledgeDistiller:
                     f"(top singular share {gauge_stats['top_singular_share']:.3f})"
                 )
 
+        # The same numbers the block above prints, kept where a later reader can get
+        # at them: which interface this run trained against, how much of the teacher
+        # it kept, and what the gauge fit found. A printed number is not a logged one.
+        self.setup_record["projection"] = {
+            "projection_type": projection_type,
+            "projection_seed": int(getattr(cfg, "projection_seed", 0)),
+            "teacher_dim": teacher_dim,
+            "student_dim": student_dim,
+            "explained_energy": float(explained),
+            "random_subspace_energy": student_dim / teacher_dim,
+            "pca_center_fit": bool(cfg.pca_center_fit),
+            "pca_subtract_mean": bool(cfg.pca_subtract_mean),
+            "gauge_align": bool(getattr(cfg, "gauge_align", False)),
+            "gauge_rotation": gauge_mode,
+            "gauge_stats": gauge_stats,
+        }
+
         if cfg.save_dir:
             os.makedirs(cfg.save_dir, exist_ok=True)
             projection_path = os.path.join(cfg.save_dir, "teacher_projection.pt")
@@ -1190,6 +1330,18 @@ class KnowledgeDistiller:
             "targets stay in the teacher space and the projection is trained with "
             "the student"
         )
+        self.setup_record["projection"] = {
+            "projection_type": projection_type,
+            "learned_direction": direction,
+            "teacher_dim": teacher_dim,
+            "student_dim": student_dim,
+            # Nothing is discarded before training, so there is no retained energy to
+            # report: what this interface keeps is what it learns.
+            "explained_energy": None,
+            "gauge_align": False,
+            "gauge_rotation": "none",
+            "gauge_stats": None,
+        }
         if getattr(cfg, "gauge_align", False):
             # Not an ignored flag but an inapplicable one: a gauge fixes the
             # arbitrary orientation of a *frozen* basis, and a learned map has no
@@ -1252,6 +1404,7 @@ class KnowledgeDistiller:
         )
         self.teacher_cls_all.copy_(new_targets.to(self.teacher_cls_all.dtype))
         state["history"].append(stats)
+        self.log_experiment_record({"stage": "gauge_refit", "gauge": stats})
         print(
             f"Gauge refit after epoch {epoch + 1}: student-target cosine under the "
             f"previous R {stats['cos_previous_gauge']:+.4f} -> under the refit R "
@@ -1437,12 +1590,78 @@ class KnowledgeDistiller:
             if torch.is_tensor(value) and key.endswith("_tea")
         }
 
-    def _optimizer_step(self, loss: torch.Tensor) -> None:
-        """Backward, step under the grad scaler, and advance the LR schedule."""
+    def _optimizer_step(self, loss: torch.Tensor) -> dict[str, float]:
+        """Backward, step under the grad scaler, and advance the LR schedule.
+
+        Returns the step's gradient diagnostics, which is empty on every step the
+        diagnostic stride does not land on. The *epoch's* gradient statistics are
+        accumulated on the device regardless and read back once at the end of the
+        epoch, so a run that skipped a fifth of its steps to non-finite gradients
+        can no longer look like a clean one in the record.
+        """
         self.scaler.scale(loss).backward()
+        # Unscaled here rather than inside scaler.step() so the gradient can be read
+        # at its true magnitude; step() sees it is already unscaled and does not
+        # repeat the work. This is the same pattern gradient clipping uses.
+        self.scaler.unscale_(self.optimizer)
+        grad_norm = self._grad_global_norm()
+        self._accumulate_grad_stats(grad_norm)
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.scheduler.step()
+        # One device->host read every `diag_every` steps rather than every step: the
+        # epoch aggregate above is what makes that cadence affordable.
+        return scalar_metrics(grad_norm=grad_norm) if self._diagnostics_now else {}
+
+    def _grad_global_norm(self) -> torch.Tensor:
+        """L2 norm of the whole gradient, as a device tensor -- no synchronisation.
+
+        Reading it back with ``float()`` here would stall the step exactly the way
+        :mod:`src.metrics` exists to avoid, so the number stays on the device until
+        something is ready to pay for the read.
+        """
+        grads = [
+            parameter.grad
+            for group in self.optimizer.param_groups
+            for parameter in group["params"]
+            if parameter.grad is not None
+        ]
+        if not grads:
+            return torch.zeros((), device=self.device_s)
+        return torch.linalg.vector_norm(torch.stack(torch._foreach_norm(grads)))
+
+    def _accumulate_grad_stats(self, grad_norm: torch.Tensor) -> None:
+        """Running ``[sum of finite norms, non-finite steps, finite steps]``.
+
+        A non-finite gradient is exactly the condition GradScaler skips the step on,
+        so counting it here counts skipped steps without asking the scaler -- and
+        without the ``get_scale()`` read that would stall the step to do it.
+        """
+        finite = torch.isfinite(grad_norm)
+        norm = grad_norm.float()
+        update = torch.stack(
+            [
+                torch.where(finite, norm, torch.zeros_like(norm)),
+                (~finite).float(),
+                finite.float(),
+            ]
+        )
+        if self._grad_stats is None:
+            self._grad_stats = update
+        else:
+            self._grad_stats = self._grad_stats + update
+
+    def _read_grad_stats(self) -> dict[str, float]:
+        """Drain the epoch's gradient accumulator: one read for the whole epoch."""
+        if self._grad_stats is None:
+            return {}
+        total, nonfinite, finite = self._grad_stats.tolist()
+        self._grad_stats = None
+        return {
+            "grad_norm_mean": total / finite if finite else float("nan"),
+            "grad_steps_skipped": nonfinite,
+            "grad_steps_taken": finite,
+        }
 
     def _compute_task_loss(
         self,
@@ -1697,8 +1916,7 @@ class KnowledgeDistiller:
             )
             loss = loss.float()
 
-        self._optimizer_step(loss)
-        return loss, metrics
+        return loss, {**metrics, **self._optimizer_step(loss)}
 
     def _train_step_rkd(self, batch: dict) -> tuple[torch.Tensor, dict]:
         cfg = self.config
@@ -1727,8 +1945,7 @@ class KnowledgeDistiller:
             )
             loss = loss.float()
 
-        self._optimizer_step(loss)
-        return loss, metrics
+        return loss, {**metrics, **self._optimizer_step(loss)}
 
     def _train_step_simcse(self, batch: dict) -> tuple[torch.Tensor, dict]:
         cfg = self.config
@@ -1756,8 +1973,7 @@ class KnowledgeDistiller:
             loss, metrics = self.criterion(view1, view2)
             loss = loss.float()
 
-        self._optimizer_step(loss)
-        return loss, metrics
+        return loss, {**metrics, **self._optimizer_step(loss)}
 
     # -- online-teacher methods (cdm, dskd, emo, stella) ------------------------
 
@@ -1897,8 +2113,7 @@ class KnowledgeDistiller:
 
             loss = loss.float()
 
-        self._optimizer_step(loss)
-        return loss, metrics
+        return loss, {**metrics, **self._optimizer_step(loss)}
 
     def _cdm_loss(self, batch, batch_s, batch_t, student, teacher, loss_task):
         cfg = self.config
@@ -2037,7 +2252,15 @@ class KnowledgeDistiller:
         total_loss = 0.0
         n_items = 0
         metric_totals = {}
+        # A diagnostic that only fires on a stride is present on some steps and absent
+        # on others, so its epoch mean has to be divided by the examples it was
+        # actually measured on. Dividing every key by n_items would silently scale a
+        # strided metric down by the stride.
+        metric_items = {}
         peak_memory_mb = 0.0
+        self._grad_stats = None
+        diag_every = int(getattr(self.config, "diag_every", 0) or 0)
+        probe_every = int(getattr(self.config, "probe_every", 0) or 0)
         # Per-step diagnostics, buffered here and written once at the end of the epoch.
         # Epoch means alone cannot show *when* inside an epoch a curve flattened, so
         # five points per curve is a summary, not a diagnosis. Buffering keeps this to
@@ -2054,6 +2277,12 @@ class KnowledgeDistiller:
 
         for step, batch in enumerate(pbar):
             self.current_step = step
+            # Read before the step so the criterion and the optimizer step agree on
+            # whether this is a measured one. Nothing this switches changes the
+            # gradient; it only decides what gets reported alongside it.
+            self._diagnostics_now = diag_every > 0 and self.global_step % diag_every == 0
+            if self.criterion is not None and hasattr(self.criterion, "diagnostics"):
+                self.criterion.diagnostics = self._diagnostics_now
 
             timer.start()
             loss, metrics = self.train_step(batch)
@@ -2081,6 +2310,9 @@ class KnowledgeDistiller:
                 log_payload.update(self._flatten_metrics("train", metrics))
                 wandb.log(log_payload, step=self.global_step)
 
+            if probe_every > 0 and self.global_step % probe_every == 0:
+                self._run_probe(epoch)
+
             bs = batch["input_ids1_stu"].size(0)
             loss_value = loss.item()
             total_loss += loss_value * bs
@@ -2089,8 +2321,14 @@ class KnowledgeDistiller:
             for key, value in metrics.items():
                 if isinstance(value, (int, float)):
                     metric_totals[key] = metric_totals.get(key, 0.0) + float(value) * bs
+                    metric_items[key] = metric_items.get(key, 0) + bs
 
             step_record = {
+                # Identity of the run this row belongs to: the file is appended to,
+                # so two runs into one save_dir would otherwise be indistinguishable.
+                "run_id": self._run_id,
+                "method": self.config.distill_method,
+                "seed": self.config.seed,
                 "epoch": epoch + 1,
                 "global_step": self.global_step,
                 "step": step,
@@ -2159,7 +2397,8 @@ class KnowledgeDistiller:
         print(f"Done train_epoch {epoch + 1}")
         self.log_step_records(step_records)
         epoch_means = {
-            key: value / max(1, n_items) for key, value in metric_totals.items()
+            key: value / max(1, metric_items.get(key, n_items))
+            for key, value in metric_totals.items()
         }
 
         # The progress bar shows the *last* step's diagnostics, and the last batch is
@@ -2180,8 +2419,18 @@ class KnowledgeDistiller:
                 else 0.0
             ),
             "peak_memory_mb": peak_memory_mb,
+            # Accumulated on the device all epoch, read back here: a run that lost a
+            # fifth of its steps to non-finite gradients says so on its own row.
+            **self._read_grad_stats(),
             **epoch_means,
         }
+        skipped = self.last_epoch_metrics.get("grad_steps_skipped", 0.0)
+        if skipped:
+            taken = self.last_epoch_metrics.get("grad_steps_taken", 0.0)
+            print(
+                f"[Epoch {epoch + 1}] GradScaler skipped {skipped:.0f} of "
+                f"{skipped + taken:.0f} steps on non-finite gradients"
+            )
         return avg_loss
 
     def save_checkpoint(self, epoch: int, metrics: dict | None = None):
@@ -2506,6 +2755,68 @@ class KnowledgeDistiller:
         results["summary"] = self.print_evaluation_table(split, results, final=final)
         return results
 
+    def _dump_config(self) -> None:
+        """Write the run's full settings to ``save_dir/config.json``.
+
+        The settings already reach W&B, and only W&B: a run with ``use_wandb`` off
+        -- which is every run on a box without a key, and the ablation sweeps are
+        mostly those -- leaves a checkpoint, a metrics file and no record at all of
+        what produced them. Written next to them instead, keyed by the same run id
+        every other record carries.
+        """
+        cfg = self.config
+        if not cfg.save_dir:
+            return
+        os.makedirs(cfg.save_dir, exist_ok=True)
+        settings = cfg.to_dict() if hasattr(cfg, "to_dict") else vars(cfg)
+        payload = {
+            "run_id": self._run_id,
+            "method": cfg.distill_method,
+            "seed": cfg.seed,
+            "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "torch": torch.__version__,
+            "transformers": transformers_version,
+            "config": settings,
+        }
+        path = os.path.join(cfg.save_dir, "config.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, default=str, indent=2, sort_keys=True)
+        print(f"Run configuration saved: {path} (run_id={self._run_id})")
+
+    def log_probe_records(self, record: dict) -> None:
+        """Append one line to ``probe_metrics.jsonl``.
+
+        Its own file for the same reason the per-step records have one: a different
+        row count and a different consumer from both the epoch table and the step
+        series, and a reader of either should not have to filter it out.
+        """
+        if not self.config.save_dir:
+            return
+        os.makedirs(self.config.save_dir, exist_ok=True)
+        path = os.path.join(self.config.save_dir, "probe_metrics.jsonl")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, default=float, sort_keys=True) + "\n")
+
+    def _run_probe(self, epoch: int) -> None:
+        """Measure the ladder (and the depth profile) on the current weights."""
+        if self._probe is None:
+            return
+        record = {
+            "run_id": self._run_id,
+            "method": self.config.distill_method,
+            "seed": self.config.seed,
+            "epoch": epoch + 1,
+            "global_step": self.global_step,
+            **self._probe.measure(self.model_student, self.device_s),
+        }
+        if self._drift is not None:
+            record.update(self._drift.measure(self.model_student))
+        self.log_probe_records(record)
+        if getattr(self, "use_wandb", False) and WANDB_AVAILABLE:
+            wandb.log(
+                self._flatten_metrics("probe", record), step=self.global_step
+            )
+
     def log_step_records(self, records: list[dict]):
         """Append one JSONL line per training step to `step_metrics.jsonl`.
 
@@ -2529,6 +2840,7 @@ class KnowledgeDistiller:
         os.makedirs(self.config.save_dir, exist_ok=True)
         path = os.path.join(self.config.save_dir, "metrics.jsonl")
         payload = {
+            "run_id": self._run_id,
             "method": self.config.distill_method,
             "seed": self.config.seed,
             **record,
@@ -2701,6 +3013,15 @@ class KnowledgeDistiller:
 
         eval_split = "test" if cfg.evaluate_test_each_epoch else "validation"
         epoch_results = None
+
+        # What the interface itself is, before any student is involved: the retained
+        # energy of P_T, the gauge it was fixed with, and the ladder the targets
+        # already score against the teacher -- the ceiling every later probe row is
+        # read against. Printed at setup since forever; now it is also on disk.
+        self.log_experiment_record({"stage": "setup", "setup": self.setup_record})
+        # Step 0 of every probe curve: the untrained student, so a rung that never
+        # moves can be told from one that started where it ended.
+        self._run_probe(-1)
 
         for epoch in range(cfg.epochs):
             avg_loss = self.train_epoch(epoch)

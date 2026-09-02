@@ -359,6 +359,50 @@ def parse_args():
         default=None,
         help="Batch size of the one-off teacher caching pass (0 = use --batch_size)",
     )
+    parser.add_argument(
+        "--diag_every",
+        type=int,
+        default=None,
+        help="Stride of the expensive training diagnostics: per-term gradient norms "
+        "(weighted, so they say which term is actually driving the student), batch "
+        "effective ranks, the signed H0 death-time residual and the student's own H1 "
+        "diagram. 0 disables them; the cheap per-step diagnostics stay on either way. "
+        "Nothing it computes is differentiated through, so a seeded run is unchanged",
+    )
+    parser.add_argument(
+        "--probe_every",
+        type=int,
+        default=None,
+        help="Stride of the structural probe: the audit ladder (Gram/CKA, k-NN "
+        "overlap, mutual k-NN, H0 barcode, effective rank, TwoNN, anisotropy) on a "
+        "fixed batch of corpus sentences, written to probe_metrics.jsonl. 0 is off. "
+        "Needs a cached teacher (talas/geoode/rkd); encodes in eval() under no_grad, "
+        "so a seeded run is unchanged",
+    )
+    parser.add_argument(
+        "--probe_size",
+        type=int,
+        default=None,
+        help="Sentences in the structural probe (seeded sample of training rows, "
+        "whose teacher embeddings are already cached)",
+    )
+    parser.add_argument(
+        "--probe_knn_k",
+        type=int,
+        default=None,
+        help="Neighbourhood size of the probe's rung 3 (k-NN overlap and mutual k-NN)",
+    )
+    parser.add_argument(
+        "--probe_seed", type=int, default=None, help="Seed of the probe sample"
+    )
+    parser.add_argument(
+        "--weight_drift",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Log per-depth relative weight drift at the probe's cadence -- which "
+        "layers the endpoint supervision actually reaches. Keeps an fp16 copy of the "
+        "initial weights on the host",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument(
@@ -412,6 +456,12 @@ COMMON_FLAGS = {
     "fused_views": "fused_views",
     "seed": "seed",
     "num_workers": "num_workers",
+    "diag_every": "diag_every",
+    "probe_every": "probe_every",
+    "probe_size": "probe_size",
+    "probe_knn_k": "probe_knn_k",
+    "probe_seed": "probe_seed",
+    "weight_drift": "log_weight_drift",
     "wandb_project": "wandb_project",
     "wandb_run_name": "wandb_run_name",
     "wandb_mode": "wandb_mode",

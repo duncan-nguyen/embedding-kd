@@ -269,9 +269,50 @@ models/talas/qwen3_4b_to_bert_base/
 Training and benchmark metrics are written to:
 
 ```text
-models/talas/qwen3_4b_to_bert_base/metrics.jsonl     # one record per epoch
+models/talas/qwen3_4b_to_bert_base/config.json        # the run's full settings
+models/talas/qwen3_4b_to_bert_base/metrics.jsonl      # one record per epoch, plus a setup record
 models/talas/qwen3_4b_to_bert_base/step_metrics.jsonl # one record per optimizer step
+models/talas/qwen3_4b_to_bert_base/probe_metrics.jsonl # one record per structural probe (--probe_every)
 ```
+
+Every record carries the run's `run_id`, `method` and `seed`, so repeated runs
+into one `--save_dir` stay separable.
+
+### What the training records contain
+
+`step_metrics.jsonl` carries the objective's terms (`loss_*`), the weighted
+contribution each one made to the number that was differentiated (`w_*`), and
+flags saying which terms were defined on that batch at all (`topo_active`,
+`h1_active`) — a `loss_topo` of zero is otherwise indistinguishable from a term
+that was switched off. Next to them are the readings a loss value cannot give:
+the batch's spread and Gram agreement with the teacher, and the InfoNCE
+alignment/uniformity pair.
+
+`--diag_every N` adds, every `N` steps, the readings that cost a little more: the
+weighted **gradient norm of each term** at the student's final hidden state
+(`g_end`, `g_ctr`, `g_topo`, `g_gram`, and `g_total` for their vector sum — a term
+that is reported large but enters at a small weight shows up here as what it is),
+the batch effective ranks, the signed H0 death-time residual, the student's own
+H1 diagram and the whole gradient's norm. Each epoch's record also carries
+`grad_norm_mean` and how many steps GradScaler skipped on non-finite gradients.
+
+`--probe_every N` runs the structural audit ladder inside training, on a fixed
+seeded batch of distinct corpus sentences whose teacher embeddings are already
+cached: rung 1 (cosine to target), rung 2 (Gram RMSE/correlation, linear CKA,
+Procrustes), rung 3 (k-NN overlap, mutual k-NN Jaccard), rung 4 (H0 barcode
+Wasserstein-1), and the spectrum (effective rank, TwoNN, anisotropy). Rungs 2-4
+are measured against the teacher in its *own* width, not against the projected
+target. The setup record in `metrics.jsonl` carries what the frozen interface
+itself scores on the same probe — the ceiling every student row is read against —
+alongside the map's retained energy and the gauge fit. With `--weight_drift` (on
+by default) each probe row also carries the per-depth relative weight drift,
+`drift_layer_00 … drift_layer_11`, which says how far down the stack the endpoint
+supervision reached.
+
+None of this changes what is optimised: the probe encodes in `eval()` under
+`no_grad` so it draws no dropout mask, and the gradient readings are taken with
+`torch.autograd.grad` on a retained graph. A seeded run is bit-identical with all
+of it on and all of it off, so it is safe to leave on inside an ablation.
 
 Validation is evaluated and printed after every epoch. Test is evaluated and
 printed once after training. The Colab notebook exports the two splits

@@ -47,6 +47,8 @@ def test_forward_combines_the_two_weighted_terms():
     expected = 0.7 * metrics["loss_end"] + 0.3 * metrics["loss_ctr"]
     assert float(total) == pytest.approx(expected, rel=1e-5)
     assert metrics["loss_ctr"] > 0.0
+    # The losses and the weighted contributions that make up the total, plus the
+    # tier-0 diagnostics. Everything else is behind the `diagnostics` switch.
     assert set(metrics) == {
         "loss_total",
         "loss_end",
@@ -57,7 +59,21 @@ def test_forward_combines_the_two_weighted_terms():
         "loss_h1",
         "cos_first",
         "cos_final",
+        "w_end",
+        "w_ctr",
+        "w_gram",
+        "w_topo",
+        "topo_active",
+        "h1_active",
+        "spread_student",
+        "spread_teacher",
+        "gram_rmse_batch",
+        "gram_corr_batch",
+        "ctr_alignment",
+        "ctr_uniformity",
     }
+    assert metrics["w_end"] == pytest.approx(0.7 * metrics["loss_end"], rel=1e-5)
+    assert metrics["w_ctr"] == pytest.approx(0.3 * metrics["loss_ctr"], rel=1e-5)
 
 
 def test_negative_objective_weights_are_rejected():
@@ -451,3 +467,141 @@ def test_a_precomputed_diagram_wins_over_the_raw_cache():
     )
 
     assert metrics["loss_topo"] == pytest.approx(reference["loss_topo"], abs=1e-7)
+
+
+# --------------------------------------------------------------------------- #
+# Diagnostics
+#
+# Instrumentation, not objective: these pin that the extra numbers say what their
+# names claim and -- the property the whole design rests on -- that switching them
+# on changes neither the loss nor the gradient a seeded step takes.
+# --------------------------------------------------------------------------- #
+
+
+def _diag_batch(batch: int = 6, dim: int = 8, tokens: int = 5, layers: int = 4, seed: int = 7):
+    generator = torch.Generator().manual_seed(seed)
+    hidden_states = [
+        torch.randn(batch, tokens, dim, generator=generator, requires_grad=True)
+        for _ in range(layers + 1)
+    ]
+    teacher = torch.nn.functional.normalize(
+        torch.randn(batch, dim, generator=generator), dim=-1
+    )
+    second_view = torch.randn(batch, dim, generator=generator)
+    return hidden_states, teacher, second_view
+
+
+def test_diagnostics_do_not_change_the_loss_or_the_gradient():
+    hidden_states, teacher, second_view = _diag_batch()
+    criterion = _criterion(lambda_end=1.0, lambda_ctr=0.5, lambda_topo=0.1)
+
+    plain, _ = criterion(
+        hidden_states=hidden_states, teacher=teacher, second_view=second_view
+    )
+    plain.backward()
+    without = hidden_states[-1].grad.clone()
+
+    hidden_states[-1].grad = None
+    criterion.diagnostics = True
+    instrumented, metrics = criterion(
+        hidden_states=hidden_states, teacher=teacher, second_view=second_view
+    )
+    instrumented.backward()
+
+    assert float(instrumented) == pytest.approx(float(plain), rel=1e-6)
+    assert torch.allclose(hidden_states[-1].grad, without, atol=1e-6)
+    assert metrics["g_total"] == pytest.approx(float(without.norm()), rel=1e-5)
+
+
+def test_grad_norms_carry_the_weight_each_term_enters_with():
+    """A term reported large but entering at a small weight must read small."""
+    hidden_states, teacher, second_view = _diag_batch()
+    loud = _criterion(lambda_end=1.0, lambda_ctr=1.0, diagnostics=True)
+    quiet = _criterion(lambda_end=1.0, lambda_ctr=0.01, diagnostics=True)
+
+    _, loud_metrics = loud(
+        hidden_states=hidden_states, teacher=teacher, second_view=second_view
+    )
+    _, quiet_metrics = quiet(
+        hidden_states=hidden_states, teacher=teacher, second_view=second_view
+    )
+
+    # Same term, same batch, a hundredth of the weight: a hundredth of the pull.
+    assert quiet_metrics["g_ctr"] == pytest.approx(0.01 * loud_metrics["g_ctr"], rel=1e-4)
+    # ... while the reported term value is unchanged, which is the whole point.
+    assert quiet_metrics["loss_ctr"] == pytest.approx(loud_metrics["loss_ctr"], rel=1e-6)
+
+
+def test_a_disabled_term_reports_zero_pull_rather_than_no_key():
+    hidden_states, teacher, second_view = _diag_batch()
+    criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0, lambda_gram=0.0, diagnostics=True)
+
+    _, metrics = criterion(
+        hidden_states=hidden_states, teacher=teacher, second_view=second_view
+    )
+
+    assert metrics["g_ctr"] == 0.0
+    assert metrics["g_gram"] == 0.0
+    assert metrics["g_end"] > 0.0
+
+
+def test_active_flags_separate_a_disabled_term_from_a_satisfied_one():
+    """`loss_topo == 0` is three different results; the flags say which."""
+    hidden_states, teacher, _ = _diag_batch(batch=6)
+
+    off = _criterion(lambda_topo=0.0)
+    _, metrics = off(hidden_states=hidden_states, teacher=teacher)
+    assert metrics["topo_active"] == 0.0
+    assert metrics["h1_active"] == 0.0
+
+    on = _criterion(lambda_topo=1.0)
+    _, metrics = on(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=torch.randn(6, 32)
+    )
+    assert metrics["topo_active"] == 1.0
+    assert metrics["h1_active"] == 0.0
+
+    # A batch of one has no minimum spanning tree, so the term is not defined even
+    # though the weight is on.
+    tail, tail_teacher, _ = _diag_batch(batch=1)
+    _, metrics = on(
+        hidden_states=tail, teacher=tail_teacher, teacher_topo=torch.randn(1, 32)
+    )
+    assert metrics["topo_active"] == 0.0
+
+
+def test_death_bias_signs_a_student_that_is_too_tightly_connected():
+    """L_H0 is a squared error; the bias keeps the direction it throws away."""
+    from src.criterions.h0_topological_loss import h0_death_times
+
+    hidden_states, teacher, _ = _diag_batch(batch=6)
+    criterion = _criterion(lambda_topo=1.0, diagnostics=True)
+    # A teacher cloud deliberately more spread out than anything the student's
+    # untrained final layer produces: its merge tree has the longer edges.
+    spread = torch.nn.functional.normalize(torch.eye(6, 32), dim=-1)
+
+    _, metrics = criterion(
+        hidden_states=hidden_states,
+        teacher=teacher,
+        teacher_deaths=h0_death_times(spread, metric="chord", sort=True),
+    )
+
+    assert metrics["death_bias"] == pytest.approx(
+        metrics["death_mean_s"] - metrics["death_mean_t"], abs=1e-6
+    )
+    assert metrics["death_bias"] < 0.0
+
+
+def test_spread_falls_as_the_batch_collapses_while_the_cosine_does_not():
+    """The reading `cos_final` alone cannot give: a folded batch on target."""
+    batch, dim, tokens = 6, 8, 5
+    teacher = torch.nn.functional.normalize(torch.randn(batch, dim), dim=-1)
+    collapsed = teacher[:1].expand(batch, dim).clone()
+    hidden_states = [torch.zeros(batch, tokens, dim) for _ in range(3)]
+    hidden_states[-1][:, 0, :] = collapsed
+
+    criterion = _criterion(lambda_ctr=0.0)
+    _, metrics = criterion(hidden_states=hidden_states, teacher=collapsed)
+
+    assert metrics["cos_final"] == pytest.approx(1.0, abs=1e-5)
+    assert metrics["spread_student"] == pytest.approx(0.0, abs=1e-5)

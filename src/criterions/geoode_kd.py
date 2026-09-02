@@ -27,13 +27,22 @@ from torch import nn
 
 from src.criterions.h0_topological_loss import (
     Metric,
+    h0_death_times,
     h0_loss_against_deaths,
     h0_topological_loss,
 )
 from src.criterions.h1_topological_loss import (
     MIN_BATCH as H1_MIN_BATCH,
+    h1_diagram,
     h1_loss_against_diagram,
     h1_topological_loss,
+)
+from src.diagnostics import (
+    alignment_uniformity,
+    batch_spread,
+    effective_rank,
+    grad_norms,
+    gram_agreement,
 )
 from src.loss import info_nce
 from src.metrics import scalar_metrics
@@ -95,6 +104,21 @@ class GeoODEKD(nn.Module):
             Off by default: the paper's L states are the L Transformer layers. Only
             the final state carries loss; this decides which state ``cos_first``
             reports.
+        diagnostics: initial value of the :attr:`diagnostics` switch below.
+
+    Attributes:
+        diagnostics: when true, :meth:`forward` also reports the *tier 1*
+            measurements -- per-term gradient norms, the batch's effective ranks, the
+            H0 death-time bias and the student's own H1 diagram. Each of those costs
+            a backward through the loss head, a small SVD, a second minimum spanning
+            tree or a gudhi call respectively, which is a real fraction of a step on
+            a 22M-parameter student, so the training loop flips this on a stride
+            instead of leaving it on. Nothing it computes is differentiated through:
+            switching it on does not move a seeded trajectory. The *tier 0*
+            measurements next to it (spread, alignment/uniformity, batch Gram
+            agreement, the weighted per-term contributions and the flags saying which
+            terms were defined at all) are elementwise on ``[B, d]`` and are always
+            reported.
     """
 
     def __init__(
@@ -111,6 +135,7 @@ class GeoODEKD(nn.Module):
         lambda_topo: float = 0.0,
         lambda_h1: float = 0.0,
         topo_metric: Metric = "chord",
+        diagnostics: bool = False,
     ):
         super().__init__()
         if (
@@ -151,6 +176,9 @@ class GeoODEKD(nn.Module):
         self.pooling = pooling
         self.include_embedding_layer = bool(include_embedding_layer)
         self.eps_norm = float(eps_norm)
+        # Plain attribute rather than a buffer: it is a logging switch the training
+        # loop flips on a stride, and it must never travel in a state dict.
+        self.diagnostics = bool(diagnostics)
 
     # ------------------------------------------------------------------ geometry
 
@@ -349,6 +377,10 @@ class GeoODEKD(nn.Module):
         states = self.endpoint_states(hidden_states, attention_mask)
         if not states:
             raise ValueError("hidden_states contained no supervised layer")
+        # The node every term of the objective passes through on its way into the
+        # encoder, including the unnormalised ``raw_final`` of the MSE baseline.
+        # Reading the per-term gradients here puts them on one scale.
+        grad_node = hidden_states[-1]
 
         teacher = teacher.to(states[-1].dtype)
         if self.endpoint_loss_form == "mse":
@@ -391,7 +423,11 @@ class GeoODEKD(nn.Module):
         topo_target = teacher if teacher_topo is None else teacher_topo.float()
 
         # A single-sample tail batch has no MST, so the term is simply absent there.
-        if self.lambda_topo > 0.0 and states[-1].shape[0] >= 2:
+        # A zero in the log is otherwise three different things -- the weight is 0,
+        # the batch was too small, or the two diagrams already agree -- so each term
+        # reports whether it was defined at all next to its value.
+        topo_active = self.lambda_topo > 0.0 and states[-1].shape[0] >= 2
+        if topo_active:
             if teacher_deaths is not None:
                 loss_h0 = self.topological_loss_against_deaths(
                     states[-1], teacher_deaths
@@ -402,11 +438,12 @@ class GeoODEKD(nn.Module):
             loss_h0 = zero
 
         # A 1-cycle needs three points, so H1 sits out one batch more than H0 does.
-        if (
+        h1_active = (
             self.lambda_topo > 0.0
             and self.lambda_h1 > 0.0
             and states[-1].shape[0] >= H1_MIN_BATCH
-        ):
+        )
+        if h1_active:
             if teacher_h1 is not None:
                 loss_h1 = self.h1_loss_against_diagram(states[-1], teacher_h1)
             else:
@@ -431,19 +468,197 @@ class GeoODEKD(nn.Module):
             + self.lambda_topo * loss_topo
         )
 
-        with torch.no_grad():
-            metrics = scalar_metrics(
-                loss_total=total,
-                loss_end=loss_end,
-                loss_ctr=loss_ctr,
-                loss_gram=loss_gram,
-                loss_topo=loss_topo,
-                loss_h0=loss_h0,
-                loss_h1=loss_h1,
-                # Only the final layer is supervised; the shallow cosine is logged
-                # next to it as a free sanity check on the untouched lower stack.
-                cos_first=(states[0] * teacher).sum(dim=-1).mean(),
-                cos_final=(states[-1] * teacher).sum(dim=-1).mean(),
+        reported: dict[str, torch.Tensor | float] = {
+            "loss_total": total,
+            "loss_end": loss_end,
+            "loss_ctr": loss_ctr,
+            "loss_gram": loss_gram,
+            "loss_topo": loss_topo,
+            "loss_h0": loss_h0,
+            "loss_h1": loss_h1,
+        }
+        # Tier 1 first: the gradient readings need the graph the backward has not
+        # consumed yet, and they are the one group that must run outside no_grad.
+        if self.diagnostics:
+            reported.update(
+                self._gradient_diagnostics(
+                    grad_node,
+                    total=total,
+                    loss_end=loss_end,
+                    loss_ctr=loss_ctr,
+                    loss_gram=loss_gram,
+                    loss_topo=loss_topo,
+                )
             )
 
+        with torch.no_grad():
+            reported.update(
+                {
+                    # Only the final layer is supervised; the shallow cosine is logged
+                    # next to it as a free sanity check on the untouched lower stack.
+                    "cos_first": (states[0] * teacher).sum(dim=-1).mean(),
+                    "cos_final": (states[-1] * teacher).sum(dim=-1).mean(),
+                    # What each term actually contributed to the number that was
+                    # differentiated, as opposed to the term's own magnitude.
+                    "w_end": self.lambda_end * loss_end,
+                    "w_ctr": self.lambda_ctr * loss_ctr,
+                    "w_gram": self.lambda_gram * loss_gram,
+                    "w_topo": self.lambda_topo * loss_topo,
+                    "topo_active": float(topo_active),
+                    "h1_active": float(h1_active),
+                }
+            )
+            reported.update(self._shape_diagnostics(states[-1], teacher, topo_target))
+            if self.lambda_ctr > 0.0 and second_view is not None:
+                alignment, uniformity = alignment_uniformity(
+                    student_view, second_view.float()
+                )
+                reported["ctr_alignment"] = alignment
+                reported["ctr_uniformity"] = uniformity
+            reported.update(
+                self._topology_diagnostics(
+                    states[-1],
+                    topo_target,
+                    teacher_deaths=teacher_deaths,
+                    teacher_h1=teacher_h1,
+                    topo_active=topo_active,
+                    h1_active=h1_active,
+                )
+            )
+            if self.diagnostics:
+                mid = self._middle_state(hidden_states, attention_mask)
+                if mid is not None and mid.shape == teacher.shape:
+                    reported["cos_mid"] = (mid * teacher).sum(dim=-1).mean()
+
+            metrics = scalar_metrics(**reported)
+
         return total, metrics
+
+    # -------------------------------------------------------------- diagnostics
+
+    def _gradient_diagnostics(
+        self, node: torch.Tensor, *, total: torch.Tensor, **terms: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """Weighted per-term gradient norms at the student's final hidden state.
+
+        The loss *values* in the record say how large each term is; these say how
+        hard each one is pulling, which is the only one of the two the optimizer
+        reads. ``g_total`` is the norm of their vector sum, so the gap between it
+        and the sum of the parts is how much the terms are cancelling.
+        """
+        if not (torch.is_grad_enabled() and node.requires_grad):
+            return {}
+        weights = {
+            "end": self.lambda_end,
+            "ctr": self.lambda_ctr,
+            "gram": self.lambda_gram,
+            "topo": self.lambda_topo,
+            "total": 1.0,
+        }
+        named = {name.removeprefix("loss_"): term for name, term in terms.items()}
+        named["total"] = total
+        return grad_norms(node, named, weights)
+
+    @staticmethod
+    def _shape_diagnostics(
+        final_state: torch.Tensor, teacher: torch.Tensor, topo_target: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """Is the batch following the teacher's geometry, or folding in on itself?
+
+        ``cos_final`` can rise either way. ``spread_*`` and ``erank_*`` say which,
+        and ``gram_*`` is rung 2 of the structural ladder read on the batch --
+        against ``topo_target``, i.e. the teacher in its own width when the run has
+        it, since the comparison is rotation- and dimension-invariant and the
+        teacher's own geometry is the thing the audit is about.
+        """
+        rmse, corr = gram_agreement(final_state, topo_target)
+        return {
+            "spread_student": batch_spread(final_state),
+            "spread_teacher": batch_spread(teacher),
+            "gram_rmse_batch": rmse,
+            "gram_corr_batch": corr,
+        }
+
+    def _topology_diagnostics(
+        self,
+        final_state: torch.Tensor,
+        topo_target: torch.Tensor,
+        *,
+        teacher_deaths: torch.Tensor | None,
+        teacher_h1: torch.Tensor | None,
+        topo_active: bool,
+        h1_active: bool,
+    ) -> dict[str, torch.Tensor]:
+        """The signed residual of L_H0, and how much of a diagram H1 even sees.
+
+        ``L_H0`` is a squared error, so it throws away the one directional thing it
+        knows: ``death_bias = mean(d_student - d_teacher)`` is negative while the
+        student's cloud is more tightly connected than the teacher's and positive
+        while it is looser. ``h1_n_*`` and ``h1_pers_max_*`` say whether the H1 term
+        has anything to match at this batch size at all -- a ``loss_h1`` of zero next
+        to two empty diagrams is not the same result as one next to two full ones.
+        """
+        out: dict[str, torch.Tensor] = {}
+        if teacher_deaths is not None:
+            out["death_mean_t"] = teacher_deaths.float().mean()
+        if teacher_h1 is not None:
+            out["h1_n_t"] = torch.tensor(
+                float(teacher_h1.shape[0]), device=final_state.device
+            )
+            if teacher_h1.shape[0]:
+                out["h1_pers_max_t"] = (
+                    (teacher_h1[:, 1] - teacher_h1[:, 0]).float().max()
+                )
+
+        if not self.diagnostics:
+            return out
+
+        if topo_active:
+            student_deaths = h0_death_times(
+                final_state, metric=self.topo_metric, sort=True
+            )
+            reference = (
+                teacher_deaths
+                if teacher_deaths is not None
+                else h0_death_times(topo_target, metric=self.topo_metric, sort=True)
+            )
+            reference = reference.to(student_deaths.device, student_deaths.dtype)
+            out["death_mean_s"] = student_deaths.mean()
+            out.setdefault("death_mean_t", reference.mean())
+            if reference.shape == student_deaths.shape:
+                out["death_bias"] = (student_deaths - reference).mean()
+
+        if h1_active:
+            student_diagram = h1_diagram(final_state, metric=self.topo_metric)
+            out["h1_n_s"] = torch.tensor(
+                float(student_diagram.shape[0]), device=final_state.device
+            )
+            if student_diagram.shape[0]:
+                out["h1_pers_max_s"] = (
+                    (student_diagram[:, 1] - student_diagram[:, 0]).float().max()
+                )
+
+        out["erank_student"] = effective_rank(final_state)
+        out["erank_teacher"] = effective_rank(topo_target)
+        return out
+
+    def _middle_state(
+        self,
+        hidden_states: Sequence[torch.Tensor],
+        attention_mask: torch.Tensor | None,
+    ) -> torch.Tensor | None:
+        """``Z^(L/2)``, pooled and normalised, for the depth profile.
+
+        :meth:`endpoint_states` deliberately skips every interior depth, because the
+        objective reads none of them. This pools one of them back, under no_grad and
+        on the diagnostic stride only: with the endpoint the only supervised state,
+        where the middle of the stack sits relative to the target is the cheapest
+        available reading of how far down the trajectory the endpoint term reaches.
+        """
+        states = list(hidden_states)
+        if not self.include_embedding_layer and len(states) > 1:
+            states = states[1:]
+        if len(states) < 3:
+            return None
+        middle = states[len(states) // 2]
+        return self.normalize(_pool(middle, attention_mask, self.pooling).float())
