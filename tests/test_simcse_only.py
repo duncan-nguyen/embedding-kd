@@ -20,7 +20,7 @@ def _views(batch: int, dim: int, seed: int) -> torch.Tensor:
     return torch.randn(batch, dim, generator=generator)
 
 
-def test_criterion_has_no_trainable_parameters():
+def test_criterion_has_no_trainable_parameters_without_the_head():
     assert list(SimCSEOnly().parameters()) == []
 
 
@@ -74,3 +74,63 @@ def test_mismatched_views_are_rejected():
 def test_temperature_must_be_positive():
     with pytest.raises(ValueError, match="temperature must be positive"):
         SimCSEOnly(temperature=0.0)
+
+
+# -- Gao et al.'s projection head ------------------------------------------------
+
+
+def test_the_head_is_the_criterion_s_only_parameter():
+    criterion = SimCSEOnly(hidden_size=16, mlp_head=True)
+
+    shapes = {name: tuple(p.shape) for name, p in criterion.named_parameters()}
+
+    # Linear(d, d) + Tanh: a square weight and its bias, and nothing else. Square
+    # is what makes the head droppable -- the encoder's own width is what the
+    # benchmarks read.
+    assert shapes == {"mlp.0.weight": (16, 16), "mlp.0.bias": (16,)}
+
+
+def test_the_head_sits_between_the_encoder_and_the_loss():
+    criterion = SimCSEOnly(temperature=0.05, hidden_size=16, mlp_head=True)
+    view1 = _views(8, 16, seed=8)
+    view2 = _views(8, 16, seed=9)
+
+    with torch.no_grad():
+        loss, _ = criterion(view1, view2)
+        reference, _ = info_nce(
+            criterion.mlp(view1), criterion.mlp(view2), temperature=0.05
+        )
+
+    assert float(loss) == pytest.approx(float(reference), rel=1e-6)
+
+
+def test_the_head_is_trained_by_the_loss():
+    criterion = SimCSEOnly(hidden_size=16, mlp_head=True)
+
+    loss, _ = criterion(_views(6, 16, seed=10), _views(6, 16, seed=11))
+    loss.backward()
+
+    assert criterion.mlp[0].weight.grad.abs().sum() > 0
+
+
+def test_the_head_stays_out_of_the_encoder_weights():
+    # It is saved under the criterion, which save_checkpoint writes to
+    # criterion_state_dict -- never into model_state_dict, which is what the
+    # benchmarks load.
+    criterion = SimCSEOnly(hidden_size=16, mlp_head=True)
+
+    assert set(criterion.state_dict()) == {"mlp.0.weight", "mlp.0.bias"}
+
+
+def test_the_head_needs_a_width():
+    with pytest.raises(ValueError, match="positive hidden_size"):
+        SimCSEOnly(mlp_head=True)
+    with pytest.raises(ValueError, match="positive hidden_size"):
+        SimCSEOnly(hidden_size=0, mlp_head=True)
+
+
+def test_a_width_without_the_head_builds_nothing():
+    criterion = SimCSEOnly(hidden_size=16)
+
+    assert criterion.mlp is None
+    assert list(criterion.parameters()) == []

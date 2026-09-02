@@ -265,6 +265,15 @@ def parse_args():
         '(unsupervised SimCSE); "pair" uses the paired sentence of the row',
     )
     parser.add_argument(
+        "--simcse_mlp_head",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="SimCSE-only: take the contrastive loss through Gao et al.'s "
+        "Linear(d, d) + Tanh projection of the pooled vector, trained with the "
+        "run and dropped at inference. --no-simcse_mlp_head takes it on the "
+        "pooled vector itself",
+    )
+    parser.add_argument(
         "--student_pooling",
         choices=["cls", "mean"],
         default=None,
@@ -431,7 +440,7 @@ METHOD_FLAGS = (
         "geoode method",
     ),
     (("w_dist", "w_angle", "normalize_student"), "rkd method"),
-    (("simcse_view",), "simcse method"),
+    (("simcse_view", "simcse_mlp_head"), "simcse method"),
     (("student_pooling",), "geoode, rkd and simcse methods"),
 )
 

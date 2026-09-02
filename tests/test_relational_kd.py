@@ -206,3 +206,61 @@ def test_autocast_does_not_change_the_potentials():
         under_autocast, _ = RelationalKD(w_task=0.0)(student, teacher)
 
     assert float(under_autocast) == pytest.approx(float(reference), rel=1e-6)
+
+
+# -- the regime diagnostic -------------------------------------------------------
+
+
+def _cloud(batch: int, dim: int, anisotropy: float, seed: int) -> torch.Tensor:
+    """A batch whose points share a direction in proportion to ``anisotropy``."""
+    generator = torch.Generator().manual_seed(seed)
+    common = F.normalize(torch.randn(dim, generator=generator), dim=-1)
+    noise = F.normalize(torch.randn(batch, dim, generator=generator), dim=-1)
+    return F.normalize(anisotropy * common + (1 - anisotropy) * noise, dim=-1)
+
+
+def test_spread_reports_both_sides_of_the_comparison():
+    loss, metrics = RelationalKD()(
+        _cloud(16, 32, 0.9, seed=20), _cloud(16, 64, 0.3, seed=21)
+    )
+
+    assert "student_spread" in metrics and "teacher_spread" in metrics
+
+
+def test_spread_is_zero_on_a_collapsed_batch_and_one_when_orthogonal():
+    collapsed = _points(1, 32, seed=22).expand(8, 32).contiguous()
+    orthogonal = torch.eye(8, 32)
+
+    _, metrics = RelationalKD()(collapsed, orthogonal)
+
+    assert metrics["student_spread"] == pytest.approx(0.0, abs=1e-5)
+    assert metrics["teacher_spread"] == pytest.approx(1.0, abs=1e-5)
+
+
+def test_spread_tracks_the_regime_the_relational_gradient_lives_in():
+    # It is the number that says whether the potentials are still steering: the
+    # gradient of a scale-free term grows as the cloud it is measured on shrinks,
+    # so the two have to move in opposite directions.
+    teacher = _cloud(24, 64, 0.3, seed=23)
+    previous_spread, previous_gradient = None, None
+
+    for anisotropy in (0.98, 0.9, 0.6, 0.2):
+        student = _cloud(24, 32, anisotropy, seed=24).requires_grad_(True)
+        loss, metrics = RelationalKD(w_task=0.0)(student, teacher)
+        loss.backward()
+        gradient = float(student.grad.norm())
+        spread = metrics["student_spread"]
+
+        if previous_spread is not None:
+            assert spread > previous_spread
+            assert gradient < previous_gradient
+        previous_spread, previous_gradient = spread, gradient
+
+
+def test_spread_does_not_reach_into_the_graph():
+    student = _cloud(12, 32, 0.9, seed=25).requires_grad_(True)
+
+    _, metrics = RelationalKD(w_task=0.0)(student, _cloud(12, 64, 0.3, seed=26))
+
+    assert isinstance(metrics["student_spread"], float)
+    assert student.grad is None

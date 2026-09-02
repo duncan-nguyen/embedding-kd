@@ -401,10 +401,26 @@ class KnowledgeDistiller:
 
     def _build_simcse_criterion(self):
         cfg = self.config
-        criterion = SimCSEOnly(temperature=cfg.temperature).to(self.device_s)
+        mlp_head = bool(getattr(cfg, "simcse_mlp_head", False))
+        criterion = SimCSEOnly(
+            temperature=cfg.temperature,
+            hidden_size=self.model_student.config.hidden_size,
+            mlp_head=mlp_head,
+        ).to(self.device_s)
+        if mlp_head:
+            # The head is the criterion's only parameter, so this group is exactly
+            # it. Same lr as the encoder: Gao et al. train the two together.
+            self._add_criterion_to_optimizer(criterion)
+            trainable = sum(p.numel() for p in criterion.parameters())
+            print(
+                f"SimCSE projection head added to the optimizer ({trainable:,} "
+                "parameters). Training only -- it is saved under "
+                "criterion_state_dict and inference is the plain student encoder"
+            )
         print(
             "SimCSE-only control initialized: "
-            f"view={cfg.simcse_view}, temperature={cfg.temperature}. "
+            f"view={cfg.simcse_view}, temperature={cfg.temperature}, "
+            f"mlp_head={mlp_head}. "
             "No teacher term is in this objective."
         )
         return criterion

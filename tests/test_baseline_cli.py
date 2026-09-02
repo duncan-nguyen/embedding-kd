@@ -55,13 +55,23 @@ def test_simcse_method_selects_its_config():
 
     assert isinstance(config, SimCSEConfig)
     assert config.distill_method == "simcse"
-    # Unsupervised SimCSE: two dropout views at tau = 0.05.
+    # Unsupervised SimCSE: two dropout views at tau = 0.05, through Gao et al.'s
+    # projection head.
     assert config.simcse_view == "dropout"
     assert config.temperature == 0.05
+    assert config.simcse_mlp_head is True
 
 
 def test_simcse_view_flag_overrides_the_config():
     assert _config("--method", "simcse", "--simcse_view", "pair").simcse_view == "pair"
+
+
+def test_simcse_mlp_head_flag_is_tri_state():
+    assert _config("--method", "simcse").simcse_mlp_head is True
+    assert _config("--method", "simcse", "--simcse_mlp_head").simcse_mlp_head is True
+    assert (
+        _config("--method", "simcse", "--no-simcse_mlp_head").simcse_mlp_head is False
+    )
 
 
 def test_normalize_student_flag_is_tri_state():
@@ -77,6 +87,8 @@ def test_flags_are_rejected_by_the_methods_that_ignore_them():
         _config("--method", "geoode", "--w_dist", "1.0")
     with pytest.raises(ValueError, match="only supported by the simcse method"):
         _config("--method", "talas", "--simcse_view", "pair")
+    with pytest.raises(ValueError, match="only supported by the simcse method"):
+        _config("--method", "talas", "--no-simcse_mlp_head")
     with pytest.raises(
         ValueError, match="only supported by the geoode, rkd and simcse methods"
     ):

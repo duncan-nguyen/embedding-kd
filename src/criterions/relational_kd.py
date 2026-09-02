@@ -170,4 +170,40 @@ class RelationalKD(nn.Module):
                 total = total + self.w_task * task_loss.float()
                 reported["loss_task"] = task_loss
             reported["loss_total"] = total
+            reported.update(self._spread(student, teacher))
         return total, scalar_metrics(**reported)
+
+    @staticmethod
+    @torch.no_grad()
+    def _spread(student: torch.Tensor, teacher: torch.Tensor) -> dict:
+        """How far apart the batch is, on each side.
+
+        Both potentials are scale-free -- psi_D divides by the batch mean and
+        psi_A is a cosine -- so neither loss *value* says how hard they are
+        pulling: the gradient of a scale-free function grows as the cloud it is
+        measured on shrinks. A student whose sentence vectors nearly coincide
+        (which is where a [CLS] head starts) therefore receives a relational
+        gradient orders of magnitude larger than one that has spread out, and the
+        balance against the task term swings by the same factor over a run
+        without any loss curve showing it.
+
+        ``student_spread`` is 1 - the mean off-diagonal cosine of the batch, so 0
+        is a collapsed batch and 1 an orthogonal one; ``teacher_spread`` is the
+        same number for the targets and does not move. Watch the ratio: while the
+        student sits far below the teacher, the relational terms are what is
+        steering, whatever the reported losses look like.
+        """
+
+        def value(x):
+            x = F.normalize(x.detach().float(), p=2, dim=-1)
+            batch = x.shape[0]
+            if batch < 2:
+                return x.new_zeros(())
+            gram = x @ x.transpose(0, 1)
+            off_diagonal = gram.sum() - gram.diagonal().sum()
+            return 1.0 - off_diagonal / (batch * (batch - 1))
+
+        return {
+            "student_spread": value(student),
+            "teacher_spread": value(teacher),
+        }

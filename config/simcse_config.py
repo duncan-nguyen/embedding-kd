@@ -20,10 +20,16 @@ class SimCSEConfig(BaseConfig):
     # tau = 0.05 is the unsupervised SimCSE setting.
     temperature = 0.05
 
-    # "cls" is what the evaluation code reads. SimCSE trains an extra MLP head on
-    # top of [CLS] and drops it at test time; the head is left out here so the
-    # control deploys exactly the encoder every other row deploys.
+    # "cls" is what the evaluation code reads.
     student_pooling = "cls"
+
+    # SimCSE trains a Linear(d, d) + Tanh head on top of [CLS] and drops it at
+    # test time (--mlp_only_train in Gao et al.'s release). The head lives on the
+    # criterion, so it is trained by the run's optimizer and saved under
+    # criterion_state_dict: the control still *deploys* exactly the encoder every
+    # other row deploys, it just does not train the contrastive term directly on
+    # the deployed vector. --no-simcse_mlp_head is the ablation.
+    simcse_mlp_head = True
 
     # Deliberately the shared schedule of the other methods, not SimCSE's own
     # (batch 64, lr 3e-5, 1 epoch): the control has to differ from the distilled

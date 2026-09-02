@@ -15,10 +15,24 @@ class RKDConfig(BaseConfig):
 
     # Park et al. (2019), Sec. 4: the two relational potentials are added to the
     # student's own loss with lambda_RKD-D = 25 and lambda_RKD-A = 50.
-    w_task = 1.0
     w_dist = 25.0
     w_angle = 50.0
     huber_delta = 1.0
+
+    # Park et al. put the student's own loss in at weight 1. Lowered here, and
+    # this is the one place this row departs from the published recipe.
+    #
+    # Both potentials are scale-free -- psi_D divides by the batch mean, psi_A is
+    # a cosine -- so the gradient they deliver grows as the batch they are
+    # measured on shrinks. A [CLS] head starts nearly collapsed, so RKD owns
+    # essentially the whole update at step 0 and roughly a tenth of it once the
+    # student has spread out; watch student_spread against teacher_spread in the
+    # step metrics. The consequence is a term that converges slowly at the tail,
+    # and under the 5-epoch budget shared with the other rows the run ends well
+    # short of what the objective can reach. At that budget w_task = 0.1 was at
+    # least as good as 1.0 at every learning rate probed, and much better at the
+    # low ones; 1.0 restores the published recipe.
+    w_task = 0.1
 
     # The teacher cache is L2-normalised and every benchmark scores cosine
     # similarity, so the student's relations are measured on the same sphere.
@@ -38,7 +52,13 @@ class RKDConfig(BaseConfig):
 
     batch_size = 32
     epochs = 5
-    learning_rate = 2e-5
+    # 2e-5 is the untuned shared default; GeoODE-KD, the method this row is the
+    # baseline for, is run at 7e-5 and Stella at 5e-5. Since RKD is the slowest
+    # of the objectives to converge, leaving it at the lowest rate in the table
+    # is what handicaps it, so it gets the same peak rate as GeoODE-KD. min_lr is
+    # deliberately left at 2e-6, which is the floor GeoODE-KD actually runs with
+    # once the notebook overrides its rate: same peak, same schedule shape.
+    learning_rate = 7e-5
     min_lr = 2e-6
 
     cache_teacher = True
