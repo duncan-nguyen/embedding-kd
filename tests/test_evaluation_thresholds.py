@@ -58,8 +58,9 @@ def evaluator(monkeypatch):
     return instance, calls
 
 
-def test_test_split_reuses_validation_thresholds_by_default(evaluator):
+def test_test_split_reuses_validation_thresholds_under_the_held_out_protocol(evaluator):
     instance, calls = evaluator
+    instance.config.pair_threshold_source = "validation"
 
     instance.evaluate("validation")
     assert calls["thresholds"] is None  # validation sweeps its own
@@ -70,8 +71,9 @@ def test_test_split_reuses_validation_thresholds_by_default(evaluator):
     assert results["pair_threshold_source"] == "validation"
 
 
-def test_test_split_without_validation_is_refused_by_default(evaluator):
+def test_test_split_without_validation_is_refused_when_held_out(evaluator):
     instance, _ = evaluator
+    instance.config.pair_threshold_source = "validation"
 
     with pytest.raises(RuntimeError, match="thresholds selected on validation"):
         instance.evaluate("test")
@@ -123,12 +125,14 @@ def test_cli_selects_the_threshold_source(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["main.py", "--method", "geoode", "--pair_threshold_source", "test"],
+        ["main.py", "--method", "geoode", "--pair_threshold_source", "validation"],
     )
     config = get_config("geoode", parse_args())
 
-    assert config.pair_threshold_source == "test"
-    assert BaseConfig().pair_threshold_source == "validation"
+    assert config.pair_threshold_source == "validation"
+    # Naming the held-out source asks for the validation pass that selects it.
+    assert config.evaluate_test_each_epoch is False
+    assert BaseConfig().pair_threshold_source == "test"
 
 
 def test_per_epoch_test_evaluation_requires_test_thresholds():
@@ -149,11 +153,12 @@ def test_per_epoch_test_evaluation_accepts_test_thresholds():
     KnowledgeDistiller._validate_eval_config(config)  # must not raise
 
 
-def test_default_eval_config_is_validation_only():
+def test_default_eval_config_is_test_only():
+    """One evaluation pass per run, on the test split, with nothing held out."""
     config = BaseConfig()
 
-    assert config.evaluate_test_each_epoch is False
-    assert config.pair_threshold_source == "validation"
+    assert config.evaluate_test_each_epoch is True
+    assert config.pair_threshold_source == "test"
     KnowledgeDistiller._validate_eval_config(config)
 
 
@@ -195,6 +200,24 @@ def test_cli_flag_carries_the_threshold_source(monkeypatch):
     KnowledgeDistiller._validate_eval_config(config)
 
 
+def test_cli_opt_out_restores_the_held_out_protocol(monkeypatch):
+    """The one flag turns both halves of the protocol back on."""
+    import sys
+
+    from main import get_config, parse_args
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["main.py", "--method", "geoode", "--no-evaluate_test_each_epoch"],
+    )
+    config = get_config("geoode", parse_args())
+
+    assert config.evaluate_test_each_epoch is False
+    assert config.pair_threshold_source == "validation"
+    KnowledgeDistiller._validate_eval_config(config)
+
+
 def test_explicit_threshold_source_still_wins_and_is_rejected_if_contradictory(monkeypatch):
     import sys
 
@@ -224,6 +247,7 @@ def test_final_test_runs_validation_once_when_no_epoch_eval_happened(evaluator):
     # calibrate on validation, so the distiller runs that pass itself.
     instance, calls = evaluator
     instance.config.save_dir = None
+    instance.config.pair_threshold_source = "validation"
 
     assert not hasattr(instance, "pair_validation_thresholds")
     instance._ensure_pair_thresholds()

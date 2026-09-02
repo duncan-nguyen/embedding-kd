@@ -282,11 +282,13 @@ def parse_args():
     )
     parser.add_argument(
         "--evaluate_test_each_epoch",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
-            "Evaluate the test split after every eval_every epochs instead of the "
-            "validation split, and skip validation entirely. Requires "
-            "--pair_threshold_source test; no reported number is held out"
+            "Evaluate the test split, not the validation split, and skip validation "
+            "entirely (default). No reported number is held out. "
+            "--no-evaluate_test_each_epoch evaluates validation per epoch and keeps "
+            "the final test score held out, which costs one extra evaluation pass"
         ),
     )
     parser.add_argument(
@@ -295,7 +297,8 @@ def parse_args():
         default=None,
         help=(
             "Split used to sweep the pair-classification threshold before the final "
-            'test evaluation. "test" calibrates on the test split itself, so its pair '
+            'test evaluation. Follows --evaluate_test_each_epoch when unset. "test" '
+            "(the default) calibrates on the test split itself, so its pair "
             "accuracy/F1 are an upper bound, not a held-out score"
         ),
     )
@@ -488,12 +491,17 @@ def get_config(method: str, args):
     for names, supported in METHOD_FLAGS:
         apply_method_flags(config, args, names, supported)
 
-    if args.evaluate_test_each_epoch:
-        config.evaluate_test_each_epoch = True
-        # The flag's whole point is to run without a validation pass, so it carries
-        # the threshold source with it unless one was named explicitly.
+    # The two eval flags describe one protocol, so each implies the other when only
+    # one is given: a run either touches the validation split or it does not.
+    if args.evaluate_test_each_epoch is not None:
+        config.evaluate_test_each_epoch = args.evaluate_test_each_epoch
         if args.pair_threshold_source is None:
-            config.pair_threshold_source = "test"
+            config.pair_threshold_source = (
+                "test" if args.evaluate_test_each_epoch else "validation"
+            )
+    elif args.pair_threshold_source == "validation":
+        # Asking for a held-out threshold asks for the validation pass that selects it.
+        config.evaluate_test_each_epoch = False
     if args.no_eval_retrieval:
         config.eval_retrieval = False
     if args.debug:

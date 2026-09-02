@@ -447,9 +447,10 @@ class KnowledgeDistiller:
                     "pair_threshold_source='test' (CLI: --pair_threshold_source test)"
                 )
             print(
-                "Per-epoch evaluation runs on the TEST split and the pair threshold "
-                "is swept on it. No validation pass will run, so no number this run "
-                "reports is held out."
+                "Evaluation runs on the TEST split and the pair threshold is swept "
+                "on it. No validation pass will run, so no number this run reports "
+                "is held out. Pass --no-evaluate_test_each_epoch "
+                "--pair_threshold_source validation for the held-out protocol."
             )
 
     def setup_seed(self, seed: int):
@@ -2424,9 +2425,10 @@ class KnowledgeDistiller:
         """Run one validation pass if the final test needs thresholds it never got.
 
         With eval_every=0 no per-epoch validation runs, but the pair benchmarks
-        still calibrate their threshold on validation unless pair_threshold_source
-        is "test". Doing that pass here keeps the test score held out instead of
-        failing the run after training has finished.
+        still calibrate their threshold on validation when pair_threshold_source
+        asks for it. Doing that pass here keeps the test score held out instead of
+        failing the run after training has finished. It is the second evaluation of
+        the run, which is why the default source is "test".
         """
         source = getattr(self.config, "pair_threshold_source", "validation")
         if source != "validation":

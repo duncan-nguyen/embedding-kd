@@ -71,10 +71,11 @@ class BaseConfig:
     save_every = 1
     save_best = True
 
-    # Where the pair-classification decision threshold is swept. "validation" keeps
-    # the test score held out; "test" sweeps it on the test split itself, which turns
-    # the pair accuracy/F1 into an upper bound rather than an estimate.
-    pair_threshold_source = "validation"
+    # Where the pair-classification decision threshold is swept. "test" sweeps it on
+    # the test split itself, which turns the pair accuracy/F1 into an upper bound
+    # rather than an estimate; "validation" keeps the test score held out at the cost
+    # of a second evaluation pass. Defaults to "test" so a run evaluates exactly once.
+    pair_threshold_source = "test"
 
     # Score ArguAna/FiQA/SCIDOCS (nDCG@10) as part of the final test evaluation.
     # Needs data/test_set/retrieval, written by
@@ -82,7 +83,11 @@ class BaseConfig:
     eval_retrieval = True
 
     debug_align = False
-    evaluate_test_each_epoch = False
+    # Evaluate the test split directly and never touch validation. No number a run
+    # reports is held out, which is the point: one evaluation pass per run instead of
+    # a validation pass whose only product is a threshold. --no-evaluate_test_each_epoch
+    # (with pair_threshold_source="validation") restores the held-out protocol.
+    evaluate_test_each_epoch = True
     # Per-epoch evaluation cadence; 0 disables it (only the final test eval runs).
     eval_every = 1
 

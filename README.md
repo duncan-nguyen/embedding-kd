@@ -346,36 +346,41 @@ families only, `AVG (RETRIEVAL)` over the three retrieval benchmarks, and
 `AVG (ALL)` over all twelve, so adding retrieval did not redefine the two
 averages earlier runs are reported against.
 
-Validation runs after every `--eval_every` epochs; test runs once, after training.
-`--evaluate_test_each_epoch` swaps that around: the test split is evaluated after
-every `--eval_every` epochs and no validation pass runs at all. It implies
-`--pair_threshold_source test` (a run with no validation has nowhere else to get a
-threshold from), and the two are checked for consistency before the models load
-rather than at the end of the first epoch. The end-of-run table then reuses the
-last epoch's evaluation instead of repeating it.
+**By default a run never touches the validation split.** The test split is
+evaluated after every `--eval_every` epochs (`--eval_every 0` evaluates only once,
+after training), the pair threshold is swept on test itself, and the end-of-run
+table reuses the last epoch's evaluation instead of repeating it. So a default run
+performs exactly one evaluation pass per scored epoch and no extra pass at the end.
 
-With that flag, every reported number has been seen during model selection: the
-epoch you pick and the threshold you sweep both read the test labels. Keep it off
-for any number you intend to publish.
-
-The pair threshold is the only quantity carried between splits. By default it is
-swept over 200 candidates on the validation split and reused unchanged on test, so
-the test score stays held out; a test evaluation with no preceding validation is
-refused rather than silently calibrated. To sweep it on the test split instead:
+The cost is that every reported number has been seen during model selection: the
+epoch you pick and the threshold you sweep both read the test labels. For a
+held-out number, ask for the other protocol:
 
 ```bash
-python3 main.py --method geoode --pair_threshold_source test
+python3 main.py --method geoode --no-evaluate_test_each_epoch
 ```
 
-Then the pair accuracy/F1/precision/recall become an **upper bound** rather than a
-held-out estimate, since the threshold is chosen on the labels being scored.
+Then validation runs after every `--eval_every` epochs, the pair threshold is swept
+over 200 candidates on validation and reused unchanged on test, and test is scored
+once after training. A test evaluation with no preceding validation is refused
+rather than silently calibrated, so with `--eval_every 0` the distiller inserts one
+validation pass of its own before the final test — two evaluation passes, which is
+the reason the held-out protocol is not the default.
+
+`--evaluate_test_each_epoch` and `--pair_threshold_source` describe one protocol and
+each implies the other when only one is given (`--pair_threshold_source validation`
+alone turns per-epoch test evaluation off, and vice versa). Naming both
+contradictorily is rejected before the models load rather than at the end of the
+first epoch.
+
+The pair threshold is the only quantity carried between splits. Swept on test, the
+pair accuracy/F1/precision/recall are an **upper bound** rather than a held-out
+estimate, since the threshold is chosen on the labels being scored.
 `average_precision` (the primary pair metric in the summary table) is
 threshold-free and unaffected either way, as are the classification and STS
 families. The classification probe is always fitted on that benchmark's own
-`train` split, never on validation or test. Runs using it are marked in the printed table and record
-`"pair_threshold_source": "test"` in `metrics.jsonl`. It also removes test's
-dependency on a validation pass, so it can be combined with a large
-`--eval_every` to skip per-epoch validation entirely.
+`train` split, never on validation or test. Runs are marked in the printed table
+and record their `"pair_threshold_source"` in `metrics.jsonl`.
 
 ## Benchmarks
 
