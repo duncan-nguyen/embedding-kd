@@ -1,21 +1,9 @@
-\begin{thebibliography}{3}
+\begin{thebibliography}{1}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
-
-\bibitem[Gao et~al.(2021)Gao, Yao, and Chen]{gao2021simcse}
-Tianyu Gao, Xingcheng Yao, and Danqi Chen.
-\newblock {SimCSE}: Simple contrastive learning of sentence embeddings.
-\newblock In \emph{Proceedings of the 2021 Conference on Empirical Methods in
-  Natural Language Processing}, 2021.
-
-\bibitem[Jing et~al.(2022)Jing, Vincent, LeCun, and Tian]{jing2022collapse}
-Li~Jing, Pascal Vincent, Yann LeCun, and Yuandong Tian.
-\newblock Understanding dimensional collapse in contrastive self-supervised
-  learning.
-\newblock In \emph{International Conference on Learning Representations}, 2022.
 
 \bibitem[Sch{\"o}nemann(1966)]{schonemann1966procrustes}
 Peter~H. Sch{\"o}nemann.

@@ -45,26 +45,62 @@ projection decides \emph{what} of the teacher survives, the rotation only
 \subsection{Objective}
 \label{sec:method-objective}
 
-Only the final layer is supervised:
+Only the final student embedding is supervised.  The endpoint term aligns each
+student embedding with its fixed, dimension-matched teacher target:
+\begin{equation}
+    \mathcal{L}_{\mathrm{end}}
+    =\frac{1}{B}\sum_{i=1}^{B}
+    \left(1-\left\langle\mathbf{z}_i,\boldsymbol{\tau}_i\right\rangle\right),
+    \label{eq:endpoint-loss}
+\end{equation}
+where $B$ is the minibatch size.  This term fixes point-wise correspondence in
+the gauge selected by $P_{\mathrm{PCA}}R^\star$.
+
+The second term matches the topology of the two embedding clouds without
+requiring a shared ambient dimension.  Let
+$\operatorname{Dgm}_k(\mathbf{X})$ denote the degree-$k$ Vietoris--Rips
+persistence diagram of the row-wise normalised point cloud $\mathbf{X}$ under
+the chord distance
+$d(\mathbf{u},\mathbf{v})=\sqrt{2-2\langle\mathbf{u},\mathbf{v}\rangle}$.
+For $k=0$, the finite death times are exactly the $B-1$ edge weights of the
+cloud's minimum spanning tree.  Writing their sorted values as
+$\delta^{S}_{(j)}$ and $\delta^{T}_{(j)}$, we use
+\begin{align}
+    \mathcal{L}_{H_0}
+    &=\frac{1}{B-1}\sum_{j=1}^{B-1}
+      \left(\delta^{S}_{(j)}-\delta^{T}_{(j)}\right)^2, \\
+    \mathcal{L}_{\mathrm{topo}}
+    &=\mathcal{L}_{H_0}
+      +\lambda_{1}\,
+      W_2^2\!\left(
+        \operatorname{Dgm}_1(\mathbf{Z}),
+        \operatorname{Dgm}_1(\widetilde{\mathbf{T}})
+      \right),
+    \label{eq:topological-loss}
+\end{align}
+where $W_2$ permits low-persistence cycles to match to the diagonal.  The
+teacher cloud $\widetilde{\mathbf{T}}$ contains the original cached embeddings
+$\widetilde{\boldsymbol{\tau}}_i\in\mathbb{R}^{d_T}$, not their projected
+targets.  Consequently, $\mathcal{L}_{\mathrm{topo}}$ preserves connectivity
+and cycles from the teacher's own space and is independent of the endpoint
+interface.  Setting $\lambda_1=0$ gives the $H_0$-only variant.
+
+The complete training objective contains only these two losses:
 \begin{equation}
     \mathcal{L}
-    =\mathbb{E}_i\!\left[1-\langle\mathbf{z}_i,\boldsymbol{\tau}_i\rangle\right]
-    +\lambda_{\mathrm{ctr}}\,\mathcal{L}_{\mathrm{InfoNCE}}(\mathbf{z},\mathbf{z}'),
+    =\lambda_{\mathrm{end}}\mathcal{L}_{\mathrm{end}}
+    +\lambda_{\mathrm{topo}}\mathcal{L}_{\mathrm{topo}}.
     \label{eq:objective}
 \end{equation}
-where $\mathbf{z}'$ is a second dropout view of the same batch and
-$\mathcal{L}_{\mathrm{InfoNCE}}$ is the usual in-batch contrastive loss at
-temperature $\tau_c$. The first term is the whole of the teacher signal. The
-second is not a second teacher signal but an anti-collapse regulariser:
-point-wise matching pins the student along the target directions and leaves the
-rest of its spectrum unconstrained \citep{jing2022collapse,gao2021simcse}.
-$\lambda_{\mathrm{ctr}}$ is the only weight in the method.
+The endpoint term transfers sample-wise semantics, while the topological term
+constrains batch-level structure that a point-wise objective does not explicitly
+measure.
 
 \paragraph{What the method does not contain.}
-No projector is trained, no relational or Gram term is added, no intermediate
+No projector is trained, no contrastive or Gram loss is added, no intermediate
 layer is supervised, and nothing is attached to the student at inference: the
 deployed model is the unmodified encoder. Training costs one teacher pass over
 the corpus, one truncated SVD of the cache, one $d_S\times d_S$ SVD for
-$R^\star$, and then ordinary student training against a fixed lookup table of
-targets --- no teacher hidden state, attention map or online teacher forward pass
-is used.
+$R^\star$, and then ordinary student training against the cached teacher
+embeddings and their fixed projected targets --- no teacher hidden state,
+attention map or online teacher forward pass is used.
