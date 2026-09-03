@@ -74,10 +74,12 @@ while the PCA subspace and teacher geometry stay fixed.
 
 ### 6.1 Is the Bottleneck Compression or Comparability?
 
-Compare learned projection, random projection, PCA, and PCA+Procrustes while
-separating subspace selection from orientation. Low-dimensional targets retain
-useful teacher structure, but transfer quality depends strongly on whether the
-endpoint is compatible with the student.
+Use **Table A1** to compare learned teacher-to-student and student-to-teacher
+maps, random projection with and without epoch-wise Procrustes, and PCA with and
+without epoch-wise Procrustes. All rows use endpoint supervision only. Random
+subspaces use three independent draws in addition to the three training seeds.
+Retained energy, Gram error, and $k$-NN overlap describe only fixed target maps;
+they are undefined for the two jointly learned interfaces.
 
 **Takeaway:** Compression is not the dominant bottleneck; endpoint comparability is.
 
@@ -110,6 +112,11 @@ both terminal signals are properly specified.
 
 - **Figure 4:** two absolute death-time residual maps, endpoint-only versus
   endpoint+$H_0$, evaluated on the same fixed mini-batches with one shared scale.
+- **Table 2:** the five-arm quantitative decomposition: no teacher,
+  endpoint-only, $H_0$-only, endpoint+$H_0$ from the PCA teacher image, and
+  endpoint+$H_0$ from the original teacher. Report endpoint error where it is
+  meaningful, native-teacher $H_0$ residual for every row, downstream AVG, and
+  mean $\pm$ sample standard deviation over three seeds.
 
 **Takeaway:** Pointwise knowledge requires an interface; coordinate-invariant
 structure bypasses it; neither requires intermediate-layer coordination.
@@ -117,16 +124,22 @@ structure bypasses it; neither requires intermediate-layer coordination.
 ## 7. Main Results and Takeaway
 
 Compare against state-of-the-art embedding-distillation methods under matched data,
-optimization, and caching protocols. Report downstream quality together with
-training throughput, wall-clock time, peak memory, and inference-time parameters.
+optimization, and caching protocols.
+
+- **Table 1:** full downstream results over all benchmark tasks.
+- **Table 3:** efficiency for every learned baseline in Table 1 and our method,
+  measured from the same runs. Report mean step latency and samples/second after
+  ten warm-up steps, total GPU training minutes, and peak allocated memory on the
+  busiest GPU, each as mean $\pm$ sample standard deviation over three seeds.
 
 The target result is a simpler method that reaches state-of-the-art performance
 while training approximately $2\times$ faster than TALAS.
 
 ## 8. Appendix Plan
 
-The appendix keeps only two required visual artifacts. Projection variants and
-refit schedules move to tables so that evidence is not duplicated across figures.
+The appendix keeps two required visual artifacts, one optional diagnostic, and one
+supporting ablation table. Exact per-seed and per-draw values remain available as
+CSV artifacts rather than occupying additional paper tables.
 
 ### Figure A1: Qualitative $H_0$ Visualization
 
@@ -139,7 +152,7 @@ identities. This figure is illustrative; Figure 4 is the quantitative evidence.
 ### Figure A2: Sensitivity
 
 Use one compact row of three ordered curves with mean $\pm$ sample standard
-deviation over three seeds: topology weight $\lambda$, $H_0$ batch size, and the
+deviation over three seeds: topology weight $\lambda$, training/$H_0$ batch size, and the
 fixed gauge-calibration sample size. Mark the default recipe. PCA remains fitted
 once on the full teacher cache and only one factor changes at a time.
 
@@ -152,15 +165,10 @@ than CKA, carry the claim that intermediate supervision is unnecessary.
 
 ### Supporting Tables
 
-- **Table A1:** projection/interface ablation replacing the former PCA figure,
-  including retained energy, Gram error, $k$-NN overlap, and downstream score;
-- **Table A2:** exact per-setting values behind Figure A2, including downstream
-  score, throughput, refit time, and peak memory;
-- **Table A3:** per-seed values and random-projection/rotation draw variance behind
-  the main analyses;
-- **Table A4:** complete downstream results and efficiency measurements, including
-  throughput, wall-clock time, peak memory, preprocessing cost, and inference-time
-  parameters.
+- **Table A1:** six-row projection/interface ablation: learned $T\!\to\!S$,
+  learned $S\!\to\!T$, random-only, random+epoch-wise Procrustes, PCA-only, and
+  PCA+epoch-wise Procrustes. Include retained energy, Gram error, $k$-NN overlap,
+  downstream AVG, and the number of completed run instances.
 
 ## Story in One Line
 

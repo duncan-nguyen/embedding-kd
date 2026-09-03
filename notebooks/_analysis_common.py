@@ -115,9 +115,10 @@ def projection_stats(run_dir: str | Path) -> dict:
     }
 
 
-def geoode_command(
+def distill_command(
     project: Path,
     *,
+    method: str,
     pair: dict,
     train_data: Path,
     cache_dir: Path,
@@ -130,11 +131,11 @@ def geoode_command(
     num_workers: int = 2,
     extra: Iterable[str] = (),
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         str(project / "main.py"),
         "--method",
-        "geoode",
+        method,
         "--train_data",
         str(train_data),
         "--student_model",
@@ -143,8 +144,6 @@ def geoode_command(
         pair["teacher"],
         "--teacher_pooling",
         pair["teacher_pooling"],
-        "--student_pooling",
-        pair["student_pooling"],
         "--batch_size",
         str(batch_size),
         "--epochs",
@@ -169,8 +168,43 @@ def geoode_command(
         "--save_dir",
         str(run_dir),
         "--no_wandb",
-        *map(str, extra),
     ]
+    if method in {"geoode", "rkd", "simcse"}:
+        command.extend(["--student_pooling", pair["student_pooling"]])
+    command.extend(map(str, extra))
+    return command
+
+
+def geoode_command(
+    project: Path,
+    *,
+    pair: dict,
+    train_data: Path,
+    cache_dir: Path,
+    run_dir: Path,
+    seed: int,
+    batch_size: int,
+    epochs: int,
+    learning_rate: float,
+    max_length: int = 256,
+    num_workers: int = 2,
+    extra: Iterable[str] = (),
+) -> list[str]:
+    return distill_command(
+        project,
+        method="geoode",
+        pair=pair,
+        train_data=train_data,
+        cache_dir=cache_dir,
+        run_dir=run_dir,
+        seed=seed,
+        batch_size=batch_size,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        max_length=max_length,
+        num_workers=num_workers,
+        extra=extra,
+    )
 
 
 def run_jobs(
