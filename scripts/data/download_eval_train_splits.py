@@ -13,8 +13,8 @@ source that has silently diverged fails loudly instead of landing a train split
 that belongs to a different release of the dataset.
 
 Usage:
-    python scripts/download_eval_train_splits.py
-    python scripts/download_eval_train_splits.py --only sick stsb --force
+    python scripts/data/download_eval_train_splits.py
+    python scripts/data/download_eval_train_splits.py --only sick stsb --force
 """
 
 import argparse
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 VAL_DIR = BASE_DIR / "data" / "val_set"
 TEST_DIR = BASE_DIR / "data" / "test_set"
 

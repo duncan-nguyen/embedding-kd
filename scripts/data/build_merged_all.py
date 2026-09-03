@@ -11,8 +11,8 @@ older file (its WiC block holds 5000 rows over 3793 distinct sentences); pass
 --dedup to keep the first occurrence of each exact text instead.
 
 Usage:
-    python scripts/build_merged_all.py
-    python scripts/build_merged_all.py --dedup --out data/train_set/merged_all_unique.csv
+    python scripts/data/build_merged_all.py
+    python scripts/data/build_merged_all.py --dedup --out data/train_set/merged_all_unique.csv
 """
 
 import argparse
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 TRAIN_DIR = BASE_DIR / "data" / "train_set"
 
 # (source label, filename, columns holding the text). Order fixes the row order
@@ -61,7 +61,7 @@ def main():
         raise SystemExit(
             "Missing train splits: "
             + ", ".join(missing)
-            + "\nRun scripts/download_eval_train_splits.py first."
+            + "\nRun scripts/data/download_eval_train_splits.py first."
         )
 
     blocks = []

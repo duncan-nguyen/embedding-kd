@@ -30,7 +30,7 @@ import torch
 from config import GeoODEConfig
 from distiller import KnowledgeDistiller
 from main import get_config, parse_args
-from scripts import run_target_map_ablation as ablation
+from scripts.ablations import run_target_map_ablation as ablation
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 from src.criterions.geoode_kd import GeoODEKD

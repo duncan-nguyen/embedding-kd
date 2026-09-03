@@ -3,7 +3,7 @@
 The three benchmarks are the retrieval side of the protocol: the student is
 distilled on unlabelled text and then scored zero-shot on nDCG@10 over corpora
 it has never seen. None of them contributes a single sentence to the training
-corpus, so `scripts/build_train_corpus.py` checks its MS MARCO block against the
+corpus, so `scripts/data/build_train_corpus.py` checks its MS MARCO block against the
 files written here before accepting a row.
 
 The BEIR/MTEB copies on the Hub are plain JSONL, so they are downloaded directly
@@ -19,8 +19,8 @@ Row counts are asserted against the BEIR paper, so a mirror that has drifted
 fails here instead of turning into an unexplained score change.
 
 Usage:
-    python scripts/download_retrieval_benchmarks.py
-    python scripts/download_retrieval_benchmarks.py --only fiqa --force
+    python scripts/data/download_retrieval_benchmarks.py
+    python scripts/data/download_retrieval_benchmarks.py --only fiqa --force
 """
 
 import argparse
@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 OUT_DIR = BASE_DIR / "data" / "test_set" / "retrieval"
 
 # (hub repo, commit sha, corpus rows, test queries) -- the sha pins the release and

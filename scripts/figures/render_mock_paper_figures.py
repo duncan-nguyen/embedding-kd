@@ -26,7 +26,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial.distance import cdist
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "figure_mockups" / "final"
 OUT.mkdir(parents=True, exist_ok=True)
 

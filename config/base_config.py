@@ -39,7 +39,7 @@ class BaseConfig:
 
     # Every method in the paper is distilled on this one corpus: 100k benchmark
     # sentences plus 25k MS MARCO queries and 25k MS MARCO passages, all raw
-    # text. Built by scripts/build_train_corpus.py.
+    # text. Built by scripts/data/build_train_corpus.py.
     train_data_path = "data/train_set/train_150k.csv"
     # Shared directory for the cached teacher embeddings of talas/geoode/rkd. When
     # set it wins over cache_path, and the filename is derived from what a cache's
@@ -79,7 +79,7 @@ class BaseConfig:
 
     # Score ArguAna/FiQA/SCIDOCS (nDCG@10) as part of the final test evaluation.
     # Needs data/test_set/retrieval, written by
-    # scripts/download_retrieval_benchmarks.py. CLI: --no_eval_retrieval.
+    # scripts/data/download_retrieval_benchmarks.py. CLI: --no_eval_retrieval.
     eval_retrieval = True
 
     debug_align = False

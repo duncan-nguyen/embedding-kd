@@ -29,13 +29,13 @@ Every new text is checked, on normalised form, against the rows already in the
 three retrieval benchmarks plus every existing test and validation split. A hit is
 dropped and counted.
 
-Requires `python scripts/download_retrieval_benchmarks.py` first.
+Requires `python scripts/data/download_retrieval_benchmarks.py` first.
 
 Usage:
-    python scripts/build_train_corpus.py --total 150000
-    python scripts/build_train_corpus.py --total 200000
-    python scripts/build_train_corpus.py --total 100000        # base only, no MS MARCO
-    python scripts/build_train_corpus.py --queries 40000 --passages 10000
+    python scripts/data/build_train_corpus.py --total 150000
+    python scripts/data/build_train_corpus.py --total 200000
+    python scripts/data/build_train_corpus.py --total 100000        # base only, no MS MARCO
+    python scripts/data/build_train_corpus.py --queries 40000 --passages 10000
 """
 
 import argparse
@@ -48,7 +48,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 TRAIN_DIR = BASE_DIR / "data" / "train_set"
 RETRIEVAL_DIR = BASE_DIR / "data" / "test_set" / "retrieval"
 CACHE_DIR = BASE_DIR / "data" / "cache"
@@ -104,7 +104,7 @@ def forbidden_texts() -> dict[str, set[str]]:
     if missing:
         raise SystemExit(
             f"Retrieval benchmarks not on disk ({', '.join(missing)}). "
-            f"Run: python scripts/download_retrieval_benchmarks.py"
+            f"Run: python scripts/data/download_retrieval_benchmarks.py"
         )
 
     groups: dict[str, set[str]] = {}

@@ -14,7 +14,7 @@ Two things every audit run depends on, and neither belongs to any single run:
   (corpus, seed) and the same file is read by every arm, so arms are always
   compared on identical sentences.
 
-Text normalisation is the one used by ``scripts/build_train_corpus.py`` (casefold
+Text normalisation is the one used by ``scripts/data/build_train_corpus.py`` (casefold
 and whitespace collapse), so "appears in an evaluation split" means the same thing
 here as it does for the corpus builder's exclusion set.
 """

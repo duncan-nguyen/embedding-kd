@@ -48,16 +48,16 @@ absolute numbers.
 
 Usage:
     # 1. see the plan (default: prints the commands, runs nothing)
-    python3 scripts/run_target_map_ablation.py --pair qwen3_4b_to_bert_base
+    python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base
 
     # 2. run it
-    python3 scripts/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --execute
+    python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --execute
 
     # 3. read it back -- every planned cell, done or still missing
-    python3 scripts/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --collect
+    python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --collect
 
     # every subspace x gauge combination, three draws of each random arm
-    python3 scripts/run_target_map_ablation.py --grid full --draws 3 --execute
+    python3 scripts/ablations/run_target_map_ablation.py --grid full --draws 3 --execute
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The three teacher -> student pairs of the paper. Each carries the two settings
 # that depend on the teacher's *family*: how its sentence vector is pooled (Qwen3

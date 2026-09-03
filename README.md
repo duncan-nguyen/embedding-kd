@@ -31,9 +31,9 @@ row-for-row prefix of `train_200k.csv` in all three blocks. The ablation then
 varies corpus size alone, not which sentences are in the corpus.
 
 ```bash
-python3 scripts/download_retrieval_benchmarks.py   # needed for the overlap check
-python3 scripts/build_train_corpus.py --total 150000
-python3 scripts/build_train_corpus.py --total 200000
+python3 scripts/data/download_retrieval_benchmarks.py   # needed for the overlap check
+python3 scripts/data/build_train_corpus.py --total 150000
+python3 scripts/data/build_train_corpus.py --total 200000
 ```
 
 | Corpus | Base | MS MARCO queries | MS MARCO passages |
@@ -178,7 +178,7 @@ and saves what its map actually did — retained energy against what a random
 subspace of that rank would retain, the student-target cosine before and after
 the rotation, and the participation ratio of the cross-covariance, which says in
 advance whether the gauge can matter at all (at PR ~ 1 it can only rotate one
-mean vector onto another). `scripts/run_target_map_ablation.py` runs the whole
+mean vector onto another). `scripts/ablations/run_target_map_ablation.py` runs the whole
 grid off one shared teacher cache and reads it back as a table. The objective is
 `L_end + L_ctr` and nothing else: the final layer is anchored on those targets and
 regularised by InfoNCE over two dropout views (`--lambda_end 1`,
@@ -221,12 +221,25 @@ From the repo root:
 
 ```bash
 source .venv/bin/activate
-bash scripts/train_talas.sh
+bash scripts/methods/talas/train.sh
 ```
 
-One script per method lives in `scripts/` (`train_talas.sh`, `train_cdm.sh`,
-`train_dskd.sh`, `train_emo.sh`, `train_stella.sh`, `train_geoode.sh`,
-`train_rkd.sh`, `train_simcse.sh`, plus `.ps1` equivalents).
+One folder per method lives under `scripts/methods/` (`cdm`, `dskd`, `emo`,
+`geoode`, `rkd`, `simcse`, `stella`, `talas`), each holding a `train.sh` and a
+`train.ps1` over the shared `scripts/lib/common.sh` / `common.ps1`. A script
+resolves the repo root from its own location, so it runs from any working
+directory. It sets only what its method alone decides — the rest is
+`config/<method>_config.py`, since every flag below defaults to `None` and a
+`None` never overrides the config. The pair, the corpus and the teacher cache
+are environment variables (`STUDENT_MODEL`, `TEACHER_MODEL`, `TEACHER_POOLING`,
+`TRAIN_DATA`, `CACHE_DIR`), and any extra argument is forwarded to `main.py`:
+
+```bash
+TRAIN_DATA=data/train_set/train_200k.csv \
+  bash scripts/methods/geoode/train.sh --lambda_topo 0.1 --no_wandb
+```
+
+`scripts/README.md` is the map of the folder.
 
 Or run the Python entry point directly:
 
@@ -463,8 +476,8 @@ benchmarks are scored without fitting anything, so their train splits are on
 disk for completeness only. To (re)fetch them:
 
 ```bash
-python3 scripts/download_eval_train_splits.py            # skips what exists
-python3 scripts/download_eval_train_splits.py --force    # refetch everything
+python3 scripts/data/download_eval_train_splits.py            # skips what exists
+python3 scripts/data/download_eval_train_splits.py --force    # refetch everything
 ```
 
 The script rebuilds each benchmark's existing validation and test files from the
@@ -477,7 +490,7 @@ The three retrieval benchmarks are ~90 MB and are not tracked in git. Fetch them
 once, before the first run:
 
 ```bash
-python3 scripts/download_retrieval_benchmarks.py
+python3 scripts/data/download_retrieval_benchmarks.py
 ```
 
 They land under `data/test_set/retrieval/<name>/{corpus,queries,qrels}.csv`, pinned

@@ -15,7 +15,7 @@ Protocol follows BEIR exactly, so the numbers are comparable to published ones:
 * nDCG@10 is the primary metric, with `2^rel - 1` gains and `log2(rank + 1)`
   discounts -- identical to `pytrec_eval`'s `ndcg_cut_10` on these binary qrels.
 
-The benchmarks are not in git (~90 MB); `scripts/download_retrieval_benchmarks.py`
+The benchmarks are not in git (~90 MB); `scripts/data/download_retrieval_benchmarks.py`
 writes them. Embedding the three corpora is ~92k forward passes, far more than the
 rest of the protocol combined, so this runs on the test split only.
 """
@@ -58,7 +58,7 @@ def load_benchmark(directory: str) -> dict:
     if missing:
         raise FileNotFoundError(
             f"Retrieval benchmark {root} is missing {', '.join(missing)}. "
-            f"Run: python scripts/download_retrieval_benchmarks.py"
+            f"Run: python scripts/data/download_retrieval_benchmarks.py"
         )
 
     corpus = pd.read_csv(root / "corpus.csv", dtype=str).fillna("")
