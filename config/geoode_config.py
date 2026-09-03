@@ -2,7 +2,7 @@ from .base_config import BaseConfig
 
 
 class GeoODEConfig(BaseConfig):
-    """GeoODE-KD: endpoint distillation against a frozen teacher map (L_end + L_ctr)."""
+    """GeoODE-KD: fixed PCA subspace with epoch-wise gauge alignment."""
 
     distill_method = "geoode"
 
@@ -56,6 +56,9 @@ class GeoODEConfig(BaseConfig):
     # Euclidean distance sqrt(2 - 2cos), "angular" the geodesic acos(cos), "cosine"
     # the (non-metric) 1 - cos. CLI: --topo_metric.
     topo_metric = "chord"
+    # "original" bypasses P_T; "projected" reads the d_S endpoint targets.
+    # CLI: --topo_teacher_source.
+    topo_teacher_source = "original"
 
     # Pool(.) of Eq. (7) applied at every depth. "cls" matches the pooling the
     # evaluation code uses, so the supervised endpoint is the embedding that is scored.
@@ -94,10 +97,9 @@ class GeoODEConfig(BaseConfig):
     # decides which directions are picked. True is the textbook PCA transform.
     pca_subtract_mean = False
     # --- factor 2: the orientation inside that subspace ---
-    # R: orthogonal Procrustes alignment of the PCA coordinates to the untrained
-    # student (closed form, fitted once). Removes the arbitrary gauge of the PCA
-    # basis from the endpoint loss; off is the ablation. The alignment is fitted on
-    # up to this many corpus sentences (must be >> d_S).
+    # R: orthogonal Procrustes alignment of the PCA coordinates to the student.
+    # The calibration subset is selected once before training and reused unchanged
+    # by every refit. It contains up to this many corpus sentences (must be >> d_S).
     gauge_align = True
     gauge_align_samples = 16384
     # Which rotation gauge_align applies: "procrustes" is the informative one,
@@ -110,8 +112,9 @@ class GeoODEConfig(BaseConfig):
     # (1); read only by gauge_rotation = "interpolate". CLI: --gauge_theta.
     gauge_theta = 0.5
     # Re-estimate R every N epochs against the current student (alternating exact
-    # minimisation over O(d_S)); 0 keeps the initial gauge for the whole run.
-    gauge_refit_every = 0
+    # minimisation over O(d_S)); 1 is the paper recipe and 0 is the fixed-gauge
+    # ablation. The final epoch is not followed by a redundant refit.
+    gauge_refit_every = 1
 
     batch_size = 32
     epochs = 5

@@ -924,7 +924,16 @@ class KnowledgeDistiller:
 
         teacher_topo_list = None
         if cfg.distill_method == "geoode":
-            if float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0:
+            topo_source = getattr(cfg, "topo_teacher_source", "original")
+            if topo_source not in ("original", "projected"):
+                raise ValueError(
+                    "topo_teacher_source must be 'original' or 'projected', got "
+                    f"{topo_source!r}"
+                )
+            if (
+                float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0
+                and topo_source == "original"
+            ):
                 # The topological terms compare point-cloud shapes, so they need no
                 # shared basis and read the teacher *before* P_T narrows it to d_S --
                 # the one supervision signal in the run that P_T cannot colour.
@@ -1118,11 +1127,11 @@ class KnowledgeDistiller:
     ) -> torch.Tensor:
         """Fit and apply P_T = P_PCA R (Eq. 8), mapping cached teacher embeddings to d_S.
 
-        Algorithm 1 does this once, before the training loop, so every step reads
-        targets that already live on the student's hypersphere. P_PCA is fitted on
-        the cached training embeddings; R is the orthogonal Procrustes alignment of
-        those coordinates to the untrained student's embeddings of the same texts.
-        Both are saved for reproducibility and neither is needed at inference.
+        P_PCA is fitted once on the cached training embeddings and stays fixed. The
+        calibration rows for R are also selected once: R is initially aligned to the
+        untrained student, then the same rows are reused by optional epoch-wise exact
+        Procrustes refits. The map state is saved for reproducibility and none of it
+        is needed at inference.
         """
         cfg = self.config
         student_dim = self.model_student.config.hidden_size
@@ -1173,9 +1182,12 @@ class KnowledgeDistiller:
             )
 
         rotation = None
+        gauge_index = None
         gauge_stats = None
         gauge_mode = getattr(cfg, "gauge_rotation", "procrustes")
         refit_every = int(getattr(cfg, "gauge_refit_every", 0) or 0)
+        if refit_every < 0:
+            raise ValueError("gauge_refit_every must be non-negative")
         if gauge_mode != "procrustes" and refit_every > 0:
             # The refit is an alternating exact minimisation over O(d_S) and is only
             # a descent step for the Procrustes gauge. Re-drawing a random rotation
@@ -1188,67 +1200,71 @@ class KnowledgeDistiller:
         if getattr(cfg, "gauge_align", False):
             if texts is None:
                 raise ValueError("gauge_align requires the corpus texts")
-            n_fit = min(len(texts), int(getattr(cfg, "gauge_align_samples", 16384)))
-            if n_fit < 2 * student_dim:
+            requested_fit = int(getattr(cfg, "gauge_align_samples", 16384))
+            if requested_fit < 2:
+                raise ValueError("gauge_align_samples must be at least 2")
+            n_fit = min(len(texts), requested_fit)
+            if n_fit < 2:
+                raise ValueError("gauge alignment requires at least 2 corpus sentences")
+            if n_fit < student_dim:
                 print(
-                    f"Gauge alignment skipped: {n_fit} sentences is too few for a "
-                    f"{student_dim}-dimensional Procrustes fit"
+                    f"[WARN] Gauge calibration has {n_fit} sentences for dimension "
+                    f"{student_dim}; the Procrustes cross-covariance is rank-deficient"
                 )
-            else:
-                # Evenly spaced rows so every source in a merged corpus is represented.
-                index = torch.linspace(0, len(texts) - 1, n_fit).round().long().unique()
-                student_init = self._student_initial_embeddings(
-                    [texts[i] for i in index.tolist()]
-                )
-                rotation, gauge_stats = fit_gauge_rotation(
-                    targets[index],
-                    student_init,
-                    mode=gauge_mode,
-                    seed=int(getattr(cfg, "gauge_random_seed", 0)),
-                    theta=getattr(cfg, "gauge_theta", None),
-                )
-                if gauge_mode == "procrustes":
-                    # Kept for the optional per-epoch re-estimation of R (alternating
-                    # minimisation of the gauge-invariant endpoint discrepancy).
-                    self._gauge_state = {
-                        "targets_pca": targets.clone(),
-                        "index": index,
-                        "texts": [texts[i] for i in index.tolist()],
-                        "history": [gauge_stats],
-                    }
-                targets = targets @ rotation
-                if renormalize:
-                    targets = F.normalize(targets, dim=-1, eps=cfg.eps_norm)
-                reference = (
-                    ""
-                    if gauge_mode == "procrustes"
-                    else f" (Procrustes would reach {gauge_stats['cos_procrustes']:+.3f})"
-                )
+            # The rows are selected exactly once. Refit calls reuse both this index
+            # tensor and its text list; they never resample the calibration subset.
+            index = torch.linspace(0, len(texts) - 1, n_fit).round().long().unique()
+            gauge_index = index
+            student_init = self._student_initial_embeddings(
+                [texts[i] for i in index.tolist()]
+            )
+            rotation, gauge_stats = fit_gauge_rotation(
+                targets[index],
+                student_init,
+                mode=gauge_mode,
+                seed=int(getattr(cfg, "gauge_random_seed", 0)),
+                theta=getattr(cfg, "gauge_theta", None),
+            )
+            if gauge_mode == "procrustes":
+                self._gauge_state = {
+                    "targets_pca": targets.clone(),
+                    "index": index,
+                    "texts": [texts[i] for i in index.tolist()],
+                    "history": [gauge_stats],
+                }
+            targets = targets @ rotation
+            if renormalize:
+                targets = F.normalize(targets, dim=-1, eps=cfg.eps_norm)
+            reference = (
+                ""
+                if gauge_mode == "procrustes"
+                else f" (Procrustes would reach {gauge_stats['cos_procrustes']:+.3f})"
+            )
+            print(
+                f"Fitted {gauge_mode} gauge rotation on the fixed calibration "
+                f"subset of {gauge_stats['samples']} sentences: mean student-target "
+                f"cosine {gauge_stats['cos_before']:+.3f} -> "
+                f"{gauge_stats['cos_after']:+.3f}{reference}"
+            )
+            if gauge_stats.get("endpoint_reflected"):
+                # Said out loud because it changes what theta = 1 *means*: the
+                # curve's right-hand end is a different Haar draw from the one
+                # the 'random' arm with this seed plots, and no continuous path
+                # to that one exists. See interpolate_rotation.
                 print(
-                    f"Fitted {gauge_mode} gauge rotation on "
-                    f"{gauge_stats['samples']} sentences: mean student-target cosine "
-                    f"{gauge_stats['cos_before']:+.3f} -> "
-                    f"{gauge_stats['cos_after']:+.3f}{reference}"
+                    "  theta=1 endpoint reflected: the Procrustes gauge and this "
+                    f"seed's Haar draw lie in different components of O({student_dim}), "
+                    "so the geodesic ends at that draw with its last column negated, "
+                    "not at the gauge --gauge_rotation random would use"
                 )
-                if gauge_stats.get("endpoint_reflected"):
-                    # Said out loud because it changes what theta = 1 *means*: the
-                    # curve's right-hand end is a different Haar draw from the one
-                    # the 'random' arm with this seed plots, and no continuous path
-                    # to that one exists. See interpolate_rotation.
-                    print(
-                        "  theta=1 endpoint reflected: the Procrustes gauge and this "
-                        f"seed's Haar draw lie in different components of O({student_dim}), "
-                        "so the geodesic ends at that draw with its last column negated, "
-                        "not at the gauge --gauge_rotation random would use"
-                    )
-                # PR ~ 1 means the cross-covariance is rank-one and the gauge can
-                # only match the two mean vectors, so a null R ablation on this pair
-                # is predicted rather than surprising.
-                print(
-                    "Cross-covariance participation ratio "
-                    f"{gauge_stats['participation_ratio']:.2f} of {student_dim} "
-                    f"(top singular share {gauge_stats['top_singular_share']:.3f})"
-                )
+            # PR ~ 1 means the cross-covariance is rank-one and the gauge can
+            # only match the two mean vectors, so a null R ablation on this pair
+            # is predicted rather than surprising.
+            print(
+                "Cross-covariance participation ratio "
+                f"{gauge_stats['participation_ratio']:.2f} of {student_dim} "
+                f"(top singular share {gauge_stats['top_singular_share']:.3f})"
+            )
 
         # The same numbers the block above prints, kept where a later reader can get
         # at them: which interface this run trained against, how much of the teacher
@@ -1264,6 +1280,9 @@ class KnowledgeDistiller:
             "pca_subtract_mean": bool(cfg.pca_subtract_mean),
             "gauge_align": bool(getattr(cfg, "gauge_align", False)),
             "gauge_rotation": gauge_mode,
+            "gauge_refit_every": refit_every,
+            "gauge_fit_samples": 0 if gauge_index is None else int(len(gauge_index)),
+            "gauge_subset_policy": "fixed_evenly_spaced",
             "gauge_stats": gauge_stats,
         }
 
@@ -1285,9 +1304,13 @@ class KnowledgeDistiller:
                     "gauge_align": bool(getattr(cfg, "gauge_align", False)),
                     "gauge_rotation": gauge_mode,
                     "gauge_random_seed": int(getattr(cfg, "gauge_random_seed", 0)),
+                    "gauge_refit_every": refit_every,
+                    "gauge_fit_indices": gauge_index,
+                    "gauge_subset_policy": "fixed_evenly_spaced",
                     # The matrix itself, so a saved run can be replayed exactly.
                     "gauge_matrix": rotation,
                     "gauge_stats": gauge_stats,
+                    "gauge_history": [] if gauge_stats is None else [gauge_stats],
                 },
                 projection_path,
             )

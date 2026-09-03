@@ -12,21 +12,21 @@ $$
 
 Từ cache, lấy $d_S$ principal directions bằng PCA để tạo $P_{\mathrm{PCA}}\in\mathbb{R}^{d_T\times d_S}$. PCA được fit trên dữ liệu đã trừ mean; theo cấu hình mặc định, mean không bị trừ khi áp dụng phép chiếu.
 
-Do hướng của PCA là tùy ý, GeoODE-KD căn chỉnh target với student chưa train bằng Orthogonal Procrustes. Với $T_{\mathrm{PCA}}$ là target PCA đã chuẩn hóa và $Z_0$ là embedding ban đầu của student trên cùng một tập mẫu:
+Do hướng của PCA là tùy ý, GeoODE-KD căn chỉnh target với student bằng Orthogonal Procrustes. Một calibration subset có kích thước điều khiển bởi `gauge_align_samples` được chọn đúng một lần trước training và dùng lại ở mọi epoch. Với $T_{\mathrm{PCA}}$ là target PCA đã chuẩn hóa và $Z_e$ là embedding của student hiện tại trên cùng subset:
 
 $$
-R^*=\arg\min_{R\in O(d_S)}\|T_{\mathrm{PCA}}R-Z_0\|_F,
+R^{(e)}=\arg\min_{R\in O(d_S)}\|T_{\mathrm{PCA}}R-Z_e\|_F,
 \qquad
-R^*=UV^\top,
+R^{(e)}=UV^\top,
 $$
 
-trong đó $U\Sigma V^\top=\text{SVD}(T_{\mathrm{PCA}}^\top Z_0)$. Target cuối cùng là
+trong đó $U\Sigma V^\top=\text{SVD}(T_{\mathrm{PCA}}^\top Z_e)$. Lần $e=0$ dùng student chưa train; sau mỗi epoch, $R^{(e)}$ được refit cho epoch tiếp theo. Target trong epoch $e$ là
 
 $$
-\tau_i=\text{norm}(\tilde{t}_iP_{\mathrm{PCA}}R^*).
+\tau_i^{(e)}=\text{norm}(\tilde{t}_iP_{\mathrm{PCA}}R^{(e)}).
 $$
 
-$P_{\mathrm{PCA}}$, $R^*$ và toàn bộ $\tau_i$ được đóng băng trong suốt quá trình train.
+$P_{\mathrm{PCA}}$ được đóng băng trong suốt training. Procrustes được refit mặc định mỗi epoch (`gauge_refit_every=1`) trên đúng calibration subset ban đầu; subset không được resample. Vì $R^{(e)}$ trực giao, refit chỉ đổi orientation và không đổi pairwise geometry của target.
 
 ## 2. Objective
 

@@ -92,7 +92,7 @@ under `config/`, which supplies the defaults that the CLI flags then override:
 | `--method` | Config | Objective |
 | --- | --- | --- |
 | `talas` | `config/talas_config.py` | Teacher-anchor KD on cached teacher embeddings, with a structural term and SAM |
-| `geoode` | `config/geoode_config.py` | GeoODE-KD: endpoint distillation onto a frozen PCA+Procrustes teacher map, with an InfoNCE regulariser |
+| `geoode` | `config/geoode_config.py` | GeoODE-KD: endpoint distillation through a fixed PCA subspace and an epoch-wise Procrustes gauge |
 | `cdm` | `config/cdm_config.py` | Contextual dynamic mapping across the two tokenizers |
 | `dskd` | `config/dskd_config.py` | Dual-space KD with a learned projection |
 | `emo` | `config/emo_config.py` | Optimal-transport embedding distillation |
@@ -152,11 +152,14 @@ relational counterpart to `geoode`'s point-wise endpoint term.
 embeddings to the student dimension with a PCA map fitted on the cache itself,
 then rotates those coordinates onto the *untrained* student's own embedding space
 by orthogonal Procrustes (`P_T = P_PCA R`; both saved in `teacher_projection.pt`
-next to the checkpoints). The rotation is a closed-form statistic, not a
-parameter: it removes the arbitrary gauge of the PCA basis from the endpoint loss
-without touching the Gram matrix (`--no-gauge_align` is the ablation;
-`--gauge_refit_every N` re-estimates it against the current student every N
-epochs). Both factors of that map are claims, so both have a control. The
+next to the checkpoints). A fixed calibration subset of
+`--gauge_align_samples` corpus rows is selected once and reused unchanged when the
+rotation is refitted against the current student after every epoch
+(`--gauge_refit_every 1`, the default). The rotation is a closed-form statistic,
+not a parameter: it removes the arbitrary gauge of the PCA basis from the endpoint
+loss without touching the Gram matrix (`--no-gauge_align` and
+`--gauge_refit_every 0` are ablations). Both factors of that map are claims, so
+both have a control. The
 subspace: `--projection_type random` draws a Haar-random subspace of the same
 rank and `random_gaussian` the Johnson-Lindenstrauss map that gives up
 orthonormality too, while `--no-pca_center_fit` is the uncentered-SVD arm in

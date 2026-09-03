@@ -21,11 +21,11 @@ all, they let one be learned. They carry no gauge (a gauge orients a frozen basi
 a learned map has none), and their randomness is the initialisation of ``W``, so they
 vary with ``--seeds`` rather than with ``--draws``.
 
-**Factor 2 -- the orientation** (``--gauge``). The claim is Schoenemann: the gauge
-fitted to the student init is better than the arbitrary gauge PCA happens to return.
+**Factor 2 -- the orientation** (``--gauge``). The claim is Schoenemann: a gauge
+kept aligned to the evolving student is better than the arbitrary gauge PCA returns.
 
     none             no rotation -- the coordinates the subspace fit produced
-    procrustes       R fitted once against the untrained student (the paper's R)
+    procrustes       R fitted at init and refitted every epoch (the paper's R)
     random           a Haar-random rotation Q of identical cost -- THE control
 
 ``random`` is the sharp one. PCA's own basis is already an arbitrary gauge, so
@@ -125,8 +125,8 @@ GAUGE_ARMS = {
 
 # The cells this ablation was asked for: ours against the four things it has to beat.
 # Read as one row per claim rather than as a grid --
-#   pca/procrustes   ours: subspace from the teacher's spectrum, gauge from the
-#                    student init, both frozen before training
+#   pca/procrustes   ours: fixed subspace from the teacher's spectrum, with the
+#                    Procrustes gauge refitted against the student every epoch
 #   pca/none         the subspace alone (sentence-transformers <= v5.4, HPD's
 #                    teacher side): is the gauge doing anything?
 #   pca/random       the same subspace under a Haar rotation of identical cost: is
@@ -337,6 +337,13 @@ def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
     if args.no_retrieval:
         command.append("--no_eval_retrieval")
     command.extend(arm_flags(cell["settings"]))
+    # Epoch-wise refitting is the main Procrustes recipe. Every other gauge cell is
+    # a fixed control and opts out explicitly now that refitting is the default.
+    command.extend(
+        ["--gauge_refit_every", "1"]
+        if cell["gauge"] == "procrustes"
+        else ["--gauge_refit_every", "0"]
+    )
     return command
 
 

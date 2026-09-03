@@ -297,9 +297,12 @@ def _stub_distiller(config, student_dim, student_init):
 
 def _targets_for(save_dir="", **overrides):
     student_dim, rows = 8, 64
-    config = GeoODEConfig(
-        save_dir=save_dir, gauge_align_samples=rows, **overrides
-    )
+    settings = {
+        "gauge_align_samples": rows,
+        "gauge_refit_every": 0,
+        **overrides,
+    }
+    config = GeoODEConfig(save_dir=save_dir, **settings)
     generator = torch.Generator().manual_seed(19)
     teacher = _spectral_data(rows=rows, dim=32, seed=19)
     student_init = torch.nn.functional.normalize(
@@ -473,6 +476,60 @@ def test_the_run_records_which_arm_it_used(tmp_path):
     assert saved["explained_energy"] < 1.0
 
 
+def test_the_gauge_subset_is_selected_once_and_saved(tmp_path):
+    _targets_for(
+        save_dir=str(tmp_path),
+        gauge_rotation="procrustes",
+        gauge_align_samples=16,
+        gauge_refit_every=1,
+    )
+
+    saved = torch.load(tmp_path / "teacher_projection.pt", map_location="cpu")
+    indices = saved["gauge_fit_indices"]
+
+    assert len(indices) == 16
+    assert len(indices.unique()) == 16
+    assert saved["gauge_refit_every"] == 1
+    assert saved["gauge_subset_policy"] == "fixed_evenly_spaced"
+    assert len(saved["gauge_history"]) == 1
+
+
+def test_epoch_refits_reuse_the_initial_calibration_subset():
+    rows, student_dim, fit_samples = 32, 8, 7
+    config = GeoODEConfig(
+        save_dir="",
+        gauge_align_samples=fit_samples,
+        gauge_refit_every=1,
+    )
+    teacher = _spectral_data(rows=rows, dim=24, seed=23)
+    generator = torch.Generator().manual_seed(23)
+    student_states = [
+        torch.nn.functional.normalize(
+            torch.randn(fit_samples, student_dim, generator=generator), dim=-1
+        )
+        for _ in range(3)
+    ]
+    calls = []
+    distiller = _stub_distiller(config, student_dim, student_states[0])
+
+    def encode(texts):
+        calls.append(tuple(texts))
+        return student_states[len(calls) - 1]
+
+    distiller._student_initial_embeddings = encode
+    texts = [f"sentence {i}" for i in range(rows)]
+    distiller.teacher_cls_all = distiller._project_teacher_targets(teacher, texts)
+    distiller.log_experiment_record = lambda record: None
+
+    distiller._refit_gauge(0)
+    distiller._refit_gauge(1)
+
+    assert len(calls) == 3
+    assert calls[0] == calls[1] == calls[2]
+    assert len(calls[0]) == fit_samples
+    assert len(distiller._gauge_state["history"]) == 3
+
+
 # --------------------------------------------------------------------------- #
 # The grid runner: it emits main.py commands, so it can rot silently
 # --------------------------------------------------------------------------- #
@@ -512,6 +569,7 @@ def test_every_planned_cell_parses_into_the_arm_it_names(grid):
         assert config.gauge_align is (gauge != "none")
         if gauge != "none":
             assert config.gauge_rotation == gauge
+        assert config.gauge_refit_every == (1 if gauge == "procrustes" else 0)
         if subspace in ablation.STOCHASTIC_SUBSPACES:
             assert config.projection_seed == cell["draw"]
         if gauge == "random":

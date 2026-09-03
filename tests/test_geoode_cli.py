@@ -102,7 +102,8 @@ def test_gauge_align_flag_is_tri_state():
 
 def test_gauge_refit_flag_overrides_the_config():
     assert _config("--method", "geoode").gauge_refit_every == GeoODEConfig.gauge_refit_every
-    assert _config("--method", "geoode", "--gauge_refit_every", "1").gauge_refit_every == 1
+    assert GeoODEConfig.gauge_refit_every == 1
+    assert _config("--method", "geoode", "--gauge_refit_every", "0").gauge_refit_every == 0
 
 
 def test_geoode_flags_are_rejected_for_other_methods():
@@ -151,3 +152,17 @@ def test_h0_flags_default_off_and_are_forwarded():
     )
     assert config.lambda_topo == 0.1
     assert config.topo_metric == "angular"
+
+
+def test_topology_source_and_gauge_fit_budget_are_forwarded():
+    default = _config("--method", "geoode")
+    assert default.topo_teacher_source == "original"
+    assert default.gauge_align_samples == GeoODEConfig.gauge_align_samples
+
+    config = _config(
+        "--method", "geoode",
+        "--topo_teacher_source", "projected",
+        "--gauge_align_samples", "2048",
+    )
+    assert config.topo_teacher_source == "projected"
+    assert config.gauge_align_samples == 2048

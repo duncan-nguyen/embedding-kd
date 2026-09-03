@@ -9,8 +9,8 @@ only its final sentence embeddings,
 $\widetilde{\boldsymbol{\tau}}_i=\operatorname{norm}(f_T(x_i))$. Pooling and
 normalising the student's final token states gives
 $\mathbf{z}_i\in\mathbb{S}^{d_S-1}$. The two vectors have different widths, so
-nothing can be compared until a map bridges them; we fix that map before training
-and never touch it again.
+nothing can be compared until a map bridges them. We keep its teacher-dependent
+subspace fixed and update only its student-dependent orthogonal gauge.
 
 \subsection{Teacher Targets}
 \label{sec:method-targets}
@@ -18,29 +18,30 @@ and never touch it again.
 We fit the leading $d_S$-dimensional principal subspace
 $P_{\mathrm{PCA}}\in\mathbb{R}^{d_T\times d_S}$ on the centred cache. Its
 orientation inside that subspace is arbitrary --- invisible to every cosine-metric
-evaluation, but not to a point-wise loss --- so we remove it once by orthogonal
-Procrustes against the \emph{untrained} student. With $\mathbf{T}_{\mathrm{PCA}}$
-the normalised principal coordinates of a fitting subset and $\mathbf{Z}_0$ the
-student's normalised outputs on the same sentences
+evaluation, but not to a point-wise loss --- so we track it by orthogonal
+Procrustes. We select one calibration subset before training and reuse it unchanged.
+With $\mathbf{T}_{\mathrm{PCA}}$ its normalised principal coordinates and
+$\mathbf{Z}^{(e)}$ the current student's normalised outputs on the same sentences
 \citep{schonemann1966procrustes},
 \begin{equation}
-    R^\star=\underset{R\in O(d_S)}{\arg\min}\,
-    \lVert\mathbf{T}_{\mathrm{PCA}}R-\mathbf{Z}_0\rVert_F=UV^\top,
-    \qquad U\Sigma V^\top=\operatorname{svd}\!\left(\mathbf{T}_{\mathrm{PCA}}^\top\mathbf{Z}_0\right),
+    R^{(e)}=\underset{R\in O(d_S)}{\arg\min}\,
+    \lVert\mathbf{T}_{\mathrm{PCA}}R-\mathbf{Z}^{(e)}\rVert_F=UV^\top,
+    \quad U\Sigma V^\top=\operatorname{svd}\!\left(\mathbf{T}_{\mathrm{PCA}}^\top\mathbf{Z}^{(e)}\right),
     \label{eq:gauge-alignment}
 \end{equation}
-and the target of sentence $x_i$ is
+where $e=0$ uses the initialized student and the gauge is refitted after each
+training epoch for the next one. The target of sentence $x_i$ in epoch $e$ is
 \begin{equation}
-    \boldsymbol{\tau}_i
-    =\operatorname{norm}\!\left(f_T(x_i)\,P_{\mathrm{PCA}}R^\star\right)
+    \boldsymbol{\tau}_i^{(e)}
+    =\operatorname{norm}\!\left(f_T(x_i)\,P_{\mathrm{PCA}}R^{(e)}\right)
     \in\mathbb{S}^{d_S-1}.
     \label{eq:target}
 \end{equation}
-Both factors are fitted before the first gradient step and frozen for the whole
-run. Because $R^\star$ is orthogonal it leaves the targets' pairwise cosines and
-retained variance exactly unchanged, so the two factors are independent: the
-projection decides \emph{what} of the teacher survives, the rotation only
-\emph{where} it is placed relative to the student's starting point.
+The PCA factor is fitted once and frozen. Each $R^{(e)}$ is an exact closed-form
+update, not a learned projector. Because it is orthogonal, every refit leaves the
+targets' pairwise cosines and retained variance exactly unchanged: the projection
+decides \emph{what} of the teacher survives, while the rotation only tracks
+\emph{where} that fixed geometry is placed relative to the evolving student.
 
 \subsection{Objective}
 \label{sec:method-objective}
@@ -48,9 +49,9 @@ projection decides \emph{what} of the teacher survives, the rotation only
 Only the final student embedding is supervised.  The endpoint term aligns each
 student embedding with its fixed, dimension-matched teacher target:
 \begin{equation}
-    \mathcal{L}_{\mathrm{end}}
+    \mathcal{L}_{\mathrm{end}}^{(e)}
     =\frac{1}{B}\sum_{i=1}^{B}
-    \left(1-\left\langle\mathbf{z}_i,\boldsymbol{\tau}_i\right\rangle\right),
+    \left(1-\left\langle\mathbf{z}_i,\boldsymbol{\tau}_i^{(e)}\right\rangle\right),
     \label{eq:endpoint-loss}
 \end{equation}
 where $B$ is the minibatch size.  This term fixes point-wise correspondence in
@@ -87,8 +88,8 @@ interface.  Setting $\lambda_1=0$ gives the $H_0$-only variant.
 
 The complete training objective contains only these two losses:
 \begin{equation}
-    \mathcal{L}
-    =\lambda_{\mathrm{end}}\mathcal{L}_{\mathrm{end}}
+    \mathcal{L}^{(e)}
+    =\lambda_{\mathrm{end}}\mathcal{L}_{\mathrm{end}}^{(e)}
     +\lambda_{\mathrm{topo}}\mathcal{L}_{\mathrm{topo}}.
     \label{eq:objective}
 \end{equation}
@@ -100,7 +101,8 @@ measure.
 No projector is trained, no contrastive or Gram loss is added, no intermediate
 layer is supervised, and nothing is attached to the student at inference: the
 deployed model is the unmodified encoder. Training costs one teacher pass over
-the corpus, one truncated SVD of the cache, one $d_S\times d_S$ SVD for
-$R^\star$, and then ordinary student training against the cached teacher
-embeddings and their fixed projected targets --- no teacher hidden state,
-attention map or online teacher forward pass is used.
+the corpus, one truncated SVD of the cache, and one small $d_S\times d_S$
+Procrustes SVD at initialization and after each non-final epoch. Student embeddings
+for those refits are computed only on the fixed calibration subset; ordinary
+training reads cached teacher embeddings and their epoch-aligned projected targets
+--- no teacher hidden state, attention map or online teacher forward pass is used.

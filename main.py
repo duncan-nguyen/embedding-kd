@@ -146,6 +146,13 @@ def parse_args():
         '"chord" (Euclidean), "angular" (geodesic) or "cosine" (1 - cos)',
     )
     parser.add_argument(
+        "--topo_teacher_source",
+        choices=["original", "projected"],
+        default=None,
+        help="GeoODE-KD: teacher cloud for H0. 'original' uses the native d_T "
+        "cache; 'projected' uses the frozen d_S endpoint targets",
+    )
+    parser.add_argument(
         "--projection_type",
         choices=[
             "pca",
@@ -235,7 +242,15 @@ def parse_args():
         type=int,
         default=None,
         help="GeoODE-KD: re-estimate the gauge R against the current student every N "
-        "epochs (0 = keep the initial gauge)",
+        "epochs using the fixed calibration subset selected before training "
+        "(paper default: 1; 0 = keep the initial gauge)",
+    )
+    parser.add_argument(
+        "--gauge_align_samples",
+        type=int,
+        default=None,
+        help="GeoODE-KD: size of the calibration subset selected once before "
+        "training and reused for the initial Procrustes fit and every refit",
     )
     parser.add_argument(
         "--w_dist",
@@ -479,6 +494,7 @@ METHOD_FLAGS = (
             "lambda_topo",
             "lambda_h1",
             "topo_metric",
+            "topo_teacher_source",
             "projection_type",
             "projection_seed",
             "learned_projector_lr_scale",
@@ -489,6 +505,7 @@ METHOD_FLAGS = (
             "gauge_random_seed",
             "gauge_theta",
             "gauge_refit_every",
+            "gauge_align_samples",
         ),
         "geoode method",
     ),

@@ -590,6 +590,25 @@ def test_the_topology_arm_reads_the_teachers_own_dimension(tmp_path, monkeypatch
     assert batch["teacher_deaths"].shape == (rows - 1,)
 
 
+def test_projected_topology_source_falls_back_to_endpoint_targets(tmp_path, monkeypatch):
+    """The source ablation changes only the teacher cloud read by H0: no native
+    cache is shipped, so the criterion uses the already projected endpoint target."""
+    distiller = _run_distiller(
+        tmp_path,
+        monkeypatch,
+        lambda_topo=0.5,
+        topo_teacher_source="projected",
+    )
+    batch = next(iter(distiller.train_loader))
+
+    assert "teacher_deaths" not in batch
+    assert "teacher_topo" not in batch
+    assert batch["teacher_cls"].shape[1] == 8
+
+    distiller.train_epoch(0)
+    assert distiller.last_epoch_metrics["loss_topo"] > 0.0
+
+
 def test_the_h1_arm_ships_a_diagram_too(tmp_path, monkeypatch):
     """With lambda_h1 on, the collate also reduces the teacher's cache to its H1
     diagram, and the epoch's L_topo carries both halves."""
