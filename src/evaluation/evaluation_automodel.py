@@ -242,7 +242,7 @@ def eval_classification_task(model, path_list, tokenizer):
 
         clf = LogisticRegression(
             random_state=42,
-            max_iter=1000,
+            max_iter=200,
             verbose=0,
         )
         clf.fit(X_train, y_train)
