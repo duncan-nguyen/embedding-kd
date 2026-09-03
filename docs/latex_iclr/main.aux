@@ -16,23 +16,31 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Objective}{1}{subsection.3.2}\protected@file@percent }
 \newlabel{sec:method-objective}{{3.2}{1}{Objective}{subsection.3.2}{}}
 \newlabel{eq:endpoint-loss}{{3}{1}{Objective}{equation.3.3}{}}
-\bibdata{references/references}
-\bibcite{schonemann1966procrustes}{{1}{1966}{{Sch{\"o}nemann}}{{}}}
 \newlabel{eq:topological-loss}{{5}{2}{Objective}{equation.3.5}{}}
 \newlabel{eq:objective}{{6}{2}{Objective}{equation.3.6}{}}
 \@writefile{toc}{\contentsline {paragraph}{What the method does not contain.}{2}{section*.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{2}{section.4}\protected@file@percent }
 \newlabel{sec:experiments}{{4}{2}{Experiments}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Setup}{2}{subsection.4.1}\protected@file@percent }
-\newlabel{sec:exp-setup}{{4.1}{2}{Setup}{subsection.4.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{Teacher--student pairs.}{2}{section*.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Training corpus.}{2}{section*.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Evaluation.}{2}{section*.4}\protected@file@percent }
-\bibstyle{template/iclr2027_conference}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces  Experimental results on nine datasets. Avg.\ is the unweighted mean of the nine benchmark scores. Where shown, uncertainty is the sample standard deviation over three seeds.}}{3}{table.1}\protected@file@percent }
-\newlabel{tab:main-results}{{1}{3}{Experimental results on nine datasets. Avg.\ is the unweighted mean of the nine benchmark scores. Where shown, uncertainty is the sample standard deviation over three seeds}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{2}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:exp-setup}{{4.1}{2}{Experimental Setup}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Teacher--student configurations.}{2}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Distillation corpus.}{2}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Evaluation protocol.}{2}{section*.4}\protected@file@percent }
+\bibdata{references/references}
+\bibcite{schonemann1966procrustes}{{1}{1966}{{Sch{\"o}nemann}}{{}}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Results on nine benchmarks. Avg.\ denotes the unweighted mean of the nine benchmark scores. Where reported, uncertainty is the sample standard deviation across three seeds.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:main-results}{{1}{3}{Results on nine benchmarks. Avg.\ denotes the unweighted mean of the nine benchmark scores. Where reported, uncertainty is the sample standard deviation across three seeds}{table.1}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {5}Analysis}{3}{section.5}\protected@file@percent }
 \newlabel{sec:analysis}{{5}{3}{Analysis}{section.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{3}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{3}{Conclusion}{section.6}{}}
-\gdef \@abspage@last{3}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Is the Bottleneck Compression or Comparability?}{3}{subsection.5.1}\protected@file@percent }
+\newlabel{sec:analysis-interface}{{5.1}{3}{Is the Bottleneck Compression or Comparability?}{subsection.5.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Which Signals Require an Interface?}{3}{subsection.5.2}\protected@file@percent }
+\newlabel{sec:analysis-decomposition}{{5.2}{3}{Which Signals Require an Interface?}{subsection.5.2}{}}
+\bibstyle{template/iclr2027_conference}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces \textbf  {Endpoint-interface ablation.} All variants optimize $\mathcal  {L}_{\mathrm  {end}}$ only, with $\mathcal  {L}_{H_0}=0$. Retained energy, Gram RMSE, and $k$NN overlap compare the original teacher embeddings with their fixed projected targets and are therefore not applicable to jointly learned interfaces. Orthogonal Procrustes leaves all three fixed-target geometry metrics unchanged.}}{4}{table.2}\protected@file@percent }
+\newlabel{tab:interface-families}{{2}{4}{\textbf {Endpoint-interface ablation.} All variants optimize $\mathcal {L}_{\mathrm {end}}$ only, with $\mathcal {L}_{H_0}=0$. Retained energy, Gram RMSE, and $k$NN overlap compare the original teacher embeddings with their fixed projected targets and are therefore not applicable to jointly learned interfaces. Orthogonal Procrustes leaves all three fixed-target geometry metrics unchanged}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Endpoint and topology decomposition.} Rows containing the endpoint objective use the fixed PCA interface with epoch-wise Procrustes. The $H_0$-only variant operates directly in the original teacher space.}}{4}{table.3}\protected@file@percent }
+\newlabel{tab:signal-decomposition}{{3}{4}{\textbf {Endpoint and topology decomposition.} Rows containing the endpoint objective use the fixed PCA interface with epoch-wise Procrustes. The $H_0$-only variant operates directly in the original teacher space}{table.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{4}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{4}{Conclusion}{section.6}{}}
+\gdef \@abspage@last{4}

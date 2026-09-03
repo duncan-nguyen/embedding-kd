@@ -1,3 +1,26 @@
 \section{Analysis}
 \label{sec:analysis}
 
+\subsection{Is the Bottleneck Compression or Comparability?}
+\label{sec:analysis-interface}
+
+Table~\ref{tab:interface-families} controls the endpoint objective while changing
+only how teacher and student coordinates are made comparable. A random subspace
+retains far less teacher energy than PCA yet gives a comparable downstream score.
+For either fixed subspace, epoch-wise Procrustes improves the result without
+changing the subspace itself. This suggests that endpoint comparability, rather
+than dimensionality reduction alone, is the operative bottleneck.
+
+\input{tables/interface_families}
+
+\subsection{Which Signals Require an Interface?}
+\label{sec:analysis-decomposition}
+
+Table~\ref{tab:signal-decomposition} separates the coordinate-dependent endpoint
+term from the coordinate-invariant connectivity term. Endpoint supervision
+provides most of the downstream improvement, while native-space $H_0$ supervision
+substantially reduces the persistent-connectivity residual. Their combination is
+strongest when $H_0$ bypasses the endpoint projection and is computed from the
+original teacher representation.
+
+\input{tables/signal_decomposition}

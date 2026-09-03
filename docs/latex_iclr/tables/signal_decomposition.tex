@@ -1,0 +1,22 @@
+\begin{table}[!h]
+    \centering
+    \caption{\textbf{Endpoint and topology decomposition.} Rows containing the
+    endpoint objective use the fixed PCA interface with epoch-wise Procrustes.
+    The $H_0$-only variant operates directly in the original teacher space.}
+    \label{tab:signal-decomposition}
+    \small
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{@{}lc cc@{}}
+        \toprule
+        Configuration & $H_0$ source
+        & $H_0$ residual $\downarrow$ & Avg. $\uparrow$ \\
+        \midrule
+        Student                      & ---       & 0.3885 & 52.60 \\
+        $H_0$ only                   & Original  & 0.1114 & 65.87 \\
+        \midrule
+        Endpoint only                & ---       & 0.1906 & 77.09 \\
+        \quad $+\,H_0$               & Projected & 0.1268 & 77.11 \\
+        \quad $+\,H_0$ (\textbf{Ours}) & Original  & 0.1182 & \textbf{77.47} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

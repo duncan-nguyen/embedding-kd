@@ -1,36 +1,37 @@
 \section{Experiments}
 \label{sec:experiments}
 
-\subsection{Setup}
+\subsection{Experimental Setup}
 \label{sec:exp-setup}
 
-\paragraph{Teacher--student pairs.}
-We evaluate three teacher--student configurations that differ in teacher
-family, teacher width, and student capacity:
+\paragraph{Teacher--student configurations.}
+We evaluate three configurations spanning different teacher families, teacher
+widths, and student capacities:
 (a) Qwen3-Embedding-4B ($d_T=2560$, last-token pooling) $\rightarrow$
-BERT-base (109M, $d_S=768$, 12 layers), the capacity-gap setting;
+BERT-base (109M, $d_S=768$, 12 layers), representing the capacity-gap setting;
 (b) BGE-M3 ($d_T=1024$, an XLM-R encoder with CLS pooling) $\rightarrow$
-MiniLMv2-L6-H768 (66M, $d_S=768$, 6 layers), a different teacher family;
-(c) Qwen3-Embedding-0.6B ($d_T=1024$, last-token pooling) $\rightarrow$
-MiniLMv2-L6-H384 (22M, $d_S=384$, 6 layers), the compact-student setting.
+MiniLMv2-L6-H768 (66M, $d_S=768$, 6 layers), representing a different teacher
+family; and (c) Qwen3-Embedding-0.6B ($d_T=1024$, last-token pooling)
+$\rightarrow$ MiniLMv2-L6-H384 (22M, $d_S=384$, 6 layers), representing the
+compact-student setting.
 
-\paragraph{Training corpus.}
-All methods are distilled on the same corpus of \textbf{102{,}361 unlabeled
+\paragraph{Distillation corpus.}
+We distill all methods on the same fixed corpus of \textbf{102{,}361 unlabeled
 sentences}, sampled once from the training splits of the nine evaluation
-benchmarks (SciTail; Tweet; Emotion; STS-B;
-Banking77; MRPC; WiC; SICK; STS12) and
-fixed across every run in Table~\ref{tab:main-results}. Only raw text is read:
-no label, pair annotation, or similarity score enters any objective, so the
-training signal is unsupervised apart from the teacher.
+benchmarks (SciTail; Tweet; Emotion; STS-B; Banking77; MRPC; WiC; SICK; STS12).
+The same corpus is used for every run in Table~\ref{tab:main-results}.
+Distillation uses only raw text: labels, pair annotations, and similarity scores
+are excluded from every objective. The teacher therefore provides the only
+supervision.
 
-\paragraph{Evaluation.}
-We score frozen student embeddings on nine benchmarks in three families. For
-classification (Banking77, Emotion, Tweet) a logistic-regression probe is fitted
-on that benchmark's own training split and scored with macro-F1. For pair
-classification (MRPC, SciTail, WiC) the cosine similarity is mapped to $[0,1]$
-and scored with average precision. For STS (SICK, STS12, STS-B) we report
-Spearman correlation against gold scores. The Avg.\ column is the unweighted
-mean of the nine primary scores. Appendix~\ref{app:evaluation} gives the split
-sizes and the threshold protocol.
+\paragraph{Evaluation protocol.}
+We evaluate frozen student embeddings on nine benchmarks spanning three task
+families. For classification (Banking77, Emotion, Tweet), we fit a
+logistic-regression probe on each benchmark's training split and report
+macro-F1. For pair classification (MRPC, SciTail, WiC), we map cosine
+similarity to $[0,1]$ and report average precision. For semantic textual
+similarity (SICK, STS12, STS-B), we report the Spearman correlation with the
+gold scores. Avg.\ denotes the unweighted mean of the nine primary scores.
+Appendix~\ref{app:evaluation} provides the split sizes and threshold protocol.
 
 \input{tables/main_results}

@@ -114,9 +114,9 @@ both terminal signals are properly specified.
   endpoint+$H_0$, evaluated on the same fixed mini-batches with one shared scale.
 - **Table 2:** the five-arm quantitative decomposition: no teacher,
   endpoint-only, $H_0$-only, endpoint+$H_0$ from the PCA teacher image, and
-  endpoint+$H_0$ from the original teacher. Report endpoint error where it is
-  meaningful, native-teacher $H_0$ residual for every row, downstream AVG, and
-  mean $\pm$ sample standard deviation over three seeds.
+  endpoint+$H_0$ from the original teacher. Report the native-teacher $H_0$
+  residual and downstream AVG as point estimates; omit endpoint error and
+  uncertainty columns from this compact analysis table.
 
 **Takeaway:** Pointwise knowledge requires an interface; coordinate-invariant
 structure bypasses it; neither requires intermediate-layer coordination.
