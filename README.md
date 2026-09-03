@@ -241,6 +241,18 @@ TRAIN_DATA=data/train_set/train_200k.csv \
 
 `scripts/README.md` is the map of the folder.
 
+For the whole main-results grid — every baseline and the paper's method, three
+seeds, all three teacher/student pairs — `scripts/experiments/run_main_results.py`
+is `notebooks/00_main_results.ipynb` as a headless, resumable script:
+
+```bash
+bash scripts/experiments/run_main_results.sh --dry-run   # 63 jobs, run nothing
+bash scripts/experiments/run_main_results.sh
+```
+
+It writes per-seed scores, mean ± sample std tables and the training time of
+every method on every seed under `runs/<run name>/`.
+
 Or run the Python entry point directly:
 
 ```bash

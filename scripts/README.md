@@ -66,6 +66,76 @@ the script sets, so it wins on a repeat:
 bash scripts/methods/geoode/train.sh --lambda_topo 0.1 --epochs 3 --no_wandb
 ```
 
+## The main-results sweep
+
+`experiments/run_main_results.py` is `notebooks/00_main_results.ipynb` as a
+headless script, extended from one pair to all three. Same epochs, batch sizes,
+learning rates and per-pair sub-word markers — `tests/test_main_results_sweep.py`
+compares all 63 commands against the notebook's own builder, so the two cannot
+drift apart silently.
+
+```bash
+bash scripts/experiments/run_main_results.sh --dry-run   # the plan, run nothing
+bash scripts/experiments/run_main_results.sh             # 3 pairs x 7 methods x 3 seeds
+```
+
+The `.sh` is the front end: it picks the repo's own interpreter, names the run up
+front so the whole sweep is teed into `sweep.log` next to its results, and prints
+the resume command if it stops early. Every argument goes through to the Python,
+which is where the settings and the resume logic live — call
+`python3 scripts/experiments/run_main_results.py` directly when that is what you
+want.
+
+7 methods × 3 seeds × 3 pairs = **63 runs**, so it is meant to be started once
+and left alone. A finished run is a resume boundary: re-running with the same
+`--run-name` skips whatever already has a final-test record, which makes a
+crash, an OOM or a Ctrl-C cheap to recover from.
+
+```bash
+RUN_NAME=<earlier run> bash scripts/experiments/run_main_results.sh              # resume
+bash scripts/experiments/run_main_results.sh --pairs qwen3_0.6b_to_minilm_h384   # one pair
+bash scripts/experiments/run_main_results.sh --methods geoode talas --seeds 42 43
+python3 scripts/experiments/run_main_results.py --run-name <run> --aggregate-only  # tables only
+```
+
+It runs for hours in the foreground, so start it detached:
+
+```bash
+tmux new -s sweep 'bash scripts/experiments/run_main_results.sh'
+nohup bash scripts/experiments/run_main_results.sh > /dev/null 2>&1 &   # sweep.log has everything
+```
+
+`--keep-going` carries on past a failed job instead of stopping; a job that died
+mid-run is not restarted by default, because appending to its `metrics.jsonl`
+would interleave two runs — `--retry-unfinished` moves the stale directory aside
+(it is never deleted) and runs it again.
+
+### What it saves
+
+Under `runs/<run name>/`:
+
+| file | contents |
+| --- | --- |
+| `run_status.csv` | rewritten after every job, so a killed sweep still leaves a record |
+| `<pair>/<method>/seed_<seed>/` | what `main.py` writes, plus `train.log` and `runner_timing.json` |
+| `<pair>/final_test_by_seed.csv` | one row per (method, seed), raw `[0, 1]` |
+| `<pair>/final_test_mean_std{,_paper}.csv`, `.tex` | mean ± sample std over the seeds, paper scale |
+| `<pair>/timing_by_seed.csv` | training time per method per seed |
+| `<pair>/efficiency_{by_seed,mean_std}.csv`, `table_3_efficiency.{csv,tex}` | the efficiency table |
+| `all_pairs_{final_test_by_seed,mean_std,timing_by_seed}.csv` | the three pairs stacked |
+
+Timing is two clocks, because they answer different questions.
+`train_gpu_minutes` is the sum of `step_seconds` — the optimisation itself, and
+the one to compare across methods. `wall_minutes` is what the sweep cost end to
+end, including tokenisation, the final evaluation and, on the first cached
+method of a pair, building the teacher cache. It is written to
+`runner_timing.json` as each run finishes, so it survives a resume in a later
+process.
+
+A pair is aggregated only once every one of its runs has a final-test record: a
+mean ± std over two of three seeds is a different table, so the sweep reports the
+gap instead of publishing it. Timings are still written for an unfinished pair.
+
 ## Everything else
 
 ```bash
