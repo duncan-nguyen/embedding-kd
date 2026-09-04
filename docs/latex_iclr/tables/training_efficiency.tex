@@ -1,5 +1,5 @@
-% Timing values come from runs/main_table/all_pairs_timing_by_seed.csv. Avg.
-% follows Table 1, including the reported pair-(a) STS corrections.
+% Timing and Avg. values come from the archived 15K main-results run:
+% runs/main_results_talas15k_h200_gpu67_20260904-082000/.
 \begin{table}[t]
     \caption{\textbf{Training efficiency on NVIDIA H200 GPUs.} Results are
     mean $\pm$ sample standard deviation over three seeds from the same runs
@@ -8,9 +8,9 @@
     times, excluding teacher-cache construction, tokenization, and final
     evaluation. Peak GiB is the maximum allocated memory on the busiest GPU.
     Bold and underlined values denote the best and second-best results within
-    each teacher--student configuration (ties at the displayed precision are
-    included). Jobs used both isolated and GPU-sharing schedules, so these are
-    observed sweep costs rather than controlled single-job hardware benchmarks.}
+    each teacher--student configuration. All jobs in this sweep shared an H200
+    with another concurrent job, so these are observed sweep costs rather than
+    controlled single-job hardware benchmarks.}
     \label{tab:training-efficiency}
     \vspace{0.5em}
     \centering
@@ -24,33 +24,33 @@
         \midrule
         \multicolumn{6}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
         \midrule
-        RKD & \effcell{76.48}{0.04} & \effcell{\underline{64.2}}{0.5} & \effcell{\underline{1992.6}}{15.6} & \effcell{\underline{4.3}}{0.0} & \effcell{1.74}{0.02} \\
-        Stella & \effcell{75.59}{0.10} & \effcell{319.3}{24.1} & \effcell{402.3}{31.7} & \effcell{21.3}{1.6} & \effcell{9.30}{0.00} \\
-        CDM & \effcell{72.36}{0.13} & \effcell{469.6}{7.0} & \effcell{272.5}{4.0} & \effcell{31.4}{0.5} & \effcell{9.30}{0.00} \\
-        DSKD & \effcell{72.07}{0.03} & \effcell{255.3}{16.2} & \effcell{502.5}{31.0} & \effcell{17.1}{1.1} & \effcell{9.45}{0.01} \\
-        EMO & \effcell{69.07}{0.89} & \effcell{4581.5}{812.0} & \effcell{28.6}{5.6} & \effcell{305.1}{54.0} & \effcell{9.31}{0.01} \\
-        TALAS & \effcell{\underline{79.95}}{0.08} & \effcell{174.2}{2.3} & \effcell{734.7}{9.9} & \effcell{11.6}{0.2} & \effcell{\textbf{1.45}}{0.02} \\
-        \textbf{GATE-KD} & \effcell{\textbf{80.02}}{0.03} & \effcell{\textbf{45.5}}{2.1} & \effcell{\textbf{2818.4}}{127.9} & \effcell{\textbf{3.0}}{0.1} & \effcell{\underline{1.73}}{0.02} \\
+        RKD & \effcell{73.52}{0.06} & \effcell{\underline{119.7}}{18.3} & \effcell{\underline{1081.0}}{179.8} & \effcell{\underline{1.20}}{0.18} & \effcell{\underline{1.72}}{0.00} \\
+        Stella & \effcell{71.95}{0.06} & \effcell{130.7}{8.1} & \effcell{975.9}{58.8} & \effcell{1.27}{0.08} & \effcell{1.78}{0.01} \\
+        CDM & \effcell{71.12}{0.18} & \effcell{340.4}{13.6} & \effcell{374.2}{15.3} & \effcell{3.38}{0.12} & \effcell{9.31}{0.01} \\
+        DSKD & \effcell{71.14}{0.10} & \effcell{290.9}{9.0} & \effcell{437.7}{13.3} & \effcell{2.88}{0.09} & \effcell{9.45}{0.00} \\
+        EMO & \effcell{69.17}{0.24} & \effcell{721.1}{12.9} & \effcell{176.5}{3.1} & \effcell{7.02}{0.12} & \effcell{9.30}{0.00} \\
+        TALAS & \effcell{\underline{77.29}}{0.04} & \effcell{329.0}{12.5} & \effcell{387.1}{15.0} & \effcell{3.23}{0.11} & \effcell{\textbf{1.43}}{0.00} \\
+        \textbf{GATE-KD} & \effcell{\textbf{77.68}}{0.02} & \effcell{\textbf{83.4}}{3.8} & \effcell{\textbf{1527.2}}{70.8} & \effcell{\textbf{0.84}}{0.04} & \effcell{1.72}{0.00} \\
         \midrule
         \multicolumn{6}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
         \midrule
-        RKD & \effcell{75.54}{0.10} & \effcell{\underline{39.0}}{1.0} & \effcell{\underline{3279.7}}{86.9} & \effcell{\underline{2.6}}{0.1} & \effcell{\underline{1.08}}{0.01} \\
-        Stella & \effcell{73.95}{0.04} & \effcell{144.8}{4.6} & \effcell{884.2}{28.1} & \effcell{9.7}{0.2} & \effcell{2.16}{0.00} \\
-        CDM & \effcell{71.27}{0.10} & \effcell{441.2}{53.1} & \effcell{292.7}{33.0} & \effcell{29.5}{3.5} & \effcell{2.15}{0.01} \\
-        DSKD & \effcell{70.58}{0.10} & \effcell{99.3}{2.3} & \effcell{1288.5}{29.2} & \effcell{6.7}{0.1} & \effcell{2.23}{0.01} \\
-        EMO & \effcell{70.40}{0.35} & \effcell{7397.7}{3655.0} & \effcell{22.2}{15.1} & \effcell{492.5}{242.9} & \effcell{2.16}{0.01} \\
-        TALAS & \effcell{\underline{77.97}}{0.03} & \effcell{97.8}{5.3} & \effcell{1310.3}{72.9} & \effcell{6.5}{0.4} & \effcell{\textbf{0.86}}{0.01} \\
-        \textbf{GATE-KD} & \effcell{\textbf{78.24}}{0.05} & \effcell{\textbf{32.1}}{1.5} & \effcell{\textbf{3991.9}}{183.7} & \effcell{\textbf{2.2}}{0.1} & \effcell{\underline{1.08}}{0.01} \\
+        RKD & \effcell{73.66}{0.04} & \effcell{\underline{77.5}}{8.8} & \effcell{\underline{1656.4}}{201.2} & \effcell{\underline{0.79}}{0.09} & \effcell{\underline{1.07}}{0.00} \\
+        Stella & \effcell{71.13}{0.11} & \effcell{152.8}{30.8} & \effcell{859.1}{195.6} & \effcell{1.49}{0.30} & \effcell{1.09}{0.00} \\
+        CDM & \effcell{70.77}{0.02} & \effcell{127.5}{13.8} & \effcell{1006.4}{115.8} & \effcell{1.30}{0.12} & \effcell{2.15}{0.01} \\
+        DSKD & \effcell{70.83}{0.11} & \effcell{115.0}{21.9} & \effcell{1137.2}{241.0} & \effcell{1.14}{0.20} & \effcell{2.22}{0.01} \\
+        EMO & \effcell{69.59}{0.12} & \effcell{394.6}{33.4} & \effcell{324.0}{28.3} & \effcell{3.87}{0.35} & \effcell{2.15}{0.01} \\
+        TALAS & \effcell{\underline{75.55}}{0.06} & \effcell{184.4}{4.6} & \effcell{690.2}{17.3} & \effcell{1.82}{0.03} & \effcell{\textbf{0.85}}{0.00} \\
+        \textbf{GATE-KD} & \effcell{\textbf{75.99}}{0.10} & \effcell{\textbf{56.5}}{7.7} & \effcell{\textbf{2281.6}}{310.0} & \effcell{\textbf{0.57}}{0.07} & \effcell{1.07}{0.00} \\
         \midrule
         \multicolumn{6}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
-        RKD & \effcell{73.56}{0.09} & \effcell{\underline{39.6}}{1.7} & \effcell{\underline{3234.9}}{136.8} & \effcell{\underline{2.7}}{0.1} & \effcell{\underline{0.41}}{0.00} \\
-        Stella & \effcell{70.34}{0.02} & \effcell{187.8}{50.1} & \effcell{722.0}{227.6} & \effcell{12.6}{3.4} & \effcell{1.40}{0.23} \\
-        CDM & \effcell{69.36}{0.08} & \effcell{542.7}{96.5} & \effcell{240.6}{41.1} & \effcell{36.2}{6.4} & \effcell{1.53}{0.00} \\
-        DSKD & \effcell{69.29}{0.09} & \effcell{129.5}{13.8} & \effcell{995.0}{103.2} & \effcell{8.7}{0.9} & \effcell{1.56}{0.00} \\
-        EMO & \effcell{68.47}{0.15} & \effcell{6531.4}{2136.5} & \effcell{21.5}{8.7} & \effcell{434.9}{142.2} & \effcell{1.53}{0.00} \\
-        TALAS & \effcell{\underline{76.35}}{0.08} & \effcell{99.3}{1.1} & \effcell{1288.3}{14.6} & \effcell{6.6}{0.1} & \effcell{\textbf{0.34}}{0.00} \\
-        \textbf{GATE-KD} & \effcell{\textbf{77.48}}{0.04} & \effcell{\textbf{30.8}}{0.8} & \effcell{\textbf{4160.2}}{104.8} & \effcell{\textbf{2.1}}{0.1} & \effcell{\underline{0.41}}{0.00} \\
+        RKD & \effcell{71.44}{0.10} & \effcell{\underline{64.8}}{13.7} & \effcell{\textbf{2032.3}}{488.6} & \effcell{\underline{0.68}}{0.14} & \effcell{0.41}{0.00} \\
+        Stella & \effcell{68.57}{0.10} & \effcell{150.7}{15.3} & \effcell{850.0}{81.5} & \effcell{1.47}{0.13} & \effcell{0.42}{0.00} \\
+        CDM & \effcell{68.69}{0.27} & \effcell{161.8}{21.6} & \effcell{796.3}{113.1} & \effcell{1.65}{0.20} & \effcell{1.53}{0.00} \\
+        DSKD & \effcell{68.59}{0.04} & \effcell{175.4}{8.2} & \effcell{726.4}{33.5} & \effcell{1.78}{0.06} & \effcell{1.56}{0.00} \\
+        EMO & \effcell{67.62}{0.02} & \effcell{499.3}{1.4} & \effcell{254.8}{0.7} & \effcell{4.90}{0.01} & \effcell{1.53}{0.00} \\
+        TALAS & \effcell{\underline{73.20}}{0.06} & \effcell{169.8}{15.4} & \effcell{753.7}{71.4} & \effcell{1.69}{0.14} & \effcell{\textbf{0.34}}{0.00} \\
+        \textbf{GATE-KD} & \effcell{\textbf{74.62}}{0.01} & \effcell{\textbf{62.9}}{3.1} & \effcell{\underline{2025.2}}{98.3} & \effcell{\textbf{0.64}}{0.04} & \effcell{\underline{0.41}}{0.00} \\
         \bottomrule
     \end{tabular}
 \end{table}

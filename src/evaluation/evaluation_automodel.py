@@ -1,9 +1,12 @@
 import functools
+import hashlib
 import os
 import warnings
+import weakref
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -23,12 +26,35 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Evaluation is forward-only, so the batch that fits is much larger than the
 # training batch. Overridable because the probe train sets (up to 24k rows) are
-# the dominant cost and their optimal batch depends on the GPU.
+# the dominant cost and their optimal batch depends on the GPU. It is now the
+# reference size the token budget below is derived from rather than the batch
+# every split is cut into.
 EVAL_BATCH_SIZE = int(os.environ.get("EVAL_BATCH_SIZE", "256"))
-# Tokenisation of a batch runs in a worker thread while the GPU consumes the
-# previous one. Fast tokenizers release the GIL, so threads are enough here and
-# avoid the per-DataLoader process fork that dominates on the small splits.
+# A batch also closes once its padded width would push it past this many tokens,
+# so a split of short texts is not forwarded 256 sequences at a time with most of
+# the GPU idle. The default is exactly the old worst case -- 256 sequences over
+# the 512 positions a retrieval document may occupy -- so peak activation memory
+# is unchanged while short batches grow to fill it. Set to 0 for the old
+# fixed-size batching.
+EVAL_TOKEN_BUDGET = int(os.environ.get("EVAL_TOKEN_BUDGET", str(EVAL_BATCH_SIZE * 512)))
+# ...but not unboundedly: nfcorpus queries are ~10 tokens, and a batch of 13k of
+# them would spend its time in per-sequence overhead (pooling, the device->host
+# copy) rather than in the encoder. Derived, not a knob.
+_MAX_BATCH_SEQUENCES = 8 * EVAL_BATCH_SIZE
+# Padding a batch runs in a worker thread while the GPU consumes the previous
+# one. Fast tokenizers release the GIL, so threads are enough here and avoid the
+# per-DataLoader process fork that dominates on the small splits.
 EVAL_PREFETCH = int(os.environ.get("EVAL_PREFETCH", "2"))
+# The one tokenisation pass is chunked over threads for the same reason: the work
+# is in Rust with the GIL released, so it scales even though every launcher sets
+# TOKENIZERS_PARALLELISM=false (fiqa's 57.6k documents: 19.6s on one thread, 5.1s
+# on four). Capped at 8 -- the curve is flat past that and eval shares the box.
+_TOKENIZE_WORKERS = min(8, os.cpu_count() or 1)
+_TOKENIZE_CHUNK = 512
+# Cached ids are held as int32, so this caps the cache near 256 MB. The five
+# retrieval corpora plus every probe split come to ~35M tokens, well inside it;
+# the limit only exists so an unforeseen caller cannot grow it without bound.
+_TOKEN_CACHE_LIMIT = 64_000_000
 
 
 @functools.cache
@@ -61,44 +87,190 @@ def _pooled_embedding(output):
     return output["last_hidden_state"][:, 0, :]
 
 
+class _Tokenized(NamedTuple):
+    """One split's truncated ids, held flat rather than as a list of lists.
+
+    `flat[offsets[i]:offsets[i + 1]]` is sequence `i`. A ragged buffer instead of
+    57k little arrays keeps the per-object overhead off the cache and makes the
+    per-batch pad a run of memcpys.
+    """
+
+    flat: np.ndarray
+    offsets: np.ndarray
+    lengths: np.ndarray
+
+
+def _texts_digest(texts) -> str:
+    """Content hash of a text list, for keying the tokenisation cache.
+
+    Identity would be cheaper but does not hold: only `load_benchmark` hands back
+    the same list object every epoch, while the probe readers rebuild theirs from
+    a cached frame. Hashing fiqa's 44 MB of documents costs 59 ms against the
+    19.6s the tokenisation it saves would take.
+    """
+    digest = hashlib.blake2b(digest_size=16)
+    digest.update(str(len(texts)).encode())
+    for text in texts:
+        digest.update(text.encode("utf-8", "surrogatepass"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+# Keyed on the tokenizer object rather than on its name: two tokenizers can share
+# a name_or_path, and keying on `id()` would let a collected tokenizer's address
+# be recycled onto a live entry. A weak key also lets the ids die with it.
+_TOKEN_CACHE: "weakref.WeakKeyDictionary[object, dict[tuple, _Tokenized]]" = (
+    weakref.WeakKeyDictionary()
+)
+_TOKEN_CACHE_SIZE = 0
+
+
+def _tokenize_all(tokenizer, texts, max_len) -> _Tokenized:
+    chunks = [
+        texts[start : start + _TOKENIZE_CHUNK]
+        for start in range(0, len(texts), _TOKENIZE_CHUNK)
+    ]
+
+    def encode(chunk):
+        return tokenizer(chunk, truncation=True, max_length=max_len)["input_ids"]
+
+    with ThreadPoolExecutor(max_workers=_TOKENIZE_WORKERS) as pool:
+        encoded = [ids for chunk in pool.map(encode, chunks) for ids in chunk]
+
+    lengths = np.fromiter(
+        (len(ids) for ids in encoded), dtype=np.int64, count=len(encoded)
+    )
+    offsets = np.zeros(len(encoded) + 1, dtype=np.int64)
+    np.cumsum(lengths, out=offsets[1:])
+    flat = np.empty(int(offsets[-1]), dtype=np.int32)
+    for index, ids in enumerate(encoded):
+        flat[offsets[index] : offsets[index + 1]] = ids
+    return _Tokenized(flat=flat, offsets=offsets, lengths=lengths)
+
+
+def _tokenized(tokenizer, texts, max_len) -> _Tokenized:
+    """Tokenise `texts` once per process and reuse it for every later epoch.
+
+    The evaluation splits never change during a run, so re-tokenising them on
+    every pass is pure repeated work -- the same reason `_read_eval_csv` and
+    `load_benchmark` cache their parses. It matters most for retrieval, whose
+    ~101k documents are the bulk of a test pass.
+    """
+    global _TOKEN_CACHE_SIZE
+
+    entries = _TOKEN_CACHE.setdefault(tokenizer, {})
+    key = (max_len, _texts_digest(texts))
+    cached = entries.get(key)
+    if cached is not None:
+        return cached
+
+    tokenized = _tokenize_all(tokenizer, texts, max_len)
+    if _TOKEN_CACHE_SIZE + tokenized.flat.size <= _TOKEN_CACHE_LIMIT:
+        entries[key] = tokenized
+        _TOKEN_CACHE_SIZE += tokenized.flat.size
+    return tokenized
+
+
+def _plan_batches(lengths: np.ndarray) -> list[np.ndarray]:
+    """Group indices into batches of similar length under the token budget.
+
+    Sorting by token length rather than by character count is what removes the
+    padding: the two disagree badly on text whose tokens-per-character varies,
+    and fiqa's financial prose is the worst of the five. Over the five retrieval
+    corpora, character order at batch 256 forwards 31.76M padded tokens against
+    20.15M real ones; token order under the budget forwards 20.78M in 162 batches
+    rather than 397 -- 1.53x less work for the same result, padding being masked.
+    """
+    order = np.argsort(lengths, kind="stable")
+    if not EVAL_TOKEN_BUDGET:
+        return [
+            order[start : start + EVAL_BATCH_SIZE]
+            for start in range(0, order.size, EVAL_BATCH_SIZE)
+        ]
+
+    batches = []
+    start = 0
+    width = 0
+    for position, index in enumerate(order):
+        candidate = max(width, int(lengths[index]))
+        count = position - start
+        if count and (
+            count >= _MAX_BATCH_SEQUENCES or (count + 1) * candidate > EVAL_TOKEN_BUDGET
+        ):
+            batches.append(order[start:position])
+            start = position
+            candidate = int(lengths[index])
+        width = candidate
+    if start < order.size:
+        batches.append(order[start:])
+    return batches
+
+
+def _pad_batch(tokenized: _Tokenized, indices: np.ndarray, pad_id: int, left: bool):
+    """Materialise one batch as (input_ids, attention_mask), padded to its widest.
+
+    This is what `padding=True` did inside the tokenizer call; doing it here is
+    both cheaper -- building fiqa's padded tensors cost 12.5 of the 32.1s that
+    call took -- and the only way to batch by token length, which is not known
+    until after tokenisation.
+    """
+    lengths = tokenized.lengths[indices]
+    width = int(lengths.max())
+    ids = np.full((indices.size, width), pad_id, dtype=np.int64)
+    positions = np.arange(width)
+    if left:
+        mask = positions >= (width - lengths)[:, None]
+        for row, index in enumerate(indices):
+            ids[row, width - lengths[row] :] = tokenized.flat[
+                tokenized.offsets[index] : tokenized.offsets[index + 1]
+            ]
+    else:
+        mask = positions < lengths[:, None]
+        for row, index in enumerate(indices):
+            ids[row, : lengths[row]] = tokenized.flat[
+                tokenized.offsets[index] : tokenized.offsets[index + 1]
+            ]
+    return torch.from_numpy(ids), torch.from_numpy(mask.astype(np.int64))
+
+
 def _embed_texts(model, tokenizer, texts, max_len, desc=None):
     """Embed `texts` and return a float32 array in the original order.
 
-    Batches are formed over length-sorted indices: with `padding=True` the cost
-    of a batch is `len(batch) * max_len_in_batch`, so grouping similar lengths
-    removes padding the model would otherwise attend over. Measured on
-    tweet_train (23.7k rows, batch 64) this is 1.4x fewer padded tokens; the gap
-    widens at batch 256. Padding is masked out, so the per-sequence result is
-    unchanged.
+    Batches are formed over length-sorted indices: with padding, the cost of a
+    batch is `len(batch) * max_len_in_batch`, so grouping similar lengths removes
+    padding the model would otherwise attend over. Padding is masked out, so the
+    per-sequence result is unchanged. `_plan_batches` sorts on token length and
+    caps the batch by token budget rather than by sequence count; `_tokenized`
+    keeps the ids so later epochs skip the tokenizer entirely.
     """
     device = model.device
     total = len(texts)
-    order = sorted(range(total), key=lambda index: len(texts[index]))
-    batches = [
-        order[start : start + EVAL_BATCH_SIZE]
-        for start in range(0, total, EVAL_BATCH_SIZE)
-    ]
+    if total == 0:
+        return np.empty((0, 0), dtype=np.float32)
 
-    def tokenize(indices):
-        return tokenizer(
-            [texts[index] for index in indices],
-            truncation=True,
-            padding=True,
-            max_length=max_len,
-            return_tensors="pt",
-        )
+    tokenized = _tokenized(tokenizer, texts, max_len)
+    batches = _plan_batches(tokenized.lengths)
+
+    pad_id = getattr(tokenizer, "pad_token_id", None)
+    if pad_id is None:
+        # Masked out either way; 0 is the one id every vocabulary has.
+        pad_id = 0
+    left = getattr(tokenizer, "padding_side", "right") == "left"
 
     embeddings = None
     autocast = torch.amp.autocast(
         "cuda", dtype=torch.float16, enabled=torch.cuda.is_available()
     )
 
+    def prepare(indices):
+        return _pad_batch(tokenized, indices, pad_id, left)
+
     with ThreadPoolExecutor(max_workers=1) as pool, autocast, torch.inference_mode():
         pending = deque()
         next_batch = 0
         while next_batch < len(batches) and len(pending) <= EVAL_PREFETCH:
             pending.append(
-                (batches[next_batch], pool.submit(tokenize, batches[next_batch]))
+                (batches[next_batch], pool.submit(prepare, batches[next_batch]))
             )
             next_batch += 1
 
@@ -106,14 +278,14 @@ def _embed_texts(model, tokenizer, texts, max_len, desc=None):
             indices, future = pending.popleft()
             if next_batch < len(batches):
                 pending.append(
-                    (batches[next_batch], pool.submit(tokenize, batches[next_batch]))
+                    (batches[next_batch], pool.submit(prepare, batches[next_batch]))
                 )
                 next_batch += 1
 
-            encoded = future.result()
+            input_ids, attention_mask = future.result()
             output = model(
-                input_ids=encoded["input_ids"].to(device, non_blocking=True),
-                attention_mask=encoded["attention_mask"].to(device, non_blocking=True),
+                input_ids=input_ids.to(device, non_blocking=True),
+                attention_mask=attention_mask.to(device, non_blocking=True),
             )
             batch_embeddings = _pooled_embedding(output).float().cpu().numpy()
             if embeddings is None:

@@ -226,7 +226,16 @@ def cache_teacher_embeddings(
 def save_cached_embeddings(
     cache_path: str, embeddings: torch.Tensor, metadata: dict[str, Any]
 ) -> None:
-    """Write ``{"embeddings", "metadata"}``; the shape is recorded in the metadata too."""
+    """Write ``{"embeddings", "metadata"}``; the shape is recorded in the metadata too.
+
+    Written to a temporary file next to the destination and moved into place, so
+    the cache never exists half-written. That matters as soon as more than one
+    training job shares a ``--cache_dir``: with a plain write, a job that starts
+    while another is still saving loads a truncated file and dies on an unpickling
+    error minutes into the sweep. Two jobs that both build the cache still both
+    encode the corpus -- wasted teacher passes, not a corrupt file -- which is why
+    the runner warms the cache once before it fans jobs out.
+    """
     directory = os.path.dirname(cache_path)
     os.makedirs(directory if directory else ".", exist_ok=True)
     payload = {
@@ -237,7 +246,13 @@ def save_cached_embeddings(
             "dim": int(embeddings.shape[-1]),
         },
     }
-    torch.save(payload, cache_path)
+    temporary = f"{cache_path}.tmp.{os.getpid()}"
+    try:
+        torch.save(payload, temporary)
+        os.replace(temporary, cache_path)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
 
 
 def load_cached_embeddings(cache_path: str) -> tuple[torch.Tensor, dict[str, Any]]:

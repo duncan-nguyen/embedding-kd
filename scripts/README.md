@@ -5,6 +5,7 @@ lib/          common.sh, common.ps1 -- everything the eight training runs share
 methods/      one folder per distillation method: train.sh + train.ps1
 data/         builds the training corpus and downloads the benchmarks
 ablations/    the target-map grid
+experiments/  reproducible main, ablation and sensitivity sweeps
 figures/      paper-figure mockups (synthetic data, never evidence)
 ```
 
@@ -140,6 +141,37 @@ mid-run is not restarted by default, because appending to its `metrics.jsonl`
 would interleave two runs — `--retry-unfinished` moves the stale directory aside
 (it is never deleted) and runs it again.
 
+### Several jobs at once
+
+One run holds a few GiB at batch 128, so on a large card the sweep spends most of
+its wall clock waiting on a mostly idle GPU. `--max-parallel N` runs N jobs on
+each entry of `--gpus`; every job is its own seeded process, so each one still
+computes exactly what it computes alone.
+
+```bash
+python3 scripts/experiments/run_main_results.py --max-parallel 4                # 4 jobs, one card
+python3 scripts/experiments/run_main_results.py --gpus 0 1 --max-parallel 2     # 2 per card
+python3 scripts/experiments/run_main_results.py --max-parallel 4 --num-workers 4
+```
+
+Read the peak of a finished run (`peak_memory_mb` in its `metrics.jsonl`), leave
+~8 GiB of headroom for the evaluation passes, and divide. `--num-workers` is
+per job, so divide the box's cores by the number of slots; the runner already
+divides `OMP_NUM_THREADS` that way. The teacher cache is built once per pair
+before the fan-out, since a cold cache would otherwise have every job load the
+teacher and encode the corpus at the same moment.
+
+Output is not streamed with more than one job running — each job writes
+`<run dir>/train.log` and the runner prints one status line per running job every
+30s. Ctrl-C terminates the children before it exits.
+
+What does *not* survive this is table 3: ms/step, samples/s and peak memory are
+rates, and jobs sharing a card interleave on the same SMs. Each run records the
+slot count it ran under in `runner_timing.json`; co-located runs stay in
+`efficiency_by_seed.csv`, flagged, and are left out of `table_3_efficiency`, which
+prints which runs it dropped. Accuracy tables are unaffected. Run the efficiency
+numbers at `--max-parallel 1`.
+
 ### What it saves
 
 Under `runs/<run name>/`:
@@ -166,6 +198,55 @@ A pair is aggregated only once every one of its runs has a final-test record: a
 mean ± std over two of three seeds is a different table, so the sweep reports the
 gap instead of publishing it. Timings are still written for an unfinished pair.
 
+## Ablation and sensitivity sweeps (15K)
+
+Both runners now default to the paper's 15K corpus and seeds 42, 43 and 44. The
+target-map ablation contains six requested arms, for **18 jobs**:
+
+```bash
+python3 scripts/ablations/run_target_map_ablation.py --dry-run
+python3 scripts/ablations/run_target_map_ablation.py --execute
+```
+
+The sensitivity runner varies topology weight, optimizer batch size and
+gauge-calibration sample count one factor at a time. H0 cloud size always equals
+the training batch size. The default point is shared across the three panels,
+giving **10 arms x 3 seeds = 30 jobs**:
+
+```bash
+bash scripts/experiments/run_sensitivity.sh --dry-run
+bash scripts/experiments/run_sensitivity.sh
+```
+
+Both sweeps disable retrieval evaluation, keep W&B off, and resume at completed
+final-test records. For a partial sensitivity run, use the same stable run name;
+pass `--retry-unfinished` to archive and restart an interrupted cell. Aggregated
+results are written to `sensitivity_by_seed.csv` and
+`sensitivity_mean_std.csv` below the run directory.
+
+The signal decomposition is a separate 18-job sweep. Its last two arms isolate
+gauge refitting as a binary choice: both fit the same Procrustes gauge at
+initialization, then only the `on` arm refits it after each epoch.
+
+```bash
+python3 scripts/ablations/run_decomposition.py --dry-run
+python3 scripts/ablations/run_decomposition.py
+```
+
+It writes `decomposition_by_seed.csv` and `decomposition_mean_std.csv`, including
+IOD, OOD, overall Avg., and the final H0 probe residual.
+
+To run both ablation tables sequentially with the shared 15K/three-seed setup,
+use the combined shell launcher:
+
+```bash
+bash scripts/ablations/run_ablations.sh --dry-run
+bash scripts/ablations/run_ablations.sh
+```
+
+Use `--target-map-only` or `--decomposition-only` for one table, and configure
+hardware with `GPUS="0 1" MAX_PARALLEL=2`.
+
 ## Everything else
 
 ```bash
@@ -174,7 +255,6 @@ python3 scripts/data/download_eval_train_splits.py        # train splits of the 
 python3 scripts/data/build_train_corpus.py --total 150000 # the distillation corpus
 python3 scripts/data/build_merged_all.py                  # every train split, uncapped
 
-python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base
 python3 scripts/figures/render_mock_paper_figures.py
 ```
 

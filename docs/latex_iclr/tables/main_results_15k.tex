@@ -1,0 +1,169 @@
+% Generated from
+% runs/main_results_talas15k_h200_gpu67_20260904-082000/all_pairs_mean_std.csv.
+% Teacher and student-base rows are unchanged by the distillation corpus because
+% neither baseline is trained.
+\begin{table*}[t]
+    \caption{Main results after distillation on the 15K corpus (5,000 Emotion,
+    5,000 WiC, and 4,760 STS-B sentences).  Avg.~IOD averages those three in-domain
+    benchmarks, Avg.~OOD averages the remaining six benchmarks, and Avg. averages
+    all nine.  Scores are means over three seeds; uncertainty is the sample
+    standard deviation.  Among distilled students, best and second-best results
+    are shown in bold and underlined, respectively.}
+    \label{tab:main-results}
+    \vspace{0.5em}
+    \centering
+    \scriptsize
+    \newcommand{\resultcell}[2]{#1{\tiny $\pm$ #2}}
+    \setlength{\tabcolsep}{1.2pt}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}lcccccccccccc@{}}
+        \toprule
+        & \multicolumn{3}{c}{Classification (F1)}
+        & \multicolumn{3}{c}{Pair Classification (AP)}
+        & \multicolumn{3}{c}{STS (Spearman)}
+        & \multicolumn{3}{c}{Averages} \\
+        \cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}\cmidrule(lr){11-13}
+        Method & Banking77 & Tweet & Emotion & MRPC & SciTail & WiC
+        & SICK & STS12 & STS-B & IOD & OOD & All \\
+        \midrule
+        \multicolumn{13}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
+        \midrule
+        Teacher
+        & 93.63 & 72.22 & 68.94 & 84.79 & 91.77 & 66.80
+        & 83.43 & 82.55 & 86.87 & 74.20 & 84.73 & 81.22 \\
+        Student base
+        & 84.86 & 47.79 & 68.02 & 77.36 & 67.74 & 59.22
+        & 42.43 & 21.54 & 20.30 & 49.18 & 56.95 & 54.36 \\
+        \midrule
+        RKD
+        & \resultcell{89.76}{0.11} & \resultcell{70.90}{0.31} & \resultcell{59.98}{0.05}
+        & \resultcell{81.94}{0.26} & \resultcell{75.59}{0.13} & \resultcell{69.02}{0.18}
+        & \resultcell{72.93}{0.07} & \resultcell{67.84}{0.18} & \resultcell{73.72}{0.08}
+        & \resultcell{67.57}{0.05} & \resultcell{76.49}{0.07} & \resultcell{73.52}{0.06} \\
+        Stella
+        & \resultcell{88.48}{0.30} & \resultcell{68.94}{0.17} & \resultcell{53.69}{0.50}
+        & \resultcell{83.95}{0.10} & \resultcell{75.39}{0.54} & \resultcell{\textbf{71.93}}{0.09}
+        & \resultcell{69.87}{0.64} & \resultcell{64.39}{0.21} & \resultcell{70.86}{0.36}
+        & \resultcell{65.49}{0.17} & \resultcell{75.17}{0.13} & \resultcell{71.95}{0.06} \\
+        CDM
+        & \resultcell{88.13}{0.23} & \resultcell{69.03}{0.20} & \resultcell{52.83}{0.50}
+        & \resultcell{83.00}{0.06} & \resultcell{77.10}{0.27} & \resultcell{71.84}{0.09}
+        & \resultcell{67.89}{0.37} & \resultcell{61.06}{0.37} & \resultcell{69.19}{0.42}
+        & \resultcell{64.62}{0.28} & \resultcell{74.37}{0.12} & \resultcell{71.12}{0.18} \\
+        DSKD
+        & \resultcell{87.97}{0.16} & \resultcell{68.90}{0.28} & \resultcell{53.07}{0.31}
+        & \resultcell{83.03}{0.15} & \resultcell{76.98}{0.59} & \resultcell{\underline{71.86}}{0.08}
+        & \resultcell{67.77}{0.66} & \resultcell{61.11}{0.26} & \resultcell{69.55}{0.12}
+        & \resultcell{64.83}{0.12} & \resultcell{74.29}{0.14} & \resultcell{71.14}{0.10} \\
+        EMO
+        & \resultcell{86.89}{0.07} & \resultcell{68.99}{0.11} & \resultcell{52.02}{1.09}
+        & \resultcell{79.74}{0.12} & \resultcell{76.37}{0.35} & \resultcell{69.62}{0.16}
+        & \resultcell{67.89}{0.09} & \resultcell{56.46}{0.47} & \resultcell{64.54}{0.50}
+        & \resultcell{62.06}{0.49} & \resultcell{72.72}{0.15} & \resultcell{69.17}{0.24} \\
+        TALAS
+        & \resultcell{\textbf{90.53}}{0.09} & \resultcell{\underline{73.77}}{0.21} & \resultcell{\underline{68.47}}{0.34}
+        & \resultcell{\textbf{85.38}}{0.05} & \resultcell{\textbf{81.83}}{0.21} & \resultcell{69.59}{0.14}
+        & \resultcell{\underline{76.79}}{0.06} & \resultcell{\underline{70.79}}{0.19} & \resultcell{\underline{78.50}}{0.08}
+        & \resultcell{\underline{72.19}}{0.07} & \resultcell{\underline{79.85}}{0.07} & \resultcell{\underline{77.29}}{0.04} \\
+        \midrule
+        \textbf{GATE-KD}
+        & \resultcell{\underline{90.52}}{0.14} & \resultcell{\textbf{73.90}}{0.13} & \resultcell{\textbf{69.48}}{0.26}
+        & \resultcell{\underline{85.16}}{0.01} & \resultcell{\underline{80.30}}{0.06} & \resultcell{68.64}{0.15}
+        & \resultcell{\textbf{77.74}}{0.06} & \resultcell{\textbf{74.73}}{0.03} & \resultcell{\textbf{78.63}}{0.20}
+        & \resultcell{\textbf{72.25}}{0.04} & \resultcell{\textbf{80.39}}{0.03} & \resultcell{\textbf{77.68}}{0.02} \\
+        \midrule
+        \multicolumn{13}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
+        \midrule
+        Teacher
+        & 93.52 & 73.85 & 68.56 & 85.81 & 91.87 & 61.47
+        & 79.18 & 78.73 & 84.87 & 71.63 & 83.83 & 79.76 \\
+        Student base
+        & 81.84 & 47.70 & 71.67 & 79.67 & 65.06 & 60.89
+        & 49.46 & 26.76 & 24.12 & 52.23 & 58.41 & 56.35 \\
+        \midrule
+        RKD
+        & \resultcell{89.14}{0.09} & \resultcell{73.29}{0.09} & \resultcell{\underline{62.23}}{0.27}
+        & \resultcell{84.35}{0.06} & \resultcell{78.74}{0.11} & \resultcell{65.02}{0.10}
+        & \resultcell{73.20}{0.19} & \resultcell{65.02}{0.29} & \resultcell{71.97}{0.38}
+        & \resultcell{66.41}{0.07} & \resultcell{77.29}{0.06} & \resultcell{73.66}{0.04} \\
+        Stella
+        & \resultcell{86.82}{0.28} & \resultcell{70.06}{0.12} & \resultcell{56.61}{0.74}
+        & \resultcell{83.02}{0.12} & \resultcell{74.63}{0.12} & \resultcell{\textbf{69.72}}{0.05}
+        & \resultcell{69.08}{0.20} & \resultcell{63.14}{0.28} & \resultcell{67.10}{0.10}
+        & \resultcell{64.47}{0.27} & \resultcell{74.46}{0.05} & \resultcell{71.13}{0.11} \\
+        CDM
+        & \resultcell{87.82}{0.19} & \resultcell{69.99}{0.09} & \resultcell{58.32}{0.51}
+        & \resultcell{83.44}{0.07} & \resultcell{75.56}{0.40} & \resultcell{\underline{69.70}}{0.02}
+        & \resultcell{65.93}{0.16} & \resultcell{60.84}{0.34} & \resultcell{65.31}{0.15}
+        & \resultcell{64.45}{0.13} & \resultcell{73.93}{0.06} & \resultcell{70.77}{0.02} \\
+        DSKD
+        & \resultcell{87.70}{0.16} & \resultcell{70.35}{0.32} & \resultcell{59.71}{0.61}
+        & \resultcell{82.99}{0.18} & \resultcell{75.58}{0.12} & \resultcell{69.59}{0.04}
+        & \resultcell{65.36}{0.37} & \resultcell{61.21}{0.31} & \resultcell{65.02}{0.18}
+        & \resultcell{64.77}{0.27} & \resultcell{73.87}{0.10} & \resultcell{70.83}{0.11} \\
+        EMO
+        & \resultcell{87.54}{0.18} & \resultcell{71.03}{0.14} & \resultcell{58.52}{0.30}
+        & \resultcell{82.46}{0.18} & \resultcell{74.73}{0.58} & \resultcell{69.20}{0.22}
+        & \resultcell{64.71}{0.55} & \resultcell{56.89}{0.27} & \resultcell{61.25}{0.03}
+        & \resultcell{62.99}{0.19} & \resultcell{72.89}{0.10} & \resultcell{69.59}{0.12} \\
+        TALAS
+        & \resultcell{\underline{89.83}}{0.09} & \resultcell{\textbf{74.70}}{0.09} & \resultcell{61.65}{0.23}
+        & \resultcell{\textbf{86.62}}{0.05} & \resultcell{\underline{80.85}}{0.22} & \resultcell{66.72}{0.07}
+        & \resultcell{\underline{75.40}}{0.10} & \resultcell{\underline{67.08}}{0.31} & \resultcell{\underline{77.08}}{0.01}
+        & \resultcell{\underline{68.48}}{0.07} & \resultcell{\underline{79.08}}{0.08} & \resultcell{\underline{75.55}}{0.06} \\
+        \midrule
+        \textbf{GATE-KD}
+        & \resultcell{\textbf{90.20}}{0.05} & \resultcell{\underline{73.44}}{0.06} & \resultcell{\textbf{64.35}}{0.62}
+        & \resultcell{\underline{86.41}}{0.02} & \resultcell{\textbf{80.97}}{0.07} & \resultcell{65.83}{0.09}
+        & \resultcell{\textbf{76.77}}{0.05} & \resultcell{\textbf{68.45}}{0.09} & \resultcell{\textbf{77.50}}{0.07}
+        & \resultcell{\textbf{69.23}}{0.22} & \resultcell{\textbf{79.37}}{0.04} & \resultcell{\textbf{75.99}}{0.10} \\
+        \midrule
+        \multicolumn{13}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
+        \midrule
+        Teacher
+        & 93.21 & 71.33 & 66.53 & 83.37 & 90.00 & 66.85
+        & 80.64 & 77.11 & 84.60 & 72.66 & 82.61 & 79.29 \\
+        Student base
+        & 68.29 & 41.07 & 69.90 & 78.39 & 64.56 & 59.58
+        & 47.60 & 21.95 & 22.08 & 50.52 & 53.64 & 52.60 \\
+        \midrule
+        RKD
+        & \resultcell{\underline{86.76}}{0.07} & \resultcell{69.87}{0.21} & \resultcell{56.31}{0.35}
+        & \resultcell{81.70}{0.03} & \resultcell{76.03}{0.20} & \resultcell{\underline{68.56}}{0.22}
+        & \resultcell{69.21}{0.18} & \resultcell{64.26}{0.19} & \resultcell{70.25}{0.21}
+        & \resultcell{65.04}{0.20} & \resultcell{74.64}{0.09} & \resultcell{71.44}{0.10} \\
+        Stella
+        & \resultcell{84.04}{0.04} & \resultcell{68.73}{0.44} & \resultcell{52.41}{0.28}
+        & \resultcell{81.50}{0.12} & \resultcell{72.26}{0.32} & \resultcell{\textbf{68.65}}{0.16}
+        & \resultcell{64.64}{0.19} & \resultcell{60.59}{0.12} & \resultcell{64.27}{0.20}
+        & \resultcell{61.78}{0.13} & \resultcell{71.96}{0.13} & \resultcell{68.57}{0.10} \\
+        CDM
+        & \resultcell{84.74}{0.21} & \resultcell{69.52}{0.20} & \resultcell{53.76}{0.95}
+        & \resultcell{81.15}{0.14} & \resultcell{72.86}{0.30} & \resultcell{68.29}{0.11}
+        & \resultcell{63.98}{0.36} & \resultcell{60.43}{0.22} & \resultcell{63.52}{0.24}
+        & \resultcell{61.86}{0.43} & \resultcell{72.11}{0.19} & \resultcell{68.69}{0.27} \\
+        DSKD
+        & \resultcell{84.76}{0.10} & \resultcell{69.56}{0.20} & \resultcell{53.14}{0.29}
+        & \resultcell{81.15}{0.01} & \resultcell{72.81}{0.09} & \resultcell{68.33}{0.04}
+        & \resultcell{63.78}{0.06} & \resultcell{60.24}{0.19} & \resultcell{63.53}{0.18}
+        & \resultcell{61.67}{0.03} & \resultcell{72.05}{0.06} & \resultcell{68.59}{0.04} \\
+        EMO
+        & \resultcell{83.54}{0.31} & \resultcell{69.31}{0.06} & \resultcell{54.48}{0.27}
+        & \resultcell{80.87}{0.13} & \resultcell{72.00}{0.16} & \resultcell{67.89}{0.09}
+        & \resultcell{62.19}{0.16} & \resultcell{57.04}{0.17} & \resultcell{61.24}{0.23}
+        & \resultcell{61.20}{0.09} & \resultcell{70.82}{0.07} & \resultcell{67.62}{0.02} \\
+        TALAS
+        & \resultcell{86.39}{0.13} & \resultcell{\underline{71.81}}{0.11} & \resultcell{\underline{58.40}}{0.30}
+        & \resultcell{\textbf{84.25}}{0.03} & \resultcell{\underline{79.29}}{0.11} & \resultcell{66.82}{0.02}
+        & \resultcell{\underline{70.42}}{0.10} & \resultcell{\underline{68.08}}{0.22} & \resultcell{\underline{73.34}}{0.10}
+        & \resultcell{\underline{66.19}}{0.11} & \resultcell{\underline{76.71}}{0.04} & \resultcell{\underline{73.20}}{0.06} \\
+        \midrule
+        \textbf{GATE-KD}
+        & \resultcell{\textbf{87.57}}{0.10} & \resultcell{\textbf{72.12}}{0.06} & \resultcell{\textbf{61.77}}{0.09}
+        & \resultcell{\underline{84.21}}{0.08} & \resultcell{\textbf{81.26}}{0.14} & \resultcell{68.30}{0.08}
+        & \resultcell{\textbf{72.69}}{0.05} & \resultcell{\textbf{68.77}}{0.03} & \resultcell{\textbf{74.87}}{0.06}
+        & \resultcell{\textbf{68.31}}{0.03} & \resultcell{\textbf{77.77}}{0.02} & \resultcell{\textbf{74.62}}{0.01} \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table*}

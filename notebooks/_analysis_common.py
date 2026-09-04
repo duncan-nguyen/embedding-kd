@@ -12,11 +12,14 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 import pandas as pd
 import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src import job_runner
 
 PAIRS = {
     "qwen3_0.6b_to_minilm_h384": {
@@ -206,14 +209,117 @@ def geoode_command(
     )
 
 
+def suggest_max_parallel(
+    per_job_gib: float,
+    *,
+    reserve_gib: float = 8.0,
+    devices: Iterable[int] | None = None,
+) -> int:
+    """How many of these jobs the free VRAM holds, from what the card reports now.
+
+    ``per_job_gib`` is the peak a single run reached -- ``peak_memory_mb`` in
+    ``metrics.jsonl``, or what ``nvidia-smi`` showed while it trained -- not the
+    steady state, since the peak is what an OOM is decided against. ``reserve_gib``
+    is left unclaimed on each card for the evaluation passes, which allocate more
+    than training does, and for the teacher a cold-cache job still loads.
+    """
+    if per_job_gib <= 0:
+        raise ValueError(f"per_job_gib must be positive, got {per_job_gib}")
+    if not torch.cuda.is_available():
+        return 1
+    device_list = (
+        list(range(torch.cuda.device_count())) if devices is None else list(devices)
+    )
+    total = 0
+    for device in device_list:
+        free_bytes, _ = torch.cuda.mem_get_info(device)
+        usable = free_bytes / 1024**3 - reserve_gib
+        total += max(0, int(usable // per_job_gib))
+    return max(1, total)
+
+
+def prewarm_teacher_cache(
+    project: Path,
+    *,
+    pair: dict,
+    train_data: Path,
+    cache_dir: Path,
+    max_length: int = 256,
+    cuda_visible_devices: str = "0",
+    method: str = "geoode",
+) -> Path:
+    """Build the shared teacher cache once, before any job is launched.
+
+    The cache is keyed by teacher, pooling, ``max_length`` and the corpus contents,
+    so every method and seed of a pair reads the same file -- but only after it
+    exists. Fanning jobs out onto a cold cache makes each of them load the teacher
+    and encode the corpus, which is both the slowest part of a run and the one that
+    needs the most memory, all at the same moment. One warm-up pass removes that.
+    """
+    cache = teacher_cache_path(
+        project,
+        cache_dir,
+        pair=pair,
+        train_data=train_data,
+        max_length=max_length,
+        must_exist=False,
+    )
+    if cache.is_file():
+        print(f"[cache] already built: {cache}")
+        return cache
+    command = distill_command(
+        project,
+        method=method,
+        pair=pair,
+        train_data=train_data,
+        cache_dir=cache_dir,
+        run_dir=Path(os.devnull),
+        seed=0,
+        batch_size=128,
+        epochs=1,
+        learning_rate=1e-5,
+        max_length=max_length,
+        extra=["--cache_only"],
+    )
+    # --cache_only writes nothing but the cache, so the run_dir above is never used;
+    # dropping --save_dir keeps it that way.
+    save_dir = command.index("--save_dir")
+    del command[save_dir : save_dir + 2]
+    print(f"[cache] building {cache}")
+    env = os.environ.copy()
+    env.update(
+        {
+            "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
+            "TOKENIZERS_PARALLELISM": "false",
+            "WANDB_MODE": "disabled",
+        }
+    )
+    subprocess.run(command, cwd=project, env=env, check=True)
+    if not cache.is_file():
+        raise RuntimeError(f"--cache_only finished but {cache} is missing")
+    return cache
+
+
 def run_jobs(
     project: Path,
     jobs: list[dict],
     *,
     cuda_visible_devices: str = "0",
     stop_on_error: bool = True,
+    max_parallel: int = 1,
+    gpus: Sequence[str | int] | None = None,
 ) -> pd.DataFrame:
-    """Run jobs sequentially; completed final-test rows are resume boundaries."""
+    """Run jobs; completed final-test rows are resume boundaries.
+
+    ``max_parallel`` > 1 runs that many jobs at once, which is worth doing whenever
+    one job leaves most of the card free: the runs are independent processes, so
+    each one still computes exactly what it computes alone. Timings do not survive
+    it -- see :mod:`src.job_runner` -- so anything feeding an efficiency table stays
+    at 1.
+
+    ``gpus`` names the devices to spread over (default: whatever
+    ``cuda_visible_devices`` says); ``max_parallel`` jobs are placed on each.
+    """
     env = os.environ.copy()
     env.update(
         {
@@ -223,6 +329,17 @@ def run_jobs(
             "TQDM_MININTERVAL": "30",
         }
     )
+    if max_parallel > 1 or (gpus is not None and len(list(gpus)) > 1):
+        return _run_jobs_parallel(
+            project,
+            jobs,
+            env=env,
+            stop_on_error=stop_on_error,
+            slots=job_runner.gpu_slots(
+                gpus if gpus is not None else [cuda_visible_devices],
+                jobs_per_gpu=max_parallel,
+            ),
+        )
     status = []
     for index, job in enumerate(jobs, start=1):
         run_dir = Path(job["run_dir"])
@@ -265,6 +382,53 @@ def run_jobs(
     return pd.DataFrame(status).drop(columns=["command"], errors="ignore")
 
 
+def _run_jobs_parallel(
+    project: Path,
+    jobs: list[dict],
+    *,
+    env: dict[str, str],
+    slots: list[str],
+    stop_on_error: bool,
+) -> pd.DataFrame:
+    """The ``max_parallel > 1`` half of :func:`run_jobs`: same contract, N at once."""
+    queued, status = [], []
+    for index, job in enumerate(jobs, start=1):
+        run_dir = Path(job["run_dir"])
+        if final_test_record(run_dir) is not None:
+            status.append({**job, "status": "skipped_complete", "seconds": 0.0})
+            print(f"[SKIP {index}/{len(jobs)}] {job['name']}")
+            continue
+        if (run_dir / "metrics.jsonl").exists():
+            raise RuntimeError(f"Unfinished run exists: {run_dir}")
+        run_dir.mkdir(parents=True, exist_ok=True)
+        queued.append({**job, "log_path": run_dir / "train.log"})
+
+    def finished(job: dict, row: dict) -> dict:
+        # A zero exit that left no final-test record is a failure here too, exactly
+        # as in the sequential runner.
+        complete = row["returncode"] == 0 and final_test_record(job["run_dir"])
+        return {**row, "status": "complete" if complete else row["status"]}
+
+    print(f"[parallel] {len(queued)} job(s) over {len(slots)} slot(s): {slots}")
+    rows = job_runner.run_jobs_parallel(
+        queued,
+        cwd=project,
+        env=env,
+        slots=slots,
+        stop_on_error=stop_on_error,
+        on_finish=finished,
+    )
+    failed = [row for row in rows if row["status"] not in ("complete", "not_started")]
+    status.extend(rows)
+    frame = pd.DataFrame(status).drop(columns=["command", "log_path"], errors="ignore")
+    if failed and stop_on_error:
+        raise RuntimeError(
+            "Jobs failed: "
+            + ", ".join(f"{row['name']} (see {row['log_path']})" for row in failed)
+        )
+    return frame
+
+
 def collect_jobs(jobs: list[dict]) -> pd.DataFrame:
     rows = []
     for job in jobs:
@@ -291,7 +455,12 @@ def teacher_cache_path(
     pair: dict,
     train_data: Path,
     max_length: int = 256,
+    must_exist: bool = True,
 ) -> Path:
+    """Where this pair's cache lives. ``must_exist`` is what separates the two
+    callers: analysis reads a cache a run left behind and wants the missing file to
+    be an error, while the warm-up asks for the name of a file it is about to
+    build."""
     from src.cache_teacher import cache_filename
 
     name = cache_filename(
@@ -302,7 +471,7 @@ def teacher_cache_path(
         normalize=True,
     )
     path = Path(cache_dir) / name
-    if not path.is_file():
+    if must_exist and not path.is_file():
         raise FileNotFoundError(f"Teacher cache is missing: {path}")
     return path
 

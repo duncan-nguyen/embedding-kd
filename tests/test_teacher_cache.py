@@ -613,3 +613,35 @@ def test_the_caching_batch_is_sized_apart_from_the_training_batch():
     # 0 is the escape hatch back to the training batch, for a small card.
     stub.config = GeoODEConfig(batch_size=32, cache_batch_size=0)
     assert stub._cache_batch_size() == 32
+
+
+def test_the_cache_is_moved_into_place_rather_than_written_in_place(tmp_path, monkeypatch):
+    """A half-written cache is what a parallel sweep would otherwise read.
+
+    Jobs sharing a --cache_dir start within seconds of each other, so a plain
+    write is a window in which another job loads a truncated file and dies. The
+    write goes to a temporary next to the destination and is renamed, so the cache
+    path only ever holds a complete file -- and a failed write leaves neither a
+    corrupt cache nor a stray temporary.
+    """
+    import src.cache_teacher as cache_module
+
+    path = tmp_path / "cache.pt"
+    save_cached_embeddings(str(path), torch.ones(3, 4), _metadata())
+    good, _ = load_cached_embeddings(str(path))
+
+    real_save = cache_module.torch.save
+    seen = {}
+
+    def failing_save(payload, destination, *args, **kwargs):
+        seen["destination"] = str(destination)
+        real_save(payload, destination, *args, **kwargs)
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(cache_module.torch, "save", failing_save)
+    with pytest.raises(RuntimeError, match="disk full"):
+        save_cached_embeddings(str(path), torch.zeros(3, 4), _metadata())
+
+    assert seen["destination"] != str(path)
+    assert torch.equal(load_cached_embeddings(str(path))[0], good)
+    assert list(tmp_path.iterdir()) == [path]

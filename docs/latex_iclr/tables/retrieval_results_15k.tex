@@ -1,0 +1,61 @@
+% The archived 15K aggregate has avg_retrieval_n=0 for every learned method.
+% Keep placeholders visible until the five retrieval evaluations are available;
+% do not infer or copy values from a differently trained checkpoint.
+\begin{table*}[t]
+    \caption{Zero-shot dense retrieval after distillation on the same 15K corpus
+    as Table~\ref{tab:main-results}.  Each cell reports
+    \textbf{nDCG@10 / Recall@10 / MRR@10}; Avg. is the component-wise unweighted
+    mean over the five BEIR benchmarks.  Retrieval uses exhaustive cosine
+    ranking, no instruction prefix, and no task-specific training.  Bracketed
+    entries mark pending evaluations in the archived 15K run.}
+    \label{tab:retrieval-results-15k}
+    \vspace{0.5em}
+    \centering
+    \scriptsize
+    \setlength{\tabcolsep}{3pt}
+    \newcommand{\pendingretrieval}{\ph{-- / -- / --}}
+    \begin{tabular}{@{}lcccccc@{}}
+        \toprule
+        Method & ArguAna & FiQA-2018 & SCIDOCS & SciFact & NFCorpus & Avg. \\
+        \midrule
+        \multicolumn{7}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
+        \midrule
+        Teacher      & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        Student base & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \midrule
+        RKD           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        Stella        & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        CDM           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        DSKD          & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        EMO           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        TALAS         & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \textbf{GATE-KD} & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \midrule
+        \multicolumn{7}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
+        \midrule
+        Teacher      & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        Student base & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \midrule
+        RKD           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        Stella        & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        CDM           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        DSKD          & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        EMO           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        TALAS         & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \textbf{GATE-KD} & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \midrule
+        \multicolumn{7}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
+        \midrule
+        Teacher      & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        Student base & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \midrule
+        RKD           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        Stella        & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        CDM           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        DSKD          & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        EMO           & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        TALAS         & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \textbf{GATE-KD} & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval & \pendingretrieval \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
