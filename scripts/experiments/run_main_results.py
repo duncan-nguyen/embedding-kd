@@ -65,6 +65,9 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from src import job_runner
 
 # ---------------------------------------------------------------------------
 # Settings. A copy of cell 1 of notebooks/00_main_results.ipynb.
@@ -112,6 +115,10 @@ DATASETS = {
         "build": "scripts/data/build_train_corpus.py --total 200000",
     },
 }
+
+# The methods that train off a cached teacher, i.e. the ones a --cache_only
+# warm-up has anything to build for.
+CACHED_METHODS = ("talas", "geoode", "rkd", "stella")
 
 DEFAULT_DATASET = "100k"
 DEFAULT_SEEDS = [42, 43, 44]
@@ -222,7 +229,7 @@ def build_command(args, pair_name, method, seed, run_dir, cache_dir, train_data)
         command.extend(["--teacher_special_token", pair["teacher_special_token"]])
     if method == "emo" and pair["emo_teacher_special_token"] is not None:
         command.extend(["--teacher_special_token", pair["emo_teacher_special_token"]])
-    if method in ("talas", "geoode", "rkd", "stella"):
+    if method in CACHED_METHODS:
         command.extend(["--cache_dir", str(cache_dir)])
     if method == "geoode":
         command.extend(GEOODE_EXTRA)
@@ -332,15 +339,111 @@ def stream_output(stream, log_handle):
         print()
 
 
-def run_jobs(args, jobs, run_root):
+def job_env(args):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     env["TOKENIZERS_PARALLELISM"] = "false"
     env["WANDB_MODE"] = "disabled"
     env["TQDM_MININTERVAL"] = str(PROGRESS_EVERY_SEC)
+    return env
+
+
+def prewarm_caches(args, jobs):
+    """Build each pair's teacher cache before any job starts.
+
+    Sequentially this costs nothing: the first cached job of a pair would have
+    built the file anyway. In parallel it is what keeps every job of a cold pair
+    from loading the teacher and encoding the corpus at the same moment -- the
+    slowest, most memory-hungry minutes of a run, multiplied by the number of
+    slots.
+    """
+    seen = set()
+    for job in jobs:
+        if job["method"] not in CACHED_METHODS or job["pair"] in seen:
+            continue
+        seen.add(job["pair"])
+        command = [*job["command"], "--cache_only"]
+        for flag in ("--save_dir", "--weights_dir"):
+            if flag in command:
+                index = command.index(flag)
+                del command[index : index + 2]
+        print(f"[CACHE] warming the teacher cache for {job['pair']}", flush=True)
+        subprocess.run(command, cwd=REPO_ROOT, env=job_env(args), check=True)
+
+
+def run_jobs_parallel(args, run_root, status, status_path, queued):
+    """The --max-parallel half of :func:`run_jobs`; same resume rules, N at once.
+
+    Every number in the efficiency table is a rate, and rates do not survive
+    co-location, so each run records the slot count it ran under and
+    :func:`timing_by_seed` reads it back.
+    """
+    slots = job_runner.gpu_slots(args.gpus, jobs_per_gpu=args.max_parallel)
+    print(f"[PARALLEL] {len(queued)} job(s) over {len(slots)} slot(s): {slots}")
+    started = {}
+
+    def on_start(job, gpu):
+        started[job["label"]] = datetime.now(UTC)
+
+    def on_finish(job, row):
+        complete = (
+            row["returncode"] == 0 and final_test_record(job["run_dir"]) is not None
+        )
+        row = {**row, "status": "complete" if complete else "failed"}
+        write_timing(
+            job["run_dir"],
+            {
+                "pair": job["pair"],
+                "method": job["method"],
+                "seed": job["seed"],
+                "status": row["status"],
+                "returncode": row["returncode"],
+                "wall_seconds": row["seconds"],
+                "started_at": started[job["label"]].isoformat(),
+                "finished_at": datetime.now(UTC).isoformat(),
+                "host": platform.node(),
+                "cuda_visible_devices": row["gpu"],
+                "max_parallel": len(slots),
+                "command": shlex.join(job["command"]),
+            },
+        )
+        status.append(
+            {**_job_keys(job), "status": row["status"], "wall_seconds": row["seconds"]}
+        )
+        _write_status(status, status_path)
+        return row
+
+    rows = job_runner.run_jobs_parallel(
+        queued,
+        cwd=REPO_ROOT,
+        env=job_env(args),
+        slots=slots,
+        stop_on_error=args.stop_on_error,
+        on_start=on_start,
+        on_finish=on_finish,
+    )
+    for row in rows:
+        if row["status"] == "not_started":
+            status.append(
+                {**_job_keys(row), "status": "not_started", "wall_seconds": np.nan}
+            )
+    _write_status(status, status_path)
+    failed = [row for row in rows if row["status"] == "failed"]
+    if failed and args.stop_on_error:
+        raise RuntimeError(
+            "Jobs failed: "
+            + ", ".join(f"{row['label']} ({row['log_path']})" for row in failed)
+        )
+    return pd.DataFrame(status)
+
+
+def run_jobs(args, jobs, run_root):
+    env = job_env(args)
 
     status_path = run_root / "run_status.csv"
     status = []
+    queued = []
+    parallel = args.max_parallel > 1 or len(args.gpus) > 1
     for position, job in enumerate(jobs, start=1):
         run_dir = job["run_dir"]
         label = f"{job['pair']} / {job['method']} / seed {job['seed']}"
@@ -394,6 +497,11 @@ def run_jobs(args, jobs, run_root):
 
         run_dir.mkdir(parents=True, exist_ok=True)
         log_path = run_dir / "train.log"
+
+        if parallel:
+            queued.append({**job, "name": label, "label": label, "log_path": log_path})
+            continue
+
         print("\n" + "#" * 88)
         print(f"JOB {position}/{len(jobs)}: {label}")
         print(f"Log: {log_path}")
@@ -445,6 +553,10 @@ def run_jobs(args, jobs, run_root):
         )
         if not complete and args.stop_on_error:
             raise RuntimeError(f"Job failed; see {log_path}")
+
+    if queued:
+        prewarm_caches(args, queued)
+        return run_jobs_parallel(args, run_root, status, status_path, queued)
     return pd.DataFrame(status)
 
 
@@ -570,6 +682,10 @@ def timing_by_seed(args, run_root, pair_name):
                     if not timed.empty
                     else np.nan,
                     "peak_memory_gib": np.nanmax(peaks) / 1024 if peaks else np.nan,
+                    # A run that shared the card with others interleaved on the same
+                    # SMs, so its rates are the sweep's, not the method's.
+                    "max_parallel": int(timing.get("max_parallel", 1) or 1),
+                    "co_located": int(timing.get("max_parallel", 1) or 1) > 1,
                     "started_at": timing.get("started_at"),
                     "finished_at": timing.get("finished_at"),
                 }
@@ -640,6 +756,21 @@ def aggregate_pair(args, run_root, pair_name):
         by_seed[["method", "seed", "avg_all"]], on=["method", "seed"], how="left"
     )
     efficiency.to_csv(out_dir / "efficiency_by_seed.csv", index=False)
+    # ms/step, samples/s and peak memory are rates, and a run that shared its card
+    # measured the sweep rather than the method. Those rows stay in
+    # efficiency_by_seed.csv, flagged, and out of the table that gets published.
+    co_located = efficiency[efficiency["co_located"]]
+    if not co_located.empty:
+        runs = ", ".join(
+            f"{row.method}/seed {row.seed} (x{row.max_parallel})"
+            for row in co_located.itertuples()
+        )
+        print(
+            f"  [CO-LOCATED] {pair_name}: {len(co_located)} run(s) shared a GPU and "
+            f"are left out of table 3 — {runs}. Re-run them with --max-parallel 1 "
+            f"for publishable timings."
+        )
+        efficiency = efficiency[~efficiency["co_located"]]
     summary = (
         efficiency.groupby("method", sort=False)
         .agg(
@@ -830,6 +961,24 @@ def parse_args(argv=None):
     )
     parser.add_argument("--cuda-visible-devices", default=CUDA_VISIBLE_DEVICES)
     parser.add_argument(
+        "--max-parallel",
+        type=int,
+        default=1,
+        help="jobs to run at once on each entry of --gpus (default: 1, sequential). "
+        "One run of this sweep holds only a few GiB, so on a large card the wall "
+        "clock is mostly idle silicon; the runs are independent processes and each "
+        "still computes exactly what it computes alone. Timings do not survive it: "
+        "runs made under co-location are flagged and kept out of table 3",
+    )
+    parser.add_argument(
+        "--gpus",
+        nargs="+",
+        default=None,
+        help="devices to spread the jobs over, one CUDA_VISIBLE_DEVICES value per "
+        "entry (default: --cuda-visible-devices as a single slot). '--gpus 0 1' "
+        "gives each job one card; '--gpus 0,1' gives one job both",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="print the plan and the exact commands, run nothing",
@@ -865,6 +1014,10 @@ def parse_args(argv=None):
     )
     parser.add_argument("--skip-gpu-check", action="store_true")
     args = parser.parse_args(argv)
+    if args.max_parallel < 1:
+        parser.error(f"--max-parallel must be >= 1, got {args.max_parallel}")
+    if args.gpus is None:
+        args.gpus = [args.cuda_visible_devices]
     if not args.seeds or len(set(args.seeds)) != len(args.seeds):
         # One seed is allowed: a smoke run, or a single setting checked before paying
         # for the full grid. It only costs the std column, which aggregate_pair drops

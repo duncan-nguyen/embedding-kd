@@ -214,3 +214,45 @@ def test_a_single_seed_table_prints_the_mean_without_a_std(sweep):
 
     assert sweep.mean_sd(76.25, np.nan) == "76.25"
     assert sweep.mean_sd(76.25, 0.4) == "76.25 ± 0.40"
+
+
+def test_the_sweep_is_sequential_unless_asked_otherwise(sweep):
+    """Co-location is opt-in: the default run is the one the efficiency table needs."""
+    args = sweep.parse_args([])
+    assert args.max_parallel == 1
+    assert args.gpus == [sweep.CUDA_VISIBLE_DEVICES]
+
+    args = sweep.parse_args(["--max-parallel", "4", "--gpus", "0", "1"])
+    assert sweep.job_runner.gpu_slots(args.gpus, args.max_parallel) == [
+        "0", "0", "0", "0", "1", "1", "1", "1"
+    ]
+    with pytest.raises(SystemExit):
+        sweep.parse_args(["--max-parallel", "0"])
+
+
+def test_the_warm_up_is_the_job_command_with_cache_only_and_no_save_dir(sweep, monkeypatch):
+    """One teacher pass per pair before the fan-out, not one per slot.
+
+    The warm-up has to be the job's own command, or it would build a cache under a
+    different key than the jobs then look for.
+    """
+    args = sweep.parse_args(["--max-parallel", "2"])
+    jobs = sweep.build_jobs(args, Path("/runs/x"), Path("/cache"), Path("/train.csv"))
+    calls = []
+    monkeypatch.setattr(sweep.subprocess, "run", lambda command, **kwargs: calls.append(command))
+
+    sweep.prewarm_caches(args, jobs)
+
+    # One per pair, and only for the methods that read a cache at all.
+    assert len(calls) == len(sweep.PAIRS)
+    for command, pair_name in zip(calls, sweep.PAIRS):
+        assert command[-1] == "--cache_only"
+        assert "--save_dir" not in command
+        assert "--cache_dir" in command
+        assert pair_name in ("qwen3_0.6b_to_minilm_h384", "bge_m3_to_minilm_h768",
+                             "qwen3_4b_to_bert_base")
+
+    uncached = [job for job in jobs if job["method"] in ("cdm", "dskd", "emo")]
+    calls.clear()
+    sweep.prewarm_caches(args, uncached)
+    assert calls == []

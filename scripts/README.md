@@ -110,6 +110,37 @@ mid-run is not restarted by default, because appending to its `metrics.jsonl`
 would interleave two runs — `--retry-unfinished` moves the stale directory aside
 (it is never deleted) and runs it again.
 
+### Several jobs at once
+
+One run holds a few GiB at batch 128, so on a large card the sweep spends most of
+its wall clock waiting on a mostly idle GPU. `--max-parallel N` runs N jobs on
+each entry of `--gpus`; every job is its own seeded process, so each one still
+computes exactly what it computes alone.
+
+```bash
+python3 scripts/experiments/run_main_results.py --max-parallel 4                # 4 jobs, one card
+python3 scripts/experiments/run_main_results.py --gpus 0 1 --max-parallel 2     # 2 per card
+python3 scripts/experiments/run_main_results.py --max-parallel 4 --num-workers 4
+```
+
+Read the peak of a finished run (`peak_memory_mb` in its `metrics.jsonl`), leave
+~8 GiB of headroom for the evaluation passes, and divide. `--num-workers` is
+per job, so divide the box's cores by the number of slots; the runner already
+divides `OMP_NUM_THREADS` that way. The teacher cache is built once per pair
+before the fan-out, since a cold cache would otherwise have every job load the
+teacher and encode the corpus at the same moment.
+
+Output is not streamed with more than one job running — each job writes
+`<run dir>/train.log` and the runner prints one status line per running job every
+30s. Ctrl-C terminates the children before it exits.
+
+What does *not* survive this is table 3: ms/step, samples/s and peak memory are
+rates, and jobs sharing a card interleave on the same SMs. Each run records the
+slot count it ran under in `runner_timing.json`; co-located runs stay in
+`efficiency_by_seed.csv`, flagged, and are left out of `table_3_efficiency`, which
+prints which runs it dropped. Accuracy tables are unaffected. Run the efficiency
+numbers at `--max-parallel 1`.
+
 ### What it saves
 
 Under `runs/<run name>/`:

@@ -370,6 +370,15 @@ def parse_args():
     parser.add_argument(
         "--cache_path", type=str, default=None, help="Teacher embedding cache path"
     )
+    parser.add_argument(
+        "--cache_only",
+        action="store_true",
+        help="Build the teacher embedding cache and exit before the first training "
+        "step. This is the warm-up a parallel sweep runs once: with a cold cache, "
+        "every job that shares a --cache_dir would otherwise load the teacher and "
+        "encode the whole corpus itself. No-op for the methods that read the "
+        "teacher live (cdm, dskd, emo) and for simcse, which has no teacher",
+    )
 
     parser.add_argument(
         "--fused_views",
@@ -614,6 +623,12 @@ def main():
     # A failure here is fatal either way, so it is left to propagate: Python prints
     # the traceback and exits non-zero, which is what the hand-rolled handlers did.
     distiller = KnowledgeDistiller(config)
+    if args.cache_only:
+        # Building the distiller is what builds the cache, so there is nothing left
+        # to do here: the file is on disk and the parallel jobs can start.
+        distiller.close()
+        print("--cache_only: teacher cache is ready; not training")
+        return
     try:
         distiller.train()
     except KeyboardInterrupt:
