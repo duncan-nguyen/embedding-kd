@@ -115,13 +115,13 @@ DEFAULT_SEEDS = [42, 43, 44]
 
 MAX_LENGTH = 256
 EPOCHS = 5
-NUM_WORKERS = 2
+NUM_WORKERS = 16
 CUDA_VISIBLE_DEVICES = "0,1"
 # False = one evaluation, straight on the test split (main.py's default).
 # True = the held-out protocol: validation every epoch, test once at the end.
 HOLD_OUT_VALIDATION = False
 EVAL_EVERY = 0
-EVAL_RETRIEVAL = False
+EVAL_RETRIEVAL = True
 
 # Every learned baseline in the main-results table, plus the paper's method. One
 # batch size across methods is what makes ms/step and samples/s in the efficiency
