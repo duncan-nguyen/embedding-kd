@@ -100,9 +100,11 @@ under `config/`, which supplies the defaults that the CLI flags then override:
 | `rkd` | `config/rkd_config.py` | Relational KD: distance-wise and angle-wise relations to the cached teacher |
 | `simcse` | `config/simcse_config.py` | SimCSE-only control: the student's contrastive loss, no teacher |
 
-`talas`, `geoode` and `rkd` cache the teacher's sentence embeddings once
-(`cache_path`) and free the teacher model afterwards; `simcse` loads no teacher
-at all; the remaining methods run the teacher alongside the student every step.
+`talas`, `geoode`, `rkd` and `stella` cache the teacher's sentence embeddings
+once (`cache_path`, or `--cache_dir` to share one cache between runs of the same
+pair) and free the teacher model afterwards; `simcse` loads no teacher at all;
+`cdm`, `dskd` and `emo` run the teacher alongside the student every step, because
+their KD terms read its *token* states and not only its sentence vector.
 
 `--teacher_pooling` (`last_token`, `cls`, `mean`) is how the teacher's sentence
 vector is read, and it follows the teacher family, not the method: Qwen3-Embedding
