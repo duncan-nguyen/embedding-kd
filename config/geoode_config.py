@@ -52,6 +52,16 @@ class GeoODEConfig(BaseConfig):
     # carries the scale ratio as well: start an order of magnitude below lambda_topo.
     # CLI: --lambda_h1.
     lambda_h1 = 0.0
+    # Size of the point cloud the topological terms read, in rows. 0 -- the default
+    # -- makes that cloud the training batch, one diagram per step, which is what it
+    # always was. Any b >= 2 splits the batch into B // b disjoint clouds of b rows,
+    # averages their losses and drops the B mod b trailing rows from L_topo only. The
+    # two sizes answer different questions -- batch_size sets the variance of the
+    # gradient, this sets the scale at which the filtration reads the geometry, since
+    # L_H0 compares exactly b - 1 death times -- so this is the knob for sweeping the
+    # topological scale with the optimizer held fixed. It also makes L_H1 cheaper by
+    # (B/b)^2, the 2-skeleton being O(b^3) per chunk. CLI: --topo_batch_size.
+    topo_batch_size = 0
     # Ground metric of both persistence diagrams on the unit sphere: "chord" is the
     # Euclidean distance sqrt(2 - 2cos), "angular" the geodesic acos(cos), "cosine"
     # the (non-metric) 1 - cos. CLI: --topo_metric.

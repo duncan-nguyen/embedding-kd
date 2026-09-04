@@ -139,6 +139,16 @@ def parse_args():
         "per batch on both sides",
     )
     parser.add_argument(
+        "--topo_batch_size",
+        type=int,
+        default=None,
+        help="GeoODE-KD: rows in the point cloud the topological terms read "
+        "(0 = the training batch, one diagram per step). A value b >= 2 splits every "
+        "batch into B // b clouds of b rows and averages their losses, so the "
+        "filtration scale (L_H0 compares b - 1 death times) can be swept without "
+        "touching --batch_size; the B mod b trailing rows sit out L_topo",
+    )
+    parser.add_argument(
         "--topo_metric",
         choices=["chord", "angular", "cosine"],
         default=None,
@@ -493,6 +503,7 @@ METHOD_FLAGS = (
             "lambda_gram",
             "lambda_topo",
             "lambda_h1",
+            "topo_batch_size",
             "topo_metric",
             "topo_teacher_source",
             "projection_type",
@@ -549,6 +560,14 @@ def get_config(method: str, args):
         raise ValueError("--save_every must be a positive integer")
     if args.eval_every is not None and args.eval_every < 0:
         raise ValueError("--eval_every must be zero or positive")
+    # Caught here rather than in the criterion: the criterion is built after the
+    # teacher cache, which is the expensive part of a run to throw away over a typo.
+    if args.topo_batch_size is not None and (
+        args.topo_batch_size < 0 or args.topo_batch_size == 1
+    ):
+        raise ValueError(
+            "--topo_batch_size must be 0 (one diagram per training batch) or >= 2"
+        )
 
     for flag, attribute in COMMON_FLAGS.items():
         value = getattr(args, flag)

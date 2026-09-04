@@ -212,6 +212,21 @@ the default term under `chord`; both are increasing in `1 - cos`, so the tree is
 the same and only the edge lengths are scaled. `--topo_metric cosine` makes the
 two read the same units.
 
+`--topo_batch_size` says how big the cloud that diagram describes is. Until it
+existed the answer was always "the optimizer's batch", which quietly tied two
+independent choices together: `--batch_size` sets the variance of the gradient,
+while the size of the cloud sets the scale at which the filtration reads the
+geometry — `L_H0` compares exactly `b - 1` death times, so `b` alone decides how
+far up the merge tree the term can see. `0` (the default) keeps the old answer.
+Any `b >= 2` cuts each batch into `B // b` disjoint clouds of `b` rows, averages
+their losses, and leaves the `B mod b` trailing rows out of this term only; a
+batch smaller than `b` (an epoch's tail) is read whole. The teacher's side is
+still built in the collate — one `[B // b, b - 1]` tensor instead of a `[B - 1]`
+vector — and the step cuts the student's rows by the same rule, so the two sides
+always describe the same clouds. It is also the way to make `--lambda_h1`
+affordable: the 2-skeleton is `O(b^3)` per chunk, so chunking a batch of 128 into
+four clouds of 32 is roughly `(B/b)^2 = 16` times cheaper.
+
 Training is single-process. Two visible CUDA devices place the student on
 `cuda:0` and the teacher on `cuda:1`; one device puts both on `cuda:0`.
 

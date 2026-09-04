@@ -51,6 +51,52 @@ def pairwise_distance(x: torch.Tensor, metric: Metric = "chord", eps: float = 1e
     return dist.masked_fill(eye, 0.0)
 
 
+def chunk_count(n_rows: int, chunk_size: int | None) -> int:
+    """How many disjoint chunks of ``chunk_size`` rows a batch of ``n_rows`` gives.
+
+    A persistence diagram is a statement about a *point cloud*, and which cloud that
+    is has so far been decided by the optimiser's batch size: one diagram per batch,
+    ``B - 1`` death times. The two are independent choices, though -- the batch size
+    sets the gradient's variance, the cloud size sets the scale at which the
+    filtration reads the geometry -- so the topological terms can be given their own
+    ``chunk_size`` and the batch split into ``n = B // chunk_size`` clouds whose
+    losses are averaged.
+
+    ``None`` or 0 keeps the old behaviour exactly: one diagram per batch. So does a
+    ``chunk_size`` the batch cannot hold (including the tail batch of an epoch),
+    which is the whole batch rather than an error.
+    """
+    if not chunk_size:
+        return 1
+    if chunk_size < 2:
+        raise ValueError(
+            f"chunk_size must be 0/None (whole batch) or >= 2, got {chunk_size}"
+        )
+    if chunk_size >= n_rows:
+        return 1
+    return n_rows // chunk_size
+
+
+def split_chunks(x: torch.Tensor, chunk_size: int | None) -> list[torch.Tensor]:
+    """The batch's rows as equal-sized clouds, in order.
+
+    The rows arrive from a shuffled loader, so contiguous blocks are already random
+    subsets and no further permutation is needed -- what matters is only that the
+    teacher and the student split *identically*, which they do because both sides
+    apply this same rule to the same batch.
+
+    The ``B mod chunk_size`` trailing rows are dropped from the topological term (and
+    from that term only). Every chunk therefore has the same number of death times,
+    which is what lets the teacher's diagrams stack into one ``[n, chunk_size - 1]``
+    tensor; folding the remainder into the last chunk would instead compare clouds of
+    two different sizes, and the filtration scale is exactly what the size sets.
+    """
+    n = chunk_count(x.shape[0], chunk_size)
+    if n == 1:
+        return [x]
+    return [x[k * chunk_size : (k + 1) * chunk_size] for k in range(n)]
+
+
 def _mst_edge_indices(dist: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Endpoints of the MST edges of a dense distance matrix, as index tensors.
 
@@ -93,10 +139,25 @@ def mst_edge_weights(dist: torch.Tensor) -> torch.Tensor:
     return dist[edge_i, edge_j]
 
 
-def h0_death_times(embeddings: torch.Tensor, metric: Metric = "chord", sort: bool = True) -> torch.Tensor:
-    """Finite H0 Vietoris-Rips death times = MST edge weights."""
-    deaths = mst_edge_weights(pairwise_distance(embeddings, metric=metric))
-    return torch.sort(deaths).values if sort else deaths
+def h0_death_times(
+    embeddings: torch.Tensor,
+    metric: Metric = "chord",
+    sort: bool = True,
+    chunk_size: int | None = None,
+) -> torch.Tensor:
+    """Finite H0 Vietoris-Rips death times = MST edge weights.
+
+    ``[B - 1]`` for the batch as one cloud, or ``[n, chunk_size - 1]`` when
+    ``chunk_size`` splits it into ``n`` clouds (see :func:`chunk_count`).
+    """
+    def deaths_of(x: torch.Tensor) -> torch.Tensor:
+        deaths = mst_edge_weights(pairwise_distance(x, metric=metric))
+        return torch.sort(deaths).values if sort else deaths
+
+    chunks = split_chunks(embeddings, chunk_size)
+    if len(chunks) == 1:
+        return deaths_of(chunks[0])
+    return torch.stack([deaths_of(chunk) for chunk in chunks], dim=0)
 
 
 def h0_topological_loss(
@@ -104,12 +165,14 @@ def h0_topological_loss(
     teacher_embeddings: torch.Tensor,
     metric: Metric = "chord",
     squared: bool = True,
+    chunk_size: int | None = None,
 ) -> torch.Tensor:
     """
     Differentiable H0 Wasserstein surrogate based on sorted finite death times.
 
     Teacher and student may have different ambient dimensions, but must contain
-    the same B corresponding samples in the batch.
+    the same B corresponding samples in the batch. ``chunk_size`` splits that batch
+    into equal clouds and averages their losses; ``None`` reads the batch as one.
     """
     if student_embeddings.ndim != 2 or teacher_embeddings.ndim != 2:
         raise ValueError("student_embeddings and teacher_embeddings must be [B, D].")
@@ -117,10 +180,16 @@ def h0_topological_loss(
         raise ValueError("Teacher and student batch sizes must match.")
 
     with torch.no_grad():
-        teacher_deaths = h0_death_times(teacher_embeddings, metric=metric, sort=True)
+        teacher_deaths = h0_death_times(
+            teacher_embeddings, metric=metric, sort=True, chunk_size=chunk_size
+        )
 
     return h0_loss_against_deaths(
-        student_embeddings, teacher_deaths, metric=metric, squared=squared
+        student_embeddings,
+        teacher_deaths,
+        metric=metric,
+        squared=squared,
+        chunk_size=chunk_size,
     )
 
 
@@ -129,6 +198,7 @@ def h0_loss_against_deaths(
     teacher_deaths: torch.Tensor,
     metric: Metric = "chord",
     squared: bool = True,
+    chunk_size: int | None = None,
 ) -> torch.Tensor:
     """The same loss against a teacher diagram that was computed elsewhere.
 
@@ -141,7 +211,9 @@ def h0_loss_against_deaths(
     """
     if student_embeddings.ndim != 2:
         raise ValueError("student_embeddings must be [B, D].")
-    student_deaths = h0_death_times(student_embeddings, metric=metric, sort=True)
+    student_deaths = h0_death_times(
+        student_embeddings, metric=metric, sort=True, chunk_size=chunk_size
+    )
     teacher_deaths = teacher_deaths.to(
         device=student_deaths.device, dtype=student_deaths.dtype
     )
@@ -149,7 +221,8 @@ def h0_loss_against_deaths(
         raise ValueError(
             f"teacher diagram has {tuple(teacher_deaths.shape)} death times but the "
             f"student batch produced {tuple(student_deaths.shape)}; a diagram of "
-            "B - 1 finite H0 death times belongs to the batch it was built from"
+            "B - 1 finite H0 death times belongs to the batch it was built from, "
+            "and to the chunk size that batch was split with"
         )
     mse = torch.mean((student_deaths - teacher_deaths) ** 2)
     return mse if squared else torch.sqrt(mse + 1e-12)
@@ -157,10 +230,16 @@ def h0_loss_against_deaths(
 
 class H0TopologicalLoss(nn.Module):
     """nn.Module wrapper."""
-    def __init__(self, metric: Metric = "chord", squared: bool = True) -> None:
+    def __init__(
+        self,
+        metric: Metric = "chord",
+        squared: bool = True,
+        chunk_size: int | None = None,
+    ) -> None:
         super().__init__()
         self.metric = metric
         self.squared = squared
+        self.chunk_size = chunk_size
 
     def forward(self, student_embeddings: torch.Tensor, teacher_embeddings: torch.Tensor) -> torch.Tensor:
         return h0_topological_loss(
@@ -168,4 +247,5 @@ class H0TopologicalLoss(nn.Module):
             teacher_embeddings=teacher_embeddings,
             metric=self.metric,
             squared=self.squared,
+            chunk_size=self.chunk_size,
         )

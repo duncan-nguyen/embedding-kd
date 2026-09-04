@@ -352,3 +352,74 @@ def test_the_collate_builds_the_teacher_h1_diagram_only_when_asked():
     )(batch)
     assert with_h1["teacher_h1"].shape[-1] == 2
     assert torch.allclose(with_h1["teacher_h1"], h1_diagram(topo), atol=1e-6)
+
+
+# --------------------------------------------------------------------- chunking
+
+
+def test_the_chunked_h1_term_is_the_mean_of_the_chunk_terms():
+    student, teacher = _cloud(18, 5, 30), _circle(18, dim=7, noise=0.1, seed=31)
+
+    chunked = h1_topological_loss(student, teacher, chunk_size=6)
+    by_hand = torch.stack(
+        [
+            h1_topological_loss(student[k * 6 : (k + 1) * 6], teacher[k * 6 : (k + 1) * 6])
+            for k in range(3)
+        ]
+    ).mean()
+
+    assert chunked.item() == pytest.approx(by_hand.item(), rel=1e-6)
+
+
+def test_chunking_off_is_the_h1_term_that_was_there_before():
+    student, teacher = _cloud(9, 5, 32), _circle(9, dim=7, noise=0.1, seed=33)
+    assert h1_topological_loss(student, teacher, chunk_size=0).item() == pytest.approx(
+        h1_topological_loss(student, teacher).item()
+    )
+
+
+def test_the_collate_hands_the_raw_cache_over_when_h1_is_chunked():
+    """Per-chunk H1 diagrams have different numbers of cycles, so they cannot be
+    stacked into the batch dict; the step builds them from the cache instead."""
+    from src.data_utils.dataset_cache import DualTokenizerCollateWithTeacher
+
+    class _Tokenizer:
+        def __call__(self, texts, **kwargs):
+            count = len(texts)
+            return {
+                "input_ids": torch.zeros(count, 3, dtype=torch.long),
+                "attention_mask": torch.ones(count, 3, dtype=torch.long),
+            }
+
+    topo = _circle(12, dim=5, noise=0.2, seed=34)
+    batch = [(("a", "b"), torch.zeros(4), topo[i]) for i in range(12)]
+
+    chunked = DualTokenizerCollateWithTeacher(
+        _Tokenizer(), "pair_reg", 8, topo_metric="chord", need_h1=True, topo_batch_size=6
+    )(batch)
+
+    assert "teacher_h1" not in chunked
+    assert torch.allclose(chunked["teacher_topo"], topo)
+    assert chunked["teacher_deaths"].shape == (2, 5)
+
+
+def test_the_criterion_chunks_the_h1_term_too():
+    hidden_states, teacher, teacher_topo = _geoode_batch(batch=18, teacher_dim=16)
+    criterion = GeoODEKD(
+        lambda_ctr=0.0, lambda_topo=1.0, lambda_h1=1.0, topo_batch_size=6
+    )
+    _, metrics = criterion(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    student = criterion.endpoint_states(hidden_states, None)[-1]
+    expected = h1_topological_loss(student, teacher_topo.float(), chunk_size=6)
+    assert metrics["loss_h1"] == pytest.approx(expected.item(), rel=1e-5)
+
+
+def test_a_chunk_too_small_to_close_a_cycle_drops_the_h1_term():
+    hidden_states, teacher, teacher_topo = _geoode_batch(batch=18, teacher_dim=16)
+    _, metrics = GeoODEKD(
+        lambda_ctr=0.0, lambda_topo=1.0, lambda_h1=1.0, topo_batch_size=2
+    )(hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo)
+    assert metrics["h1_active"] == 0.0
+    assert metrics["loss_h1"] == 0.0

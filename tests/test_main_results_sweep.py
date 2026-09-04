@@ -63,6 +63,7 @@ def test_the_sweep_settings_are_the_notebook_settings(sweep, notebook_settings):
     assert sweep.EVAL_RETRIEVAL == notebook_settings["EVAL_RETRIEVAL"]
     assert sweep.HOLD_OUT_VALIDATION == notebook_settings["HOLD_OUT_VALIDATION"]
     assert sweep.CUDA_VISIBLE_DEVICES == notebook_settings["CUDA_VISIBLE_DEVICES"]
+    assert sweep.GEOODE_H0_BATCH_SIZE == notebook_settings["GEOODE_H0_BATCH_SIZE"]
 
 
 def test_the_sweep_covers_every_baseline_and_the_paper_method(sweep):
@@ -108,7 +109,8 @@ def test_every_job_matches_the_notebooks_command(sweep, notebook_settings):
             **{
                 key: notebook_settings[key]
                 for key in ("EPOCHS", "MAX_LENGTH", "NUM_WORKERS", "EVAL_EVERY",
-                            "HOLD_OUT_VALIDATION", "EVAL_RETRIEVAL")
+                            "HOLD_OUT_VALIDATION", "EVAL_RETRIEVAL",
+                            "GEOODE_H0_BATCH_SIZE")
             },
         }
         # Everything above `JOBS = [` is the notebook's build_command.

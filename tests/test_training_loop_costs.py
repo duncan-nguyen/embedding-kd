@@ -648,3 +648,50 @@ def test_turning_fusion_off_changes_nothing_but_the_trajectory(tmp_path, monkeyp
     assert torch.isfinite(torch.tensor(fused.train_epoch(0)))
     assert torch.isfinite(torch.tensor(unfused.train_epoch(0)))
     assert unfused.config.fused_views is False
+
+
+def test_the_collate_cuts_the_teacher_diagram_to_the_topological_batch_size():
+    """--topo_batch_size decides the cloud, and the collate is where the teacher's
+    side of it is built: one diagram per chunk, stacked, instead of one per batch."""
+    samples, teacher_topo = _batch(rows=9)
+
+    batch = DualTokenizerCollateWithTeacher(
+        _CharTokenizer(), "pair_cls", 32, topo_metric="chord", topo_batch_size=4
+    )(samples)
+
+    assert batch["teacher_deaths"].shape == (2, 3)  # 9 // 4 clouds, the 9th row out
+    assert torch.allclose(
+        batch["teacher_deaths"],
+        h0_death_times(teacher_topo.float(), metric="chord", sort=True, chunk_size=4),
+        atol=1e-7,
+    )
+
+
+def test_a_batch_smaller_than_the_topological_batch_size_is_one_diagram():
+    samples, teacher_topo = _batch(rows=4)
+
+    batch = DualTokenizerCollateWithTeacher(
+        _CharTokenizer(), "pair_cls", 32, topo_metric="chord", topo_batch_size=8
+    )(samples)
+
+    assert batch["teacher_deaths"].shape == (3,)
+
+
+def test_the_topological_batch_size_reaches_the_collate_and_the_criterion(
+    tmp_path, monkeypatch
+):
+    """The knob is read in two places that have to agree: the collate builds the
+    teacher's diagrams from the cache, the step builds the student's from the batch.
+    A run where only one of them cut the batch would raise on the first step."""
+    distiller = _run_distiller(
+        tmp_path, monkeypatch, lambda_topo=1.0, topo_batch_size=4
+    )
+
+    assert distiller.collate_fn.topo_batch_size == 4
+    assert distiller.criterion.topo_batch_size == 4
+    batch = distiller.collate_fn([distiller.train_ds[index] for index in range(8)])
+    assert batch["teacher_deaths"].shape == (2, 3)  # the batch of 8 as two clouds
+
+    loss = distiller.train_epoch(0)
+    assert loss > 0.0 and torch.isfinite(torch.tensor(loss))
+    assert distiller.last_epoch_metrics["loss_topo"] > 0.0

@@ -385,6 +385,7 @@ class KnowledgeDistiller:
             lambda_topo=float(getattr(cfg, "lambda_topo", 0.0) or 0.0),
             lambda_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0),
             topo_metric=getattr(cfg, "topo_metric", "chord"),
+            topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
             pooling=cfg.student_pooling,
             include_embedding_layer=cfg.include_embedding_layer,
             eps_norm=cfg.eps_norm,
@@ -408,7 +409,9 @@ class KnowledgeDistiller:
             f"lambda_gram={float(getattr(cfg, 'lambda_gram', 0.0) or 0.0)}, "
             f"lambda_topo={float(getattr(cfg, 'lambda_topo', 0.0) or 0.0)}, "
             f"lambda_h1={float(getattr(cfg, 'lambda_h1', 0.0) or 0.0)} "
-            f"({getattr(cfg, 'topo_metric', 'chord')})"
+            f"({getattr(cfg, 'topo_metric', 'chord')}, "
+            f"topo_batch_size={int(getattr(cfg, 'topo_batch_size', 0) or 0)} "
+            f"{'= batch' if not int(getattr(cfg, 'topo_batch_size', 0) or 0) else 'rows/diagram'})"
         )
         return criterion
 
@@ -981,6 +984,7 @@ class KnowledgeDistiller:
                 else None
             ),
             need_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0) > 0.0,
+            topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
         )
 
     def _probe_rows(self, texts: list[str]) -> torch.Tensor | None:
