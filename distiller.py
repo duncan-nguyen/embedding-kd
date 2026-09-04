@@ -2993,7 +2993,9 @@ class KnowledgeDistiller:
             print("\n" + "=" * 60)
             print(f"Evaluation after Stage2 Epoch {epoch + 1}")
             print("=" * 60)
-            epoch_results = self._run_evaluation(stage2_split)
+            epoch_results = None
+            if cfg.eval_every and (epoch + 1) % cfg.eval_every == 0:
+                epoch_results = self._run_evaluation(stage2_split)
             print("=" * 60 + "\n")
 
             self.log_experiment_record(

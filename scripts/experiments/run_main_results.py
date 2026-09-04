@@ -53,6 +53,7 @@ import argparse
 import json
 import os
 import platform
+import signal
 import shlex
 import subprocess
 import sys
@@ -284,6 +285,8 @@ def stream_output(stream, log_handle):
 
 
 def run_jobs(args, jobs, run_root):
+    if args.jobs_per_gpu:
+        return run_jobs_parallel(args, jobs, run_root)
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     env["TOKENIZERS_PARALLELISM"] = "false"
@@ -374,6 +377,294 @@ def run_jobs(args, jobs, run_root):
     return pd.DataFrame(status)
 
 
+CACHED_METHODS = {"rkd", "talas", "geoode"}
+PARALLEL_METHOD_ORDER = ["emo", "cdm", "dskd", "stella", "geoode", "talas", "rkd"]
+
+
+def exclusive_gpu(job):
+    """The 4B teacher's eager attention maps need a conservative memory bound."""
+    return job["method"] == "emo" and job["pair"] == "qwen3_4b_to_bert_base"
+
+
+def process_identity(pid):
+    """Linux process state and start ticks, so handoffs cannot confuse reused PIDs."""
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return fields[0], fields[19]
+    except FileNotFoundError:
+        return None
+
+
+class AdoptedProcess:
+    """Observe a detached worker started by the previous scheduler.
+
+    Its exit status is not waitable by this parent. Completion therefore uses
+    the same final-test record as resume; timing records explicitly leave the
+    exit code unknown rather than inventing one.
+    """
+
+    def __init__(self, entry, run_dir):
+        self.pid = entry["pid"]
+        self.start_ticks = str(entry["start_ticks"])
+        self.run_dir = Path(run_dir)
+        identity = process_identity(self.pid)
+        if identity and identity[1] == self.start_ticks and identity[0] != "Z":
+            argv = Path(f"/proc/{self.pid}/cmdline").read_bytes().decode().split("\0")
+            if "--save_dir" not in argv or argv[argv.index("--save_dir") + 1] != str(run_dir):
+                raise RuntimeError(f"PID {self.pid} does not belong to {run_dir}")
+
+    def poll(self):
+        identity = process_identity(self.pid)
+        if identity and identity[1] == self.start_ticks and identity[0] != "Z":
+            return None
+        return 0 if final_test_record(self.run_dir) is not None else 1
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(f"adopted PID {self.pid}", timeout)
+            time.sleep(0.1)
+        return self.poll()
+
+
+def next_parallel_job(pending, active, gpu, ready_caches):
+    residents = [item for item in active if item["gpu"] == gpu]
+    eligible = []
+    for job in pending:
+        if residents and (exclusive_gpu(job) or any(exclusive_gpu(x["job"]) for x in residents)):
+            continue
+        online = job["method"] not in CACHED_METHODS
+        large_online = online and job["pair"] == "qwen3_4b_to_bert_base"
+        if any(x["job"]["method"] not in CACHED_METHODS and
+               (large_online or (online and x["job"]["pair"] == "qwen3_4b_to_bert_base"))
+               for x in residents):
+            continue
+        if job["method"] in CACHED_METHODS and job["pair"] not in ready_caches:
+            if any(x["job"]["pair"] == job["pair"]
+                   and x["job"]["method"] in CACHED_METHODS for x in active):
+                continue
+        # Complement an online teacher job with a cached student job, when one
+        # is ready, instead of stacking identical CPU/GPU stalls on one device.
+        same_workload = bool(residents) and all(
+            (x["job"]["method"] in CACHED_METHODS) == (job["method"] in CACHED_METHODS)
+            for x in residents
+        )
+        eligible.append((not job.get("retry_failed", False), same_workload,
+                         PARALLEL_METHOD_ORDER.index(job["method"]), job))
+    return min(eligible, key=lambda x: x[:3])[3] if eligible else None
+
+
+def parallel_slot_limits(run_root, devices, default):
+    path = run_root / "parallel_limits.json"
+    overrides = json.loads(path.read_text()) if path.exists() else {}
+    if (not isinstance(overrides, dict) or set(overrides) - set(devices)
+            or any(type(n) is not int or n < 1 for n in overrides.values())):
+        raise ValueError("parallel_limits.json must map assigned GPU IDs to positive integers")
+    return {gpu: overrides.get(gpu, default) for gpu in devices}
+
+
+def run_jobs_parallel(args, jobs, run_root):
+    """One shared queue, with independent single-GPU processes and bounded slots.
+
+    Logs go straight to files, so one slow pipe reader cannot stall every GPU.
+    Completed jobs are still the resume boundary. The first cached job for each
+    pair completes before another starts, preventing partial/duplicate writes.
+    """
+    import fcntl
+
+    devices = args.cuda_visible_devices.split(",")
+    env = os.environ.copy()
+    env.update(TOKENIZERS_PARALLELISM="false", WANDB_MODE="disabled",
+               PYTHONUNBUFFERED="1", TQDM_MININTERVAL=str(PROGRESS_EVERY_SEC))
+    status, pending, active = [], [], []
+    ready_caches = set()
+    failure = False
+    last_progress = 0.0
+    state_path = run_root / "scheduler_state.json"
+    limits = {gpu: args.jobs_per_gpu for gpu in devices}
+    adoptions = {}
+    if args.adopt_running:
+        handoff = json.loads(args.adopt_running.read_text())
+        adoptions = {str(Path(x["run_dir"])): x for x in handoff["active"]}
+        if set(adoptions) - {str(x["run_dir"]) for x in jobs}:
+            raise ValueError("The handoff includes workers outside this sweep selection")
+        if any(x["gpu"] not in devices for x in adoptions.values()):
+            raise ValueError("All adopted worker GPUs must be assigned to the new scheduler")
+
+    def save_state():
+        payload = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "scheduler_pid": os.getpid(), "jobs_per_gpu": args.jobs_per_gpu,
+            "slot_limits": limits,
+            "devices": devices, "pending": len(pending),
+            "finished": len(status), "draining": (run_root / "DRAIN").exists(),
+            "active": [{**_job_keys(x["job"]), "run_dir": str(x["job"]["run_dir"]),
+                        "gpu": x["gpu"], "pid": x["process"].pid,
+                        "started_at": x["started_wall"].isoformat(),
+                        "concurrent_on_same_gpu": x["shared"]} for x in active],
+        }
+        temporary = state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        temporary.replace(state_path)
+        _write_status(status, run_root / "run_status.csv")
+
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt(f"scheduler received signal {signum}")
+
+    with (run_root / ".parallel.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        previous_term = signal.signal(signal.SIGTERM, interrupted)
+        try:
+            for job in jobs:
+                run_dir = job["run_dir"]
+                entry = adoptions.get(str(run_dir))
+                if entry is not None:
+                    process = AdoptedProcess(entry, run_dir)
+                    if process.poll() is None:
+                        started_wall = datetime.fromisoformat(entry["started_at"])
+                        elapsed = (datetime.now(timezone.utc) - started_wall).total_seconds()
+                        active.append({
+                            "job": job, "gpu": entry["gpu"], "process": process,
+                            "log": (run_dir / "train.log").open("a", encoding="utf-8"),
+                            "started_wall": started_wall, "started": time.perf_counter() - elapsed,
+                            "shared": entry.get("concurrent_on_same_gpu", False),
+                            "slot_limit": args.jobs_per_gpu, "adopted": True,
+                        })
+                        print(f"[ADOPT] GPU {entry['gpu']}, PID {process.pid}: "
+                              f"{job['pair']} / {job['method']} / {job['seed']}", flush=True)
+                        continue
+                if final_test_record(run_dir) is not None:
+                    timing = read_timing(run_dir) or {}
+                    status.append({**_job_keys(job), "status": "skipped_complete",
+                                   "wall_seconds": timing.get("wall_seconds", np.nan)})
+                    if job["method"] in CACHED_METHODS:
+                        ready_caches.add(job["pair"])
+                    continue
+                prior_timing = read_timing(run_dir) or {}
+                if prior_timing.get("status") == "failed":
+                    job["retry_failed"] = True
+                if (run_dir / "metrics.jsonl").exists():
+                    if args.retry_unfinished:
+                        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                        stale = run_dir.with_name(f"{run_dir.name}.stale-{stamp}")
+                        run_dir.rename(stale)
+                        print(f"[STALE] {run_dir} -> {stale}", flush=True)
+                    elif args.stop_on_error:
+                        raise RuntimeError(f"Unfinished run at {run_dir}; use --retry-unfinished")
+                    else:
+                        status.append({**_job_keys(job), "status": "unfinished_skipped",
+                                       "wall_seconds": np.nan})
+                        continue
+                pending.append(job)
+
+            print(f"[PARALLEL] GPUs={devices}, up to {args.jobs_per_gpu} jobs/GPU; "
+                  f"{len(status)} recorded, {len(pending)} pending", flush=True)
+            while pending or active:
+                for item in list(active):
+                    code = item["process"].poll()
+                    if code is None:
+                        continue
+                    item["log"].close()
+                    active.remove(item)
+                    job = item["job"]
+                    elapsed = time.perf_counter() - item["started"]
+                    complete = code == 0 and final_test_record(job["run_dir"]) is not None
+                    outcome = "complete" if complete else "failed"
+                    write_timing(job["run_dir"], {
+                        **_job_keys(job), "run_dir": str(job["run_dir"]),
+                        "status": outcome,
+                        "returncode": None if item.get("adopted") else code,
+                        "completion_evidence": "final_test_record" if item.get("adopted")
+                                               else "exit_code_and_final_test_record",
+                        "adopted": item.get("adopted", False), "wall_seconds": elapsed,
+                        "started_at": item["started_wall"].isoformat(),
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "host": platform.node(), "cuda_visible_devices": item["gpu"],
+                        "execution_mode": "parallel", "jobs_per_gpu": item["slot_limit"],
+                        "concurrent_on_same_gpu": item["shared"],
+                        "command": shlex.join(job["command"]),
+                    })
+                    status.append({**_job_keys(job), "status": outcome, "wall_seconds": elapsed})
+                    if complete and job["method"] in CACHED_METHODS:
+                        ready_caches.add(job["pair"])
+                    failure |= not complete
+                    print(f"[{outcome.upper()}] GPU {item['gpu']}: {job['pair']} / "
+                          f"{job['method']} / {job['seed']} in {elapsed / 60:.1f} min", flush=True)
+
+                draining = (run_root / "DRAIN").exists() or (failure and args.stop_on_error)
+                if not draining:
+                    try:
+                        updated_limits = parallel_slot_limits(run_root, devices, args.jobs_per_gpu)
+                    except (ValueError, OSError) as error:
+                        print(f"[LIMITS] Keeping {limits}: {error}", flush=True)
+                    else:
+                        if updated_limits != limits:
+                            print(f"[LIMITS] {limits} -> {updated_limits}", flush=True)
+                        limits = updated_limits
+                    for gpu in sorted(devices, key=lambda d: sum(x["gpu"] == d for x in active)):
+                        while sum(x["gpu"] == gpu for x in active) < limits[gpu]:
+                            job = next_parallel_job(pending, active, gpu, ready_caches)
+                            if job is None:
+                                break
+                            job["run_dir"].mkdir(parents=True, exist_ok=True)
+                            log = (job["run_dir"] / "train.log").open("w", encoding="utf-8")
+                            started_wall, started = datetime.now(timezone.utc), time.perf_counter()
+                            try:
+                                process = subprocess.Popen(
+                                    job["command"], cwd=REPO_ROOT,
+                                    env={**env, "CUDA_VISIBLE_DEVICES": gpu},
+                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                    start_new_session=True,
+                                )
+                            except BaseException:
+                                log.close()
+                                raise
+                            shared = any(x["gpu"] == gpu for x in active)
+                            for item in active:
+                                if item["gpu"] == gpu:
+                                    item["shared"] = True
+                            active.append({"job": job, "gpu": gpu, "process": process,
+                                           "log": log, "started": started,
+                                           "started_wall": started_wall, "shared": shared,
+                                           "slot_limit": limits[gpu]})
+                            pending.remove(job)
+                            print(f"[START] GPU {gpu}, PID {process.pid}: {job['pair']} / "
+                                  f"{job['method']} / seed {job['seed']}", flush=True)
+                save_state()
+                if draining and not active:
+                    print(f"[DRAINED] {len(pending)} jobs remain for resume", flush=True)
+                    break
+                if active and time.perf_counter() - last_progress >= PROGRESS_EVERY_SEC:
+                    print(f"[PROGRESS] {len(status)}/{len(jobs)} recorded; "
+                          f"{len(active)} running, {len(pending)} queued", flush=True)
+                    last_progress = time.perf_counter()
+                if pending or active:
+                    time.sleep(1)
+        finally:
+            # Each job has its own process group, including DataLoader workers.
+            # Stopping the scheduler must not leave orphan GPU jobs on resume.
+            for item in active:
+                if item["process"].poll() is None:
+                    try:
+                        os.killpg(item["process"].pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+            for item in active:
+                try:
+                    item["process"].wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(item["process"].pid, signal.SIGKILL)
+                    item["process"].wait()
+                item["log"].close()
+            active.clear()
+            save_state()
+            signal.signal(signal.SIGTERM, previous_term)
+    if failure and args.stop_on_error:
+        raise RuntimeError("Parallel job failed; completed jobs are kept. See run_status.csv")
+    return pd.DataFrame(status)
+
+
 def _job_keys(job):
     return {"pair": job["pair"], "method": job["method"], "seed": job["seed"],
             "run_dir": str(job["run_dir"])}
@@ -382,9 +673,11 @@ def _job_keys(job):
 def _write_status(status, path):
     """Rewritten after every job, so a sweep killed halfway still leaves a
     readable record of what ran and how long it took."""
-    frame = pd.DataFrame(status)
+    frame = pd.DataFrame(status, columns=["pair", "method", "seed", "run_dir", "status", "wall_seconds"])
     frame["wall_minutes"] = frame["wall_seconds"] / 60
-    frame.to_csv(path, index=False)
+    temporary = path.with_suffix(".tmp")
+    frame.to_csv(temporary, index=False)
+    temporary.replace(path)
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +775,9 @@ def timing_by_seed(args, run_root, pair_name):
                 "peak_memory_gib": np.nanmax(peaks) / 1024 if peaks else np.nan,
                 "started_at": timing.get("started_at"),
                 "finished_at": timing.get("finished_at"),
+                "execution_mode": timing.get("execution_mode", "sequential"),
+                "cuda_visible_devices": timing.get("cuda_visible_devices"),
+                "concurrent_on_same_gpu": timing.get("concurrent_on_same_gpu", False),
             })
     return pd.DataFrame(rows)
 
@@ -677,6 +973,10 @@ def parse_args(argv=None):
     parser.add_argument("--cache-dir", type=Path, default=None,
                         help="shared teacher cache (default: <run-root>/teacher_cache)")
     parser.add_argument("--cuda-visible-devices", default=CUDA_VISIBLE_DEVICES)
+    parser.add_argument("--jobs-per-gpu", type=int, default=0,
+                        help="independent jobs per GPU; 0 keeps sequential model splitting")
+    parser.add_argument("--adopt-running", type=Path, default=None,
+                        help="take over detached workers from a saved handoff JSON (Linux)")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the plan and the exact commands, run nothing")
     parser.add_argument("--aggregate-only", action="store_true",
@@ -695,6 +995,13 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if len(set(args.seeds)) != len(args.seeds) or len(args.seeds) < 2:
         parser.error("--seeds must be at least two distinct values")
+    devices = [device.strip() for device in args.cuda_visible_devices.split(",")]
+    if args.jobs_per_gpu < 0 or (args.jobs_per_gpu and
+                               (not all(devices) or len(devices) != len(set(devices)))):
+        parser.error("--jobs-per-gpu must be nonnegative and GPU IDs must be distinct and nonempty")
+    args.cuda_visible_devices = ",".join(devices)
+    if args.adopt_running and not args.jobs_per_gpu:
+        parser.error("--adopt-running requires --jobs-per-gpu")
     return args
 
 
@@ -736,6 +1043,8 @@ def main(argv=None):
             "train_data": str(train_data),
             "cache_dir": str(cache_dir),
             "epochs": args.epochs,
+            "jobs_per_gpu": args.jobs_per_gpu,
+            "cuda_visible_devices": args.cuda_visible_devices,
             "max_length": MAX_LENGTH,
             "pairs": {name: PAIRS[name] for name in args.pairs},
             "method_settings": {m: METHOD_SETTINGS[m] for m in args.methods},

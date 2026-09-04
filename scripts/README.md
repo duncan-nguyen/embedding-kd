@@ -105,6 +105,36 @@ tmux new -s sweep 'bash scripts/experiments/run_main_results.sh'
 nohup bash scripts/experiments/run_main_results.sh > /dev/null 2>&1 &   # sweep.log has everything
 ```
 
+For throughput across multiple GPUs, run independent jobs on each device:
+
+```bash
+CUDA_VISIBLE_DEVICES=2,3 bash scripts/experiments/run_main_results.sh --jobs-per-gpu 2
+```
+
+The queue refills free slots, keeps completed runs on resume, and records live
+placement in `scheduler_state.json`. Each job sees exactly one GPU, with both
+models on that GPU. The first cached job of a pair completes before other
+cached jobs of that pair start. The 4B EMO job runs alone on its GPU because its
+attention maps require more memory. Reduce `--jobs-per-gpu` if sharing reduces
+throughput or exhausts memory; the default `0` preserves sequential execution.
+Use the same `RUN_NAME` and `--retry-unfinished` when retrying interrupted work.
+Create `DRAIN` inside the run directory to finish active jobs without dispatching
+more; remove it before resuming. Shared-job timing is marked in each
+`runner_timing.json` and must not be presented as isolated GPU performance.
+To tune slot counts without interrupting running jobs, atomically replace
+`parallel_limits.json` in the run directory with, for example, `{"2": 3, "3": 2}`.
+Lowering a limit lets excess jobs finish. A 4B online teacher shares its GPU only
+with cached student jobs; 4B EMO remains exclusive regardless of the slot limit.
+
+To add GPUs without restarting detached training workers, the parallel runner
+also accepts `--adopt-running handoff.json`. Each entry in its `active` list needs
+the saved scheduler-state fields plus Linux `/proc/<pid>/stat` start ticks as
+`start_ticks`. Stop the old controller only, preserving its separate worker
+process groups, before starting the replacement. PID identity and output paths
+are validated. Adopted jobs retain their original start time; completion is
+verified through final-test records and their unavailable exit code is left null.
+Failed prior attempts are prioritized on retry.
+
 `--keep-going` carries on past a failed job instead of stopping; a job that died
 mid-run is not restarted by default, because appending to its `metrics.jsonl`
 would interleave two runs — `--retry-unfinished` moves the stale directory aside
