@@ -62,6 +62,57 @@ def cost_fn(
     return dist
 
 
+def _dtw_path(series_1, series_2, norm_func, series1_factor=None, series2_factor=None):
+    """The DTW alignment path and its accumulated cost, on Python lists.
+
+    Lists rather than a NumPy array because every access here is a scalar one:
+    the recurrence reads three cells and writes one, and a NumPy scalar read
+    boxes a value on the way out. The array only exists so ``debug_align`` can
+    print a corner of it, so :func:`dtw` converts at the end and the alignment
+    itself never pays for it.
+    """
+    rows, columns = len(series_1), len(series_2)
+    infinity = float("inf")
+    # One border of infinities, so the first real cell has no cheaper way in.
+    matrix = [[infinity] * (columns + 1) for _ in range(rows + 1)]
+    matrix[0][0] = 0.0
+
+    scaled = series1_factor is not None and series2_factor is not None
+    for i in range(rows):
+        first, second = matrix[i], matrix[i + 1]
+        value_1 = series_1[i]
+        factor_1 = series1_factor[i] if scaled else 1.0
+        for j in range(columns):
+            cost = norm_func(value_1, series_2[j])
+            if scaled:
+                cost *= factor_1 * series2_factor[j]
+            best = first[j]
+            best = min(best, first[j + 1])
+            best = min(best, second[j])
+            second[j + 1] = cost + best
+
+    matrix = [row[1:] for row in matrix[1:]]
+    i, j = rows - 1, columns - 1
+    matches = []
+    while i > 0 or j > 0:
+        matches.append((i, j))
+        option_diag = matrix[i - 1][j - 1] if i > 0 and j > 0 else infinity
+        option_up = matrix[i - 1][j] if i > 0 else infinity
+        option_left = matrix[i][j - 1] if j > 0 else infinity
+        # ``argmin`` returned the *first* smallest, so diagonal beats up beats left.
+        if option_diag <= option_up and option_diag <= option_left:
+            i -= 1
+            j -= 1
+        elif option_up <= option_left:
+            i -= 1
+        else:
+            j -= 1
+
+    matches.append((0, 0))
+    matches.reverse()
+    return matches, matrix
+
+
 def dtw(
     series_1: list[str],
     series_2: list[str],
@@ -78,52 +129,10 @@ def dtw(
     if norm_func is None:
         norm_func = cost_fn
 
-    matrix = np.zeros((len(series_1) + 1, len(series_2) + 1))
-    matrix[0, :] = np.inf
-    matrix[:, 0] = np.inf
-    matrix[0, 0] = 0
-
-    if series1_factor is not None and series2_factor is not None:
-        for i, (vec1, fc1) in enumerate(zip(series_1, series1_factor)):
-            for j, (vec2, fc2) in enumerate(zip(series_2, series2_factor)):
-                cost = norm_func(vec1, vec2) * fc1 * fc2
-                matrix[i + 1, j + 1] = cost + min(
-                    matrix[i, j + 1], matrix[i + 1, j], matrix[i, j]
-                )
-    else:
-        for i, vec1 in enumerate(series_1):
-            for j, vec2 in enumerate(series_2):
-                cost = norm_func(vec1, vec2)
-                matrix[i + 1, j + 1] = cost + min(
-                    matrix[i, j + 1], matrix[i + 1, j], matrix[i, j]
-                )
-
-    matrix = matrix[1:, 1:]
-    i = matrix.shape[0] - 1
-    j = matrix.shape[1] - 1
-
-    matches = []
-
-    while i > 0 or j > 0:
-        matches.append((i, j))
-
-        option_diag = matrix[i - 1, j - 1] if i > 0 and j > 0 else np.inf
-        option_up = matrix[i - 1, j] if i > 0 else np.inf
-        option_left = matrix[i, j - 1] if j > 0 else np.inf
-
-        move = np.argmin([option_diag, option_up, option_left])
-        if move == 0:
-            i -= 1
-            j -= 1
-        elif move == 1:
-            i -= 1
-        else:
-            j -= 1
-
-    matches.append((0, 0))
-    matches.reverse()
-
-    return matches, matrix
+    matches, matrix = _dtw_path(
+        series_1, series_2, norm_func, series1_factor, series2_factor
+    )
+    return matches, np.array(matrix, dtype=float).reshape(len(series_1), len(series_2))
 
 
 def _normalize_token(t: str, marker: str | None = None) -> str:
@@ -226,12 +235,10 @@ def row_alignment(
     """
     if not teacher_tokens or not student_tokens:
         return []
-    path, _ = dtw(
-        series_1=teacher_tokens,
-        series_2=student_tokens,
-        norm_func=lambda a, b: cost_fn(
-            a, b, teacher_marker, student_marker, specTok_mapper
-        ),
+    path, _ = _dtw_path(
+        teacher_tokens,
+        student_tokens,
+        lambda a, b: cost_fn(a, b, teacher_marker, student_marker, specTok_mapper),
     )
     kept, _, _ = strict_one_to_one_pairs(
         path,

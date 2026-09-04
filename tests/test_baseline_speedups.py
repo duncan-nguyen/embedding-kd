@@ -754,3 +754,129 @@ def test_an_emo_epoch_runs_end_to_end_on_the_collates_alignment(tmp_path, monkey
     assert torch.isfinite(torch.tensor(loss))
     assert not torch.equal(before, distiller.model_student.linear.weight.detach())
     assert set(distiller.last_epoch_metrics) >= {"att_loss", "ot_loss"}
+
+
+# --------------------------------------------------------------------------- #
+# Second pass: what was left once the alignment and the transport were fixed
+# --------------------------------------------------------------------------- #
+
+
+def test_the_batched_cka_is_the_per_row_cka():
+    """The attention term ran one ~ten-kernel CKA chain per row per matched layer
+    -- 512 a step at batch 128, over operands a few tokens wide. Batching them is
+    only allowed if it is the same number."""
+    torch.manual_seed(0)
+    rows_per_batch = [4, 2, 1]
+    width = max(rows_per_batch)
+    student = torch.randn(3, width, 7)
+    teacher = torch.randn(3, width, 5)
+    valid = torch.tensor(
+        [[index < count for index in range(width)] for count in rows_per_batch]
+    )
+
+    batched = emo.batched_cka(student, teacher, valid)
+    per_row = [
+        emo.CKALoss(eps=1e-8)(student[row, :count], teacher[row, :count])
+        for row, count in enumerate(rows_per_batch)
+    ]
+
+    assert batched.tolist() == pytest.approx(
+        [value.item() for value in per_row], rel=1e-9
+    )
+
+
+def test_zero_feature_columns_are_invisible_to_the_batched_cka():
+    """Padding a row's sequence out to the batch width adds all-zero columns to
+    the Gram matrices, which the Frobenius norm does not see."""
+    torch.manual_seed(0)
+    student, teacher = torch.randn(1, 4, 6), torch.randn(1, 4, 5)
+    valid = torch.ones(1, 4, dtype=torch.bool)
+
+    tight = emo.batched_cka(student, teacher, valid)
+    padded = emo.batched_cka(
+        torch.cat([student, torch.zeros(1, 4, 3)], dim=-1),
+        torch.cat([teacher, torch.zeros(1, 4, 2)], dim=-1),
+        valid,
+    )
+
+    assert padded.item() == pytest.approx(tight.item(), rel=1e-12)
+
+
+def test_a_row_that_aligned_nothing_is_left_out_of_the_average():
+    """The per-sample loop skipped it with a ``continue``; the batched form has to
+    drop it from both the sum and the divisor."""
+    batch, teacher, student, tok_student, tok_teacher = _emo_inputs()
+    criterion = EMODistillation(
+        d_teacher=12,
+        d_student=8,
+        k_layers=2,
+        teacher_special="<s>",
+        student_special="<s>",
+    )
+    alignment = batch["emo_align1"]
+    kept = alignment[alignment[:, 0] != 0]  # row 0 aligns nothing
+
+    full, _ = _emo_loss(
+        criterion, batch, teacher, student, tok_student, tok_teacher, alignment=kept
+    )
+
+    assert torch.isfinite(full)
+    assert 0 not in kept[:, 0].tolist()
+
+
+def test_the_dtw_path_and_its_matrix_are_what_the_numpy_version_gave():
+    """The recurrence moved off NumPy scalar indexing and the backtrace off
+    ``np.argmin``; both had to keep ``argmin``'s tie-break, which is first-wins
+    over (diagonal, up, left)."""
+    # A tie everywhere: every substitution costs the same, so every step of the
+    # path is decided by the tie-break alone.
+    teacher_tokens = ["a", "b", "c", "d"]
+    student_tokens = ["a", "b", "c"]
+    path, matrix = cdm.dtw(teacher_tokens, student_tokens, norm_func=lambda a, b: 1.0)
+
+    assert matrix.shape == (len(teacher_tokens), len(student_tokens))
+    assert path[0] == (0, 0)
+    assert path[-1] == (len(teacher_tokens) - 1, len(student_tokens) - 1)
+    # Monotone and one step at a time, which is what makes it an alignment.
+    for (i, j), (next_i, next_j) in zip(path, path[1:]):
+        assert (next_i - i, next_j - j) in {(1, 0), (0, 1), (1, 1)}
+
+
+def test_row_alignment_is_the_dtw_path_put_through_the_strict_filter():
+    """``row_alignment`` skips building the cost array, so it has to agree with the
+    two-step form the debug path still uses."""
+    tok_student, tok_teacher = _tokenizers()
+    mapper = cdm.build_special_token_mapper(tok_student, tok_teacher)
+    teacher_tokens = tok_teacher.convert_ids_to_tokens(
+        tok_teacher([SENTENCES[0][0]], max_length=32)["input_ids"][0].tolist()
+    )
+    student_tokens = tok_student.convert_ids_to_tokens(
+        tok_student([SENTENCES[0][0]], max_length=32)["input_ids"][0].tolist()
+    )
+
+    path, _ = cdm.dtw(
+        teacher_tokens,
+        student_tokens,
+        norm_func=lambda a, b: cdm.cost_fn(a, b, "Ġ", "##", mapper),
+    )
+    two_step, _, _ = cdm.strict_one_to_one_pairs(
+        path, teacher_tokens, student_tokens, "##", "Ġ", mapper
+    )
+
+    assert (
+        cdm.row_alignment(teacher_tokens, student_tokens, "Ġ", "##", mapper) == two_step
+    )
+    assert two_step
+
+
+def test_the_mined_cost_table_does_not_change_the_alignment():
+    tokens_teacher, tokens_student = (
+        ["<s>", "Ġcat", "Ġmat"],
+        ["<s>", "ca", "##t", "mat"],
+    )
+    emo._SUBSTITUTION_CACHE.clear()
+    cold = emo.align_tokens(tokens_teacher, tokens_student)
+    warm = emo.align_tokens(tokens_teacher, tokens_student)
+
+    assert cold == warm
+    assert emo._SUBSTITUTION_CACHE

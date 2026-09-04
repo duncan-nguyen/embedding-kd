@@ -194,6 +194,39 @@ def pairwise_attention_distance(x, y, eps=1e-8):
     return dist_mt
 
 
+def batched_cka(
+    student: torch.Tensor,
+    teacher: torch.Tensor,
+    rows_valid: torch.Tensor,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """:class:`CKALoss` for a batch of ``[B, N, d]`` pairs, padded rows masked out.
+
+    The per-row version is a chain of about ten tiny kernels over operands a few
+    tokens wide, and the attention term ran one such chain per row per matched
+    layer -- 512 of them per training step at batch 128. None of that is
+    arithmetic the GPU notices; it is launch latency. Here each of the three Gram
+    matrices is one batched matmul.
+
+    Padded *rows* are zeroed after a masked centring, so they contribute nothing to
+    any of the three norms; padded *feature columns* are all-zero columns of the
+    Gram matrices, which the Frobenius norm does not see either. The result is
+    therefore what running each row on its own valid slice would give.
+    """
+    student = student.to(torch.float64)
+    teacher = teacher.to(device=student.device, dtype=torch.float64)
+    mask = rows_valid.unsqueeze(-1).to(student.dtype)
+    counts = rows_valid.sum(dim=1, keepdim=True).clamp_min(1).unsqueeze(-1)
+
+    student = (student - (student * mask).sum(dim=1, keepdim=True) / counts) * mask
+    teacher = (teacher - (teacher * mask).sum(dim=1, keepdim=True) / counts) * mask
+
+    numerator = torch.linalg.matrix_norm(student.transpose(1, 2) @ teacher)
+    student_gram = torch.linalg.matrix_norm(student.transpose(1, 2) @ student) + eps
+    teacher_gram = torch.linalg.matrix_norm(teacher.transpose(1, 2) @ teacher) + eps
+    return 1 - numerator / torch.sqrt(student_gram * teacher_gram)
+
+
 def teacher_attention_layers(
     teacher_layer_num: int, student_layer_num: int, k: int
 ) -> list[int]:
@@ -370,6 +403,28 @@ def batched_attention_distance(
     return torch.nan_to_num(1.0 - torch.softmax(scores, dim=-1), nan=0.0)
 
 
+# Normalised edit distances between token strings. The MinED alignment's inner
+# loop asks for one per cell, and a corpus reuses its vocabulary on every row, so
+# the table turns an ``editdistance.eval`` call per cell into a dict lookup.
+# Bounded, and the entries are short strings.
+_SUBSTITUTION_CACHE: dict[tuple[str, str], float] = {}
+_SUBSTITUTION_CACHE_MAX = 1 << 20
+
+# The three moves of the alignment DP, in the order ``min`` used to break ties on.
+_MATCH, _DELETE, _INSERT = 0, 1, 2
+
+
+def _substitution_cost(teacher_token: str, student_token: str) -> float:
+    key = (teacher_token, student_token)
+    cost = _SUBSTITUTION_CACHE.get(key)
+    if cost is None:
+        denominator = max(len(teacher_token), len(student_token), 1)
+        cost = editdistance.eval(teacher_token, student_token) / denominator
+        if len(_SUBSTITUTION_CACHE) < _SUBSTITUTION_CACHE_MAX:
+            _SUBSTITUTION_CACHE[key] = cost
+    return cost
+
+
 def _normalize_alignment_token(token: str) -> str:
     return token.replace("##", "").lstrip("Ġ▁").lower()
 
@@ -396,34 +451,36 @@ def align_tokens(
     backtrace = [[None] * (student_count + 1) for _ in range(teacher_count + 1)]
     for teacher_idx in range(1, teacher_count + 1):
         dp[teacher_idx][0] = float(teacher_idx)
-        backtrace[teacher_idx][0] = "delete"
+        backtrace[teacher_idx][0] = _DELETE
     for student_idx in range(1, student_count + 1):
         dp[0][student_idx] = float(student_idx)
-        backtrace[0][student_idx] = "insert"
+        backtrace[0][student_idx] = _INSERT
 
     for teacher_idx in range(1, teacher_count + 1):
+        teacher_token = teacher_normalized[teacher_idx - 1]
+        previous, current = dp[teacher_idx - 1], dp[teacher_idx]
+        moves = backtrace[teacher_idx]
         for student_idx in range(1, student_count + 1):
-            teacher_token = teacher_normalized[teacher_idx - 1]
-            student_token = student_normalized[student_idx - 1]
-            denominator = max(len(teacher_token), len(student_token), 1)
-            substitution_cost = (
-                editdistance.eval(teacher_token, student_token) / denominator
+            # Strict ``<``, so a tie keeps the first of (match, delete, insert) --
+            # which is what ``min(..., key=...)`` over that tuple returned.
+            best = previous[student_idx - 1] + _substitution_cost(
+                teacher_token, student_normalized[student_idx - 1]
             )
-            options = (
-                (dp[teacher_idx - 1][student_idx - 1] + substitution_cost, "match"),
-                (dp[teacher_idx - 1][student_idx] + 1.0, "delete"),
-                (dp[teacher_idx][student_idx - 1] + 1.0, "insert"),
-            )
-            dp[teacher_idx][student_idx], backtrace[teacher_idx][student_idx] = min(
-                options, key=lambda option: option[0]
-            )
+            move = _MATCH
+            deletion = previous[student_idx] + 1.0
+            if deletion < best:
+                best, move = deletion, _DELETE
+            insertion = current[student_idx - 1] + 1.0
+            if insertion < best:
+                best, move = insertion, _INSERT
+            current[student_idx], moves[student_idx] = best, move
 
     mapping = {}
     teacher_idx = teacher_count
     student_idx = student_count
     while teacher_idx > 0 or student_idx > 0:
         operation = backtrace[teacher_idx][student_idx]
-        if operation == "match":
+        if operation == _MATCH:
             source_idx = teacher_idx - 1
             target_idx = student_idx - 1
             if (
@@ -433,7 +490,7 @@ def align_tokens(
                 mapping[source_idx] = target_idx
             teacher_idx -= 1
             student_idx -= 1
-        elif operation == "delete":
+        elif operation == _DELETE:
             teacher_idx -= 1
         else:
             student_idx -= 1
@@ -564,66 +621,102 @@ def compute_att_loss_2(
             student_special,
         )
 
-    # A zero that still carries a graph, for the case where no row contributes.
-    att_loss_total = student_atts[-1][0, 0, 0, 0] * 0.0
-    att_loss_terms = 0
-    cka = CKALoss(eps=1e-8).to(device)
+    # Which tokens of each row the term reads, and in what order: the aligned
+    # pairs ranked by the teacher's attention mass, top third. Host-side, over
+    # about twenty pairs a row, and it decides indices rather than values.
+    teacher_index, student_index, rows_valid, contributes = _ranked_alignment_index(
+        alignments, teacher_importance, lengths_tea, lengths_stu, device
+    )
+    if not bool(contributes.any()):
+        # A zero that still carries a graph, so the step is differentiable even in
+        # the degenerate case where no row aligned anything.
+        return student_atts[-1][0, 0, 0, 0] * 0.0
 
-    for b in range(batch_size):
-        L_t_valid = int(lengths_tea[b])
-        L_s_valid = int(lengths_stu[b])
-        if L_t_valid == 0 or L_s_valid == 0:
-            continue
+    valid_teacher = valid_prefix_mask(attention_mask_tea).to(device)
+    valid_student = valid_prefix_mask(attention_mask_stu).to(device)
+    weights = contributes.to(torch.float64)
 
-        reciprocal = alignments[b]
-        if len(reciprocal) == 0:
-            continue
+    def aligned_attention(layer, index, valid):
+        """``[B, N, L]``: the attention of the N ranked tokens, head-averaged.
 
-        n_map = len(reciprocal)
-        k_top = max(1, n_map // 3)
+        The rows are picked before the heads are averaged, which is both the order
+        the per-sample loop used and the cheap one: N is a third of the aligned
+        tokens, some twenty times fewer rows than the full map has.
+        """
+        rows, heads, length = layer.size(0), layer.size(1), layer.size(-1)
+        picked = layer.gather(
+            2, index[:, None, :, None].expand(rows, heads, index.size(1), length)
+        )  # [B, H, N, L]
+        rows = picked.mean(dim=1)
+        # Very negative entries are masked-out positions, not attention; padded
+        # columns are not attention either.
+        rows = torch.where(rows <= -1e2, torch.zeros_like(rows), rows)
+        return rows * valid.unsqueeze(1)
 
-        row_importance = teacher_importance[b]
-        ranked = sorted(
-            reciprocal,
-            key=lambda pair: row_importance[pair[0]],
-            reverse=True,
-        )[:k_top]
-        aligned_teacher_indices = [teacher_index for teacher_index, _ in ranked]
-        aligned_student_indices = [student_index for _, student_index in ranked]
+    att_loss_total = None
+    for teacher_att_layer, student_att_layer in zip(
+        teacher_last_k_layers, student_last_k_layers
+    ):
+        per_row = batched_cka(
+            aligned_attention(student_att_layer, student_index, valid_student),
+            aligned_attention(teacher_att_layer, teacher_index, valid_teacher),
+            rows_valid,
+        )
+        layer_total = (per_row * weights).sum()
+        att_loss_total = (
+            layer_total if att_loss_total is None else att_loss_total + layer_total
+        )
 
-        if not aligned_teacher_indices:
-            continue
-
-        for teacher_att_layer, student_att_layer in zip(
-            teacher_last_k_layers, student_last_k_layers
-        ):
-            # teacher_att_layer: [B, H, L_t, L_t]
-            # student_att_layer: [B, H, L_s, L_s]
-
-            tea_sub = teacher_att_layer[b, :, :L_t_valid, :L_t_valid]
-            stu_sub = student_att_layer[b, :, :L_s_valid, :L_s_valid]
-
-            # attention of the N aligned tokens, averaged over heads
-            tea_tok_att = tea_sub[:, aligned_teacher_indices, :].mean(dim=0)
-            stu_tok_att = stu_sub[:, aligned_student_indices, :].mean(dim=0)
-
-            # very negative entries are masked-out positions, not attention
-            tea_tok_att = torch.where(
-                tea_tok_att <= -1e2, torch.zeros_like(tea_tok_att), tea_tok_att
-            )
-            stu_tok_att = torch.where(
-                stu_tok_att <= -1e2, torch.zeros_like(stu_tok_att), stu_tok_att
-            )
-
-            if stu_tok_att.size(1) == 0 or tea_tok_att.size(1) == 0:
-                continue
-
-            att_loss_total = att_loss_total + cka(stu_tok_att, tea_tok_att)
-            att_loss_terms += 1
-
-    if att_loss_terms == 0:
-        return att_loss_total
+    att_loss_terms = float(len(teacher_last_k_layers)) * float(weights.sum())
+    if att_loss_total is None or att_loss_terms == 0:
+        return student_atts[-1][0, 0, 0, 0] * 0.0
+    # float64, as CKALoss has always returned: the per-sample loop promoted its
+    # float32 accumulator on the first addition, and the backward ran in float64
+    # from there. Keeping that keeps the term bit-for-bit what it was.
     return att_loss_total / att_loss_terms
+
+
+def _ranked_alignment_index(
+    alignments, teacher_importance, lengths_tea, lengths_stu, device
+):
+    """The aligned tokens each row contributes, as padded index tensors.
+
+    Per row: the aligned pairs ranked by the teacher's attention mass, keeping the
+    top ``n_map // 3`` (at least one) -- the selection the per-sample loop made,
+    with the sort still stable so ties keep ascending teacher order.
+
+    Returns ``(teacher index, student index, row mask, contributing rows)``; the
+    first three are ``[B, N_max]`` and the last is ``[B]``.
+    """
+    ranked_rows = []
+    for row, pairs in enumerate(alignments):
+        if not pairs or int(lengths_tea[row]) == 0 or int(lengths_stu[row]) == 0:
+            ranked_rows.append([])
+            continue
+        importance = teacher_importance[row]
+        ranked_rows.append(
+            sorted(pairs, key=lambda pair: importance[pair[0]], reverse=True)[
+                : max(1, len(pairs) // 3)
+            ]
+        )
+
+    batch_size = len(ranked_rows)
+    width = max((len(pairs) for pairs in ranked_rows), default=0) or 1
+    teacher_index = torch.zeros(batch_size, width, dtype=torch.long)
+    student_index = torch.zeros(batch_size, width, dtype=torch.long)
+    rows_valid = torch.zeros(batch_size, width, dtype=torch.bool)
+    for row, pairs in enumerate(ranked_rows):
+        for slot, (teacher, student) in enumerate(pairs):
+            teacher_index[row, slot] = teacher
+            student_index[row, slot] = student
+            rows_valid[row, slot] = True
+
+    return (
+        teacher_index.to(device),
+        student_index.to(device),
+        rows_valid.to(device),
+        rows_valid.any(dim=1),
+    )
 
 
 def compute_ot_loss(
