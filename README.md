@@ -45,7 +45,7 @@ Everything is seeded and the Hub file is pinned to a commit sha, so a re-run
 reproduces each file byte for byte. The matching `train_<n>k.manifest.json`
 records the seed, the shard, the per-source counts and every overlap the build
 dropped. Every new text is checked, on normalised form, against the 100K base,
-against the other new texts, and against the queries and corpora of all three
+against the other new texts, and against the queries and corpora of all five
 retrieval benchmarks plus every existing test and validation split.
 
 One MS MARCO shard splits into ~57.7K rows per pool, so a single-shard build tops
@@ -415,7 +415,7 @@ only and a warning says so.
 
 ## Evaluation
 
-All three families score frozen student embeddings (CLS pooling), and each handles
+All four families score frozen student embeddings (CLS pooling), and each handles
 calibration differently:
 
 | Family | Benchmarks | How a score is produced |
@@ -423,12 +423,12 @@ calibration differently:
 | Classification | Banking77, Emotion, Tweet | a logistic-regression probe is fitted on that benchmark's *train* split and scored on the eval split (accuracy, macro-F1) |
 | Pair | MRPC, SciTail, WiC | cosine similarity mapped to `[0, 1]`, then a **decision threshold** turns it into a label (accuracy, F1, precision, recall, average precision) |
 | STS | SICK, STS12, STS-B | cosine similarity against gold scores, Spearman correlation |
-| Retrieval | ArguAna, FiQA-2018, SCIDOCS | exhaustive cosine ranking of the whole corpus (nDCG@10, Recall@10, MRR@10) |
+| Retrieval | ArguAna, FiQA-2018, SCIDOCS, SciFact, NFCorpus | exhaustive cosine ranking of the whole corpus (nDCG@10, Recall@10, MRR@10) |
 
 The summary block reports `AVG (IOD)` and `AVG (OOD)` over the sentence-level
-families only, `AVG (RETRIEVAL)` over the three retrieval benchmarks, and
-`AVG (ALL)` over all twelve, so adding retrieval did not redefine the two
-averages earlier runs are reported against.
+families only, `AVG (RETRIEVAL)` over the five retrieval benchmarks, and
+`AVG (ALL)` over the nine sentence-level benchmarks. Retrieval is deliberately
+excluded from `AVG (ALL)`, so it cannot change the aggregate used by earlier runs.
 
 **By default a run never touches the validation split.** The test split is
 evaluated after every `--eval_every` epochs (`--eval_every 0` evaluates only once,
@@ -491,7 +491,7 @@ SICK, STS12, STS-B
 Zero-shot retrieval:
 
 ```text
-ArguAna, FiQA-2018, SCIDOCS
+ArguAna, FiQA-2018, SCIDOCS, SciFact, NFCorpus
 ```
 
 Validation runs after each epoch. Final test evaluation runs after training,
@@ -513,7 +513,7 @@ a source that has drifted fails loudly instead of landing a mismatched split.
 
 ### Retrieval benchmarks
 
-The three retrieval benchmarks are ~90 MB and are not tracked in git. Fetch them
+The five retrieval benchmarks are ~101 MB and are not tracked in git. Fetch them
 once, before the first run:
 
 ```bash
@@ -522,7 +522,8 @@ python3 scripts/data/download_retrieval_benchmarks.py
 
 They land under `data/test_set/retrieval/<name>/{corpus,queries,qrels}.csv`, pinned
 to a Hub commit sha, with row counts asserted against the BEIR paper (ArguAna
-8674/1406, FiQA 57638/648, SCIDOCS 25657/1000).
+8674/1406, FiQA 57638/648, SCIDOCS 25657/1000, SciFact 5183/300,
+NFCorpus 3633/323).
 
 Scoring follows BEIR exactly, so the numbers are comparable to published ones: a
 document is `title + " " + text`, ranking is exhaustive cosine over the full
@@ -532,7 +533,7 @@ discounts. Checked end to end against MTEB: `all-MiniLM-L6-v2` (mean-pooled)
 scores **50.25** on ArguAna here against MTEB's 50.17.
 
 Retrieval is scored on the test split only -- there are no validation qrels for
-these three, and embedding the three corpora is ~92k forward passes, more than the
+these five, and embedding the five corpora is ~101k forward passes, more than the
 rest of the protocol combined. To skip it:
 
 ```bash

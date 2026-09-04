@@ -35,7 +35,7 @@ EVAL_TEXT_COLUMNS = ("text", "sentence1", "sentence2")
 # Columns a labelled subset can be coloured by (Figure 10). ``score`` is continuous
 # and is kept for the STS ceiling.
 EVAL_LABEL_COLUMNS = ("label_text", "label", "score")
-RETRIEVAL_BENCHMARKS = ("arguana", "fiqa", "scidocs")
+RETRIEVAL_BENCHMARKS = ("arguana", "fiqa", "scidocs", "scifact", "nfcorpus")
 
 
 def normalize_text(text) -> str:
@@ -205,9 +205,9 @@ def build_probe_set(
     * ``corpus`` -- ``n_corpus`` sentences sampled (seeded) from the training corpus;
     * ``eval`` -- every sentence of every task in ``eval_splits`` (test by default:
       those are the sentences the reported numbers are computed on);
-    * ``retrieval_query`` -- every query of the three retrieval benchmarks;
+    * ``retrieval_query`` -- every query of the five retrieval benchmarks;
     * ``retrieval_doc`` -- a seeded sample of ``n_docs_per_retrieval`` documents per
-      benchmark (the corpora are ~92k documents; a fixed sample is enough for the
+      benchmark (the corpora are ~101k documents; a fixed sample is enough for the
       geometry and keeps the per-epoch dumps small).
 
     Sentences are unique by exact text: a sentence in two tasks keeps the ``task``

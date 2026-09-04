@@ -269,11 +269,11 @@ def test_final_test_skips_the_extra_validation_when_calibrating_on_test(evaluato
 
 
 def test_retrieval_runs_on_test_only_and_stays_out_of_the_sentence_averages(evaluator):
-    """Retrieval joins AVG (ALL) but must not move AVG (IOD)/AVG (OOD).
+    """Retrieval has its own average and must not move sentence-level averages.
 
     The sentence-level groups are what earlier runs are reported against, so
-    folding three nDCG@10 scores into AVG (OOD) would silently redefine a number
-    the paper already carries.
+    folding nDCG@10 scores into AVG (IOD), AVG (OOD), or AVG (ALL) would silently
+    redefine numbers the paper already carries.
     """
     instance, calls = evaluator
     instance.config.pair_threshold_source = "test"
@@ -288,7 +288,7 @@ def test_retrieval_runs_on_test_only_and_stays_out_of_the_sentence_averages(eval
     assert test["summary"]["avg_retrieval"] == pytest.approx(0.3)
     assert test["summary"]["avg_iod"] == pytest.approx(validation["summary"]["avg_iod"])
     assert test["summary"]["avg_ood"] == pytest.approx(validation["summary"]["avg_ood"])
-    assert test["summary"]["avg_all"] < validation["summary"]["avg_all"]
+    assert test["summary"]["avg_all"] == pytest.approx(validation["summary"]["avg_all"])
 
 
 def test_retrieval_can_be_switched_off(evaluator):

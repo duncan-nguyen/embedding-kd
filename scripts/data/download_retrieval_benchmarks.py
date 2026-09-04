@@ -1,6 +1,6 @@
-"""Fetch the ArguAna, FiQA-2018 and SCIDOCS test splits used for retrieval eval.
+"""Fetch the five BEIR test splits used for retrieval evaluation.
 
-The three benchmarks are the retrieval side of the protocol: the student is
+The five benchmarks are the retrieval side of the protocol: the student is
 distilled on unlabelled text and then scored zero-shot on nDCG@10 over corpora
 it has never seen. None of them contributes a single sentence to the training
 corpus, so `scripts/data/build_train_corpus.py` checks its MS MARCO block against the
@@ -40,6 +40,8 @@ BENCHMARKS = {
     "arguana": ("mteb/arguana", "6c1bcf74b13dfd823aff056b79d4d93e702f19c7", 8674, 1406),
     "fiqa": ("mteb/fiqa", "5e59eeb3a7df6b85882112b747008547c21587ea", 57638, 648),
     "scidocs": ("mteb/scidocs", "490848228d0a9ca7a7244f5e77d8fe33e6df6974", 25657, 1000),
+    "scifact": ("mteb/scifact", "cf10ab6856b15b0e670ef8ae5dae4e266c12d035", 5183, 300),
+    "nfcorpus": ("mteb/nfcorpus", "52ac3f19d3449632d9f00aab0ad34a110fc03816", 3633, 323),
 }
 
 FILES = ("corpus.jsonl", "queries.jsonl", "qrels/test.jsonl")
@@ -76,7 +78,7 @@ def build(name: str) -> dict[str, pd.DataFrame]:
             "score": [int(row["score"]) for row in qrel_rows],
         }
     )
-    # queries.jsonl of these three holds every split's queries; the test protocol
+    # queries.jsonl may hold multiple splits; the test protocol
     # only ranks the ones the test qrels judge.
     judged = set(qrels["query-id"])
     queries = pd.DataFrame(

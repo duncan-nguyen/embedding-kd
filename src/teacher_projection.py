@@ -1,6 +1,6 @@
 """Fixed linear map from the teacher embedding space into the student dimension.
 
-GeoODE-KD compares student layers with teacher embeddings on a shared hypersphere,
+GATE-KD compares student layers with teacher embeddings on a shared hypersphere,
 so a large teacher (d_T) has to be mapped into the student dimension (d_S) once,
 before training. The map is fitted on the cached training embeddings only and then
 frozen: it is a property of the cached targets, not a module that learns alongside
@@ -97,9 +97,7 @@ def fit_pca_projection(
     return projection, mean
 
 
-def _haar_orthonormal(
-    rows: int, cols: int, generator: torch.Generator
-) -> torch.Tensor:
+def _haar_orthonormal(rows: int, cols: int, generator: torch.Generator) -> torch.Tensor:
     """A ``[rows, cols]`` matrix with orthonormal columns, Haar-uniform in O(rows).
 
     QR of a Gaussian matrix is orthonormal but not Haar-uniform: LAPACK is free to
@@ -403,8 +401,12 @@ def rank_one_rotation(targets: torch.Tensor, student: torch.Tensor) -> torch.Ten
     cross-covariance is rank-one and its gauge can only do this much; this control
     says whether the full ``R`` ever does more.
     """
-    u = F.normalize(F.normalize(targets.detach().to(torch.float32), dim=-1).mean(dim=0), dim=0)
-    w = F.normalize(F.normalize(student.detach().to(torch.float32), dim=-1).mean(dim=0), dim=0)
+    u = F.normalize(
+        F.normalize(targets.detach().to(torch.float32), dim=-1).mean(dim=0), dim=0
+    )
+    w = F.normalize(
+        F.normalize(student.detach().to(torch.float32), dim=-1).mean(dim=0), dim=0
+    )
     v = u - w
     eye = torch.eye(targets.shape[1], dtype=torch.float32)
     norm_sq = float(v @ v)

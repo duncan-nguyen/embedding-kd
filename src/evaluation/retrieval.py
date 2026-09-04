@@ -1,4 +1,4 @@
-"""Zero-shot dense retrieval on ArguAna, FiQA-2018 and SCIDOCS.
+"""Zero-shot dense retrieval on five BEIR benchmarks.
 
 The classification/pair/STS probes all score a sentence pair or fit a linear head
 on top of frozen features. Retrieval is the one family that asks the embedding
@@ -15,8 +15,8 @@ Protocol follows BEIR exactly, so the numbers are comparable to published ones:
 * nDCG@10 is the primary metric, with `2^rel - 1` gains and `log2(rank + 1)`
   discounts -- identical to `pytrec_eval`'s `ndcg_cut_10` on these binary qrels.
 
-The benchmarks are not in git (~90 MB); `scripts/data/download_retrieval_benchmarks.py`
-writes them. Embedding the three corpora is ~92k forward passes, far more than the
+The benchmarks are not in git (~101 MB); `scripts/data/download_retrieval_benchmarks.py`
+writes them. Embedding the five corpora is ~101k forward passes, far more than the
 rest of the protocol combined, so this runs on the test split only.
 """
 
@@ -186,9 +186,11 @@ def eval_retrieval_task(model, path_list, tokenizer):
 
 
 # Retrieval is scored on the test split only: there is no validation qrel set for
-# these three, and the corpora are ~92k documents to embed.
+# these five, and the corpora are ~101k documents to embed.
 test_retrieval_tasks = [
     "data/test_set/retrieval/arguana",
     "data/test_set/retrieval/fiqa",
     "data/test_set/retrieval/scidocs",
+    "data/test_set/retrieval/scifact",
+    "data/test_set/retrieval/nfcorpus",
 ]
