@@ -46,7 +46,10 @@ from src.cache_teacher import (
 )
 from src.criterions.contextual_dynamic_mapping import ContextualDynamicMapping
 from src.criterions.dual_space_kd import DualSpaceKD
-from src.criterions.emo_embedding_distillation import EMODistillation
+from src.criterions.emo_embedding_distillation import (
+    EMODistillation,
+    teacher_attention_layers,
+)
 from src.criterions.geoode_kd import GeoODEKD
 from src.criterions.relational_kd import RelationalKD
 from src.criterions.simcse import SimCSEOnly
@@ -56,7 +59,7 @@ from src.criterions.stella_distillation import (
     stella_stage2_loss,
 )
 from src.criterions.teacher_anchor_kd import TeacherAnchorKD
-from src.data_utils import DualTokenizerCollate, TextPairRaw
+from src.data_utils import ALIGNMENT_METHODS, DualTokenizerCollate, TextPairRaw
 from src.data_utils.dataset_cache import (
     DualTokenizerCollateWithTeacher,
     TextPairWithTeacher,
@@ -86,6 +89,12 @@ from src.teacher_projection import (
 )
 from src.training_probe import TrainingProbe, WeightDriftTracker
 
+# The methods that never run the teacher during student optimization: it is run
+# once, offline, and its sentence embeddings are read from a cache. Stella belongs
+# here because both of its stage losses read the teacher's pooled vector and
+# nothing else, and both L2-normalise it -- which is exactly what the cache stores.
+CACHED_TEACHER_METHODS = frozenset({"talas", "geoode", "rkd", "stella"})
+
 # projection_type values whose map is trained rather than fitted, and the direction
 # each one hands to LearnedTargetProjector.
 LEARNED_PROJECTIONS = {"learned_t2s": "t2s", "learned_s2t": "s2t"}
@@ -98,9 +107,7 @@ IOD_BENCHMARKS = frozenset({"emotion", "wic", "stsb"})
 # Scored by nDCG@10 over a whole corpus rather than over a sentence pair, so
 # they get their own summary row instead of diluting the sentence-level AVG
 # (OOD) that earlier runs are reported against.
-RETRIEVAL_BENCHMARKS = frozenset(
-    {"arguana", "fiqa", "scidocs", "scifact", "nfcorpus"}
-)
+RETRIEVAL_BENCHMARKS = frozenset({"arguana", "fiqa", "scidocs", "scifact", "nfcorpus"})
 
 
 def should_save_epoch(epoch_index: int, save_every: int) -> bool:
@@ -754,9 +761,10 @@ class KnowledgeDistiller:
 
         self.task_head = self._build_task_head(df)
 
-        # TALAS, GATE-KD and RKD all train against cached teacher embeddings only:
-        # the teacher is run once, offline, and never during student optimization.
-        if cfg.distill_method in ("talas", "geoode", "rkd"):
+        # TALAS, GATE-KD, RKD and Stella all train against cached teacher embeddings
+        # only: the teacher is run once, offline, and never during student
+        # optimization.
+        if cfg.distill_method in CACHED_TEACHER_METHODS:
             self._setup_cached_teacher_data(df)
         else:
             self.train_ds = TextPairRaw(df, cfg.task_type)
@@ -765,6 +773,17 @@ class KnowledgeDistiller:
                 self.tok_teacher,
                 cfg.task_type,
                 cfg.max_length,
+                # cdm and emo align two tokenizations before their KD term can be
+                # taken. The alignment depends on the token ids and nothing else, so
+                # the collate builds it in a DataLoader worker and the step reads it
+                # off an index tensor instead of deriving it again every epoch.
+                alignment=(
+                    cfg.distill_method
+                    if cfg.distill_method in ALIGNMENT_METHODS
+                    else None
+                ),
+                teacher_token=cfg.teacher_special_token,
+                student_token=cfg.student_special_token,
             )
 
         self.train_loader = DataLoader(
@@ -907,7 +926,7 @@ class KnowledgeDistiller:
             )
 
     def _setup_cached_teacher_data(self, df: pd.DataFrame) -> None:
-        """Dataset and collate for the methods that read a frozen teacher cache.
+        """Dataset and collate for the methods in ``CACHED_TEACHER_METHODS``.
 
         The teacher model is released here: once the cache exists it is never run
         again, and on a single-GPU box its weights are the memory the student needs.
@@ -1063,7 +1082,7 @@ class KnowledgeDistiller:
         step cost, so it is worth knowing that GeoODE's default contrastive view --
         two dropout passes over the *first* sentence -- never touches it. TALAS and
         RKD do: their in-batch contrastive term takes the paired sentence as the
-        positive.
+        positive, and so does Stella's stage 2.
         """
         cfg = self.config
         if cfg.task_type == "single_cls":
@@ -1750,9 +1769,11 @@ class KnowledgeDistiller:
     def train_step(self, batch: dict) -> tuple[torch.Tensor, dict]:
         """One optimizer step of the selected method.
 
-        The cached-teacher methods (talas/geoode/rkd) and the teacher-free control
-        (simcse) each have their own step; cdm/dskd/emo/stella share one, because
-        they all run the teacher online and differ only in the KD term.
+        TALAS, GATE-KD, RKD and the teacher-free control each have their own step;
+        cdm/dskd/emo/stella share one, because they share the student's shape and
+        differ only in the KD term. Stella is in that group and still reads a
+        teacher cache -- where the teacher's vector comes from is a separate
+        question from what the step around it looks like.
         """
         steps = {
             "talas": self._train_step_talas,
@@ -2006,16 +2027,49 @@ class KnowledgeDistiller:
 
     # -- online-teacher methods (cdm, dskd, emo, stella) ------------------------
 
+    def _emo_teacher_layers(self, teacher_layer_num: int) -> list[int]:
+        """Which of the teacher's attention maps the EMO loss reads.
+
+        Three of them, whatever the teacher's depth: the last layer, whose
+        attention sets the token importances, and the last ``k_layers`` of the
+        maps the uniform block mapping assigns to the student's own layers. The
+        other 25 (Qwen3-0.6B) or 33 (Qwen3-4B) are computed by the teacher either
+        way but never read -- and on a two-GPU run, moving them to the student's
+        device is a multi-gigabyte copy per step for nothing.
+        """
+        cached = getattr(self, "_emo_layer_cache", None)
+        if cached is None or cached[0] != teacher_layer_num:
+            cached = (
+                teacher_layer_num,
+                teacher_attention_layers(
+                    teacher_layer_num,
+                    int(self.model_student.config.num_hidden_layers),
+                    int(getattr(self.config, "k_layers", 1)),
+                ),
+            )
+            self._emo_layer_cache = cached
+        return cached[1]
+
     @torch.no_grad()
     def _encode_teacher(self, batch_t: dict, need_atts: bool) -> SimpleNamespace:
         """Run the frozen teacher and move its outputs onto the student device.
 
         ``no_grad``, not ``inference_mode``: these tensors are consumed by losses
         that save them for backward, and inference tensors cannot be.
+
+        The attention maps travel as ``{layer index: map}`` holding only the layers
+        the loss reads, with ``teacher_layer_num`` alongside so the block mapping
+        can still be worked out from the teacher's real depth.
         """
 
         def to_student(tensor):
             return tensor.to(self.device_s, non_blocking=True)
+
+        def selected_attentions(attentions):
+            return {
+                index: to_student(attentions[index])
+                for index in self._emo_teacher_layers(len(attentions))
+            }
 
         t_out1 = self.model_teacher(
             input_ids=batch_t["input_ids1_tea"],
@@ -2033,10 +2087,12 @@ class KnowledgeDistiller:
             atts1=None,
             last2=None,
             atts2=None,
+            teacher_layer_num=None,
         )
 
         if need_atts:
-            encoded.atts1 = tuple(to_student(att) for att in t_out1.attentions)
+            encoded.teacher_layer_num = len(t_out1.attentions)
+            encoded.atts1 = selected_attentions(t_out1.attentions)
             if "input_ids2_tea" in batch_t:
                 t_out2 = self.model_teacher(
                     input_ids=batch_t["input_ids2_tea"],
@@ -2045,7 +2101,7 @@ class KnowledgeDistiller:
                     return_dict=True,
                 )
                 encoded.last2 = to_student(t_out2.last_hidden_state)
-                encoded.atts2 = tuple(to_student(att) for att in t_out2.attentions)
+                encoded.atts2 = selected_attentions(t_out2.attentions)
         return encoded
 
     def _encode_student(self, batch_s: dict, method: str) -> SimpleNamespace:
@@ -2101,13 +2157,21 @@ class KnowledgeDistiller:
     def _train_step_online(self, batch: dict) -> tuple[torch.Tensor, dict]:
         cfg = self.config
         method = cfg.distill_method
-        batch_s = self._student_batch(batch)
-        batch_t = self._teacher_batch(batch)
+        # Stella shares this step because it shares the student shape, not because
+        # it runs a teacher: its two losses read the teacher's pooled vector alone,
+        # which the cache already holds.
+        cached = method in CACHED_TEACHER_METHODS
+        batch_s = self._student_batch(batch, extra=("teacher_cls",) if cached else ())
+        batch_t = None if cached else self._teacher_batch(batch)
 
         self.optimizer.zero_grad(set_to_none=True)
 
         with autocast("cuda", enabled=torch.cuda.is_available()):
-            teacher = self._encode_teacher(batch_t, need_atts=method == "emo")
+            teacher = (
+                None
+                if cached
+                else self._encode_teacher(batch_t, need_atts=method == "emo")
+            )
             student = self._encode_student(batch_s, method)
 
             # EMO may train a supervised head; cdm/dskd share the in-batch
@@ -2133,10 +2197,10 @@ class KnowledgeDistiller:
                 )
             elif method == "emo":
                 loss, metrics = self._emo_loss(
-                    batch_s, batch_t, student, teacher, loss_task, task_metrics
+                    batch, batch_s, batch_t, student, teacher, loss_task, task_metrics
                 )
             elif method == "stella":
-                loss, metrics = self._stella_loss(student, teacher)
+                loss, metrics = self._stella_loss(student, batch_s["teacher_cls"])
             else:
                 raise ValueError(f"Unknown distillation method: {method}")
 
@@ -2146,25 +2210,36 @@ class KnowledgeDistiller:
 
     def _cdm_loss(self, batch, batch_s, batch_t, student, teacher, loss_task):
         cfg = self.config
-        keep_s1 = batch_s["attention_mask1_stu"].bool() & (
-            ~batch_s["special_tokens_mask1_stu"].bool()
-        )
-        keep_t1 = batch_t["attention_mask1_tea"].to(self.device_s).bool() & (
-            ~batch_t["special_tokens_mask1_tea"].to(self.device_s).bool()
-        )
-
-        kd_dtw = self.criterion.compute_cdm_loss(
-            S_last=student.last1,
-            T_last=teacher.last1,
-            batch_input_ids_stu=batch["input_ids1_stu"],
-            batch_input_ids_tea=batch["input_ids1_tea"],
-            keep_mask_stu=keep_s1,
-            keep_mask_tea=keep_t1,
-            proj_s2t=self.proj_s2t,
-            device_s=self.device_s,
-            epoch=self.current_epoch,
-            step=self.current_step,
-        )
+        alignment = batch.get("cdm_align1")
+        if alignment is None:
+            # No collate built one -- the criterion derives it here instead, which
+            # is the path a direct call to the distiller without the sweep's
+            # collate takes.
+            keep_s1 = batch_s["attention_mask1_stu"].bool() & (
+                ~batch_s["special_tokens_mask1_stu"].bool()
+            )
+            keep_t1 = batch_t["attention_mask1_tea"].to(self.device_s).bool() & (
+                ~batch_t["special_tokens_mask1_tea"].to(self.device_s).bool()
+            )
+            kd_dtw = self.criterion.compute_cdm_loss(
+                S_last=student.last1,
+                T_last=teacher.last1,
+                batch_input_ids_stu=batch["input_ids1_stu"],
+                batch_input_ids_tea=batch["input_ids1_tea"],
+                keep_mask_stu=keep_s1,
+                keep_mask_tea=keep_t1,
+                proj_s2t=self.proj_s2t,
+                device_s=self.device_s,
+                epoch=self.current_epoch,
+                step=self.current_step,
+            )
+        else:
+            kd_dtw = self.criterion.aligned_token_loss(
+                student.last1,
+                teacher.last1,
+                alignment.to(self.device_s, non_blocking=True),
+                self.proj_s2t,
+            )
 
         kd_cls = F.mse_loss(
             F.normalize(self.proj_s2t(student.cls1), p=2, dim=-1),
@@ -2174,14 +2249,12 @@ class KnowledgeDistiller:
         loss = (
             cfg.w_task * loss_task + cfg.alpha_dtw * kd_dtw * 100 + cfg.w_cls * kd_cls
         )
-        metrics = {
-            "loss_total": loss.item(),
-            "loss_task": loss_task.item(),
-            "loss_kd_dtw": kd_dtw.item()
-            if isinstance(kd_dtw, torch.Tensor)
-            else kd_dtw,
-            "loss_kd_cls": kd_cls.item(),
-        }
+        metrics = scalar_metrics(
+            loss_total=loss,
+            loss_task=loss_task,
+            loss_kd_dtw=kd_dtw,
+            loss_kd_cls=kd_cls,
+        )
         return loss, metrics
 
     def _dskd_loss(self, batch_s, batch_t, student, teacher, loss_task):
@@ -2201,7 +2274,9 @@ class KnowledgeDistiller:
             device=self.device_s,
         )
 
-    def _emo_loss(self, batch_s, batch_t, student, teacher, loss_task, task_metrics):
+    def _emo_loss(
+        self, batch, batch_s, batch_t, student, teacher, loss_task, task_metrics
+    ):
         cfg = self.config
         att_loss_weight = getattr(cfg, "att_loss_weight", 0.1)
         ot_loss_weight = getattr(cfg, "ot_loss_weight", 1.0)
@@ -2224,6 +2299,9 @@ class KnowledgeDistiller:
                 tok_student=self.tok_student,
                 att_loss_weight=att_loss_weight,
                 ot_loss_weight=ot_loss_weight,
+                teacher_layer_num=teacher.teacher_layer_num,
+                # Built by the collate, in a worker, from the token ids alone.
+                alignment=batch.get(f"emo_align{index}"),
             )
 
         kd_loss, kd_metrics = side(
@@ -2249,12 +2327,19 @@ class KnowledgeDistiller:
         }
         return loss, metrics
 
-    def _stella_loss(self, student, teacher):
+    def _stella_loss(self, student, teacher_cls):
+        """Both Stella stages, against the teacher vector the cache already holds.
+
+        Stage 1 and stage 2 both L2-normalise the teacher embedding before they
+        read it, and the cache is written normalised, so reading it from the cache
+        is the same number the online teacher would have produced -- minus the
+        forward pass, the teacher tokenization and the teacher's GPU memory.
+        """
         cfg = self.config
         if self.current_stage == 1:
             return stella_stage1_loss(
                 student.out1["fc1"],
-                teacher.cls1,
+                teacher_cls,
                 w_cos=getattr(cfg, "w_cos_stage1", 10.0),
                 w_sim=getattr(cfg, "w_sim_stage1", 200.0),
                 w_tri=getattr(cfg, "w_tri_stage1", 20.0),
@@ -2266,7 +2351,7 @@ class KnowledgeDistiller:
             student.out1["fc2"],
             student.out1["fc3"],
             student.out1["fc4"],
-            teacher.cls1,
+            teacher_cls,
             temperature=cfg.temperature,
             w_task=cfg.w_task,
             w_cos=getattr(cfg, "w_cos_stage2", 10.0),

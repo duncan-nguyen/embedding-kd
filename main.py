@@ -45,7 +45,7 @@ def parse_args():
         choices=["last_token", "mean", "cls"],
         default=None,
         help="Pooling of the teacher sentence vector: applied once at cache time by "
-        "talas/geoode/rkd and every step by cdm/dskd/emo/stella. Qwen3-Embedding "
+        "talas/geoode/rkd/stella and every step by cdm/dskd/emo. Qwen3-Embedding "
         "reads last_token, encoder teachers such as BGE-M3 read cls",
     )
     parser.add_argument(
@@ -361,7 +361,8 @@ def parse_args():
         "--cache_dir",
         type=str,
         default=None,
-        help="Shared directory for cached teacher embeddings (talas/geoode/rkd). The "
+        help="Shared directory for cached teacher embeddings "
+        "(talas/geoode/rkd/stella). The "
         "filename is derived from the teacher, pooling, max_length and the "
         "corpus contents, so runs of the same pair reuse one cache and runs of "
         "different pairs never collide. Overrides --cache_path",
@@ -401,7 +402,8 @@ def parse_args():
         help="Stride of the structural probe: the audit ladder (Gram/CKA, k-NN "
         "overlap, mutual k-NN, H0 barcode, effective rank, TwoNN, anisotropy) on a "
         "fixed batch of corpus sentences, written to probe_metrics.jsonl. 0 is off. "
-        "Needs a cached teacher (talas/geoode/rkd); encodes in eval() under no_grad, "
+        "Needs a cached teacher (talas/geoode/rkd/stella); encodes in eval() under "
+        "no_grad, "
         "so a seeded run is unchanged",
     )
     parser.add_argument(

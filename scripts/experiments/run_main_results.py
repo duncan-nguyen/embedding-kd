@@ -58,7 +58,7 @@ import shlex
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -99,7 +99,10 @@ PAIRS = {
 }
 
 DATASETS = {
-    "talas_15k": {"path": Path("data/train_set/merged_3_data_5k_each.csv"), "build": None},
+    "talas_15k": {
+        "path": Path("data/train_set/merged_3_data_5k_each.csv"),
+        "build": None,
+    },
     "100k": {"path": Path("data/train_set/train_100k.csv"), "build": None},
     "150k": {
         "path": Path("data/train_set/train_150k.csv"),
@@ -143,16 +146,26 @@ METHOD_SETTINGS = {
 GEOODE_H0_BATCH_SIZE = 0
 
 GEOODE_EXTRA = [
-    "--lambda_topo", "1.0",
-    "--lambda_ctr", "0.0",
-    "--gauge_refit_every", "1",
-    "--topo_batch_size", str(GEOODE_H0_BATCH_SIZE),
+    "--lambda_topo",
+    "1.0",
+    "--lambda_ctr",
+    "0.0",
+    "--gauge_refit_every",
+    "1",
+    "--topo_batch_size",
+    str(GEOODE_H0_BATCH_SIZE),
 ]
 
 BENCHMARK_ORDER = [
-    "banking77", "tweet", "emotion",
-    "mrpc", "scitail", "wic",
-    "sick", "sts12", "stsb",
+    "banking77",
+    "tweet",
+    "emotion",
+    "mrpc",
+    "scitail",
+    "wic",
+    "sick",
+    "sts12",
+    "stsb",
 ]
 SUMMARY_ORDER = ["avg_iod", "avg_ood", "avg_retrieval", "avg_all"]
 
@@ -170,21 +183,36 @@ def build_command(args, pair_name, method, seed, run_dir, cache_dir, train_data)
     pair = PAIRS[pair_name]
     settings = METHOD_SETTINGS[method]
     command = [
-        sys.executable, str(REPO_ROOT / "main.py"),
-        "--method", method,
-        "--train_data", str(train_data),
-        "--student_model", pair["student"],
-        "--teacher_model", pair["teacher"],
-        "--teacher_pooling", pair["teacher_pooling"],
-        "--batch_size", str(settings["batch_size"]),
-        "--epochs", str(args.epochs),
-        "--save_every", str(args.epochs),
-        "--lr", str(settings["learning_rate"]),
-        "--max_length", str(MAX_LENGTH),
-        "--save_dir", str(run_dir),
-        "--num_workers", str(args.num_workers),
-        "--seed", str(seed),
-        "--eval_every", str(EVAL_EVERY),
+        sys.executable,
+        str(REPO_ROOT / "main.py"),
+        "--method",
+        method,
+        "--train_data",
+        str(train_data),
+        "--student_model",
+        pair["student"],
+        "--teacher_model",
+        pair["teacher"],
+        "--teacher_pooling",
+        pair["teacher_pooling"],
+        "--batch_size",
+        str(settings["batch_size"]),
+        "--epochs",
+        str(args.epochs),
+        "--save_every",
+        str(args.epochs),
+        "--lr",
+        str(settings["learning_rate"]),
+        "--max_length",
+        str(MAX_LENGTH),
+        "--save_dir",
+        str(run_dir),
+        "--num_workers",
+        str(args.num_workers),
+        "--seed",
+        str(seed),
+        "--eval_every",
+        str(EVAL_EVERY),
         "--no_wandb",
     ]
     if args.hold_out_validation:
@@ -195,7 +223,7 @@ def build_command(args, pair_name, method, seed, run_dir, cache_dir, train_data)
         command.extend(["--teacher_special_token", pair["teacher_special_token"]])
     if method == "emo" and pair["emo_teacher_special_token"] is not None:
         command.extend(["--teacher_special_token", pair["emo_teacher_special_token"]])
-    if method in ("talas", "geoode", "rkd"):
+    if method in ("talas", "geoode", "rkd", "stella"):
         command.extend(["--cache_dir", str(cache_dir)])
     if method == "geoode":
         command.extend(GEOODE_EXTRA)
@@ -211,15 +239,23 @@ def build_jobs(args, run_root, cache_dir, train_data):
         for method in args.methods:
             for seed in args.seeds:
                 run_dir = run_root / pair_name / method / f"seed_{seed}"
-                jobs.append({
-                    "pair": pair_name,
-                    "method": method,
-                    "seed": seed,
-                    "run_dir": run_dir,
-                    "command": build_command(
-                        args, pair_name, method, seed, run_dir, cache_dir, train_data
-                    ),
-                })
+                jobs.append(
+                    {
+                        "pair": pair_name,
+                        "method": method,
+                        "seed": seed,
+                        "run_dir": run_dir,
+                        "command": build_command(
+                            args,
+                            pair_name,
+                            method,
+                            seed,
+                            run_dir,
+                            cache_dir,
+                            train_data,
+                        ),
+                    }
+                )
     return jobs
 
 
@@ -276,8 +312,11 @@ def stream_output(stream, log_handle):
             if "%|" in line:
                 now = time.perf_counter()
                 if now - last_progress >= PROGRESS_EVERY_SEC:
-                    print("\r" + line[:PROGRESS_MAX_CHARS].ljust(PROGRESS_MAX_CHARS),
-                          end="", flush=True)
+                    print(
+                        "\r" + line[:PROGRESS_MAX_CHARS].ljust(PROGRESS_MAX_CHARS),
+                        end="",
+                        flush=True,
+                    )
                     last_progress = now
                     progress_shown = True
             elif line.strip():
@@ -312,8 +351,13 @@ def run_jobs(args, jobs, run_root):
         if final_test_record(run_dir) is not None:
             timing = read_timing(run_dir) or {}
             print(f"[SKIP {position}/{len(jobs)}] {label} — already has a final test")
-            status.append({**_job_keys(job), "status": "skipped_complete",
-                           "wall_seconds": timing.get("wall_seconds", np.nan)})
+            status.append(
+                {
+                    **_job_keys(job),
+                    "status": "skipped_complete",
+                    "wall_seconds": timing.get("wall_seconds", np.nan),
+                }
+            )
             _write_status(status, status_path)
             continue
 
@@ -337,10 +381,17 @@ def run_jobs(args, jobs, run_root):
                 # --keep-going has to mean the same thing on a resume as it does on
                 # the first pass, or a sweep that tolerated a failure would abort
                 # here on the very run it was told to skip.
-                print(f"[SKIP {position}/{len(jobs)}] {label} — unfinished run at "
-                      f"{run_dir}; pass --retry-unfinished to redo it")
-                status.append({**_job_keys(job), "status": "unfinished_skipped",
-                               "wall_seconds": np.nan})
+                print(
+                    f"[SKIP {position}/{len(jobs)}] {label} — unfinished run at "
+                    f"{run_dir}; pass --retry-unfinished to redo it"
+                )
+                status.append(
+                    {
+                        **_job_keys(job),
+                        "status": "unfinished_skipped",
+                        "wall_seconds": np.nan,
+                    }
+                )
                 _write_status(status, status_path)
                 continue
 
@@ -351,12 +402,16 @@ def run_jobs(args, jobs, run_root):
         print(f"Log: {log_path}")
         print("#" * 88, flush=True)
 
-        started_wall = datetime.now(timezone.utc)
+        started_wall = datetime.now(UTC)
         started = time.perf_counter()
         with log_path.open("w", encoding="utf-8") as log_handle:
             process = subprocess.Popen(
-                job["command"], cwd=REPO_ROOT, env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                job["command"],
+                cwd=REPO_ROOT,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
             )
             assert process.stdout is not None
             stream_output(process.stdout, log_handle)
@@ -364,24 +419,33 @@ def run_jobs(args, jobs, run_root):
         elapsed = time.perf_counter() - started
 
         complete = return_code == 0 and final_test_record(run_dir) is not None
-        write_timing(run_dir, {
-            "pair": job["pair"],
-            "method": job["method"],
-            "seed": job["seed"],
-            "status": "complete" if complete else "failed",
-            "returncode": return_code,
-            "wall_seconds": elapsed,
-            "started_at": started_wall.isoformat(),
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "host": platform.node(),
-            "cuda_visible_devices": args.cuda_visible_devices,
-            "command": shlex.join(job["command"]),
-        })
-        status.append({**_job_keys(job),
-                       "status": "complete" if complete else "failed",
-                       "wall_seconds": elapsed})
+        write_timing(
+            run_dir,
+            {
+                "pair": job["pair"],
+                "method": job["method"],
+                "seed": job["seed"],
+                "status": "complete" if complete else "failed",
+                "returncode": return_code,
+                "wall_seconds": elapsed,
+                "started_at": started_wall.isoformat(),
+                "finished_at": datetime.now(UTC).isoformat(),
+                "host": platform.node(),
+                "cuda_visible_devices": args.cuda_visible_devices,
+                "command": shlex.join(job["command"]),
+            },
+        )
+        status.append(
+            {
+                **_job_keys(job),
+                "status": "complete" if complete else "failed",
+                "wall_seconds": elapsed,
+            }
+        )
         _write_status(status, status_path)
-        print(f"[{'COMPLETE' if complete else 'FAILED'}] {label} in {elapsed / 60:.1f} min")
+        print(
+            f"[{'COMPLETE' if complete else 'FAILED'}] {label} in {elapsed / 60:.1f} min"
+        )
         if not complete and args.stop_on_error:
             raise RuntimeError(f"Job failed; see {log_path}")
     return pd.DataFrame(status)
@@ -504,7 +568,7 @@ def run_jobs_parallel(args, jobs, run_root):
 
     def save_state():
         payload = {
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "scheduler_pid": os.getpid(), "jobs_per_gpu": args.jobs_per_gpu,
             "slot_limits": limits,
             "devices": devices, "pending": len(pending),
@@ -533,7 +597,7 @@ def run_jobs_parallel(args, jobs, run_root):
                     process = AdoptedProcess(entry, run_dir)
                     if process.poll() is None:
                         started_wall = datetime.fromisoformat(entry["started_at"])
-                        elapsed = (datetime.now(timezone.utc) - started_wall).total_seconds()
+                        elapsed = (datetime.now(UTC) - started_wall).total_seconds()
                         active.append({
                             "job": job, "gpu": entry["gpu"], "process": process,
                             "log": (run_dir / "train.log").open("a", encoding="utf-8"),
@@ -589,7 +653,7 @@ def run_jobs_parallel(args, jobs, run_root):
                                                else "exit_code_and_final_test_record",
                         "adopted": item.get("adopted", False), "wall_seconds": elapsed,
                         "started_at": item["started_wall"].isoformat(),
-                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "finished_at": datetime.now(UTC).isoformat(),
                         "host": platform.node(), "cuda_visible_devices": item["gpu"],
                         "execution_mode": "parallel", "jobs_per_gpu": item["slot_limit"],
                         "concurrent_on_same_gpu": item["shared"],
@@ -619,7 +683,7 @@ def run_jobs_parallel(args, jobs, run_root):
                                 break
                             job["run_dir"].mkdir(parents=True, exist_ok=True)
                             log = (job["run_dir"] / "train.log").open("w", encoding="utf-8")
-                            started_wall, started = datetime.now(timezone.utc), time.perf_counter()
+                            started_wall, started = datetime.now(UTC), time.perf_counter()
                             try:
                                 process = subprocess.Popen(
                                     job["command"], cwd=REPO_ROOT,
@@ -676,8 +740,12 @@ def run_jobs_parallel(args, jobs, run_root):
 
 
 def _job_keys(job):
-    return {"pair": job["pair"], "method": job["method"], "seed": job["seed"],
-            "run_dir": str(job["run_dir"])}
+    return {
+        "pair": job["pair"],
+        "method": job["method"],
+        "seed": job["seed"],
+        "run_dir": str(job["run_dir"]),
+    }
 
 
 def _write_status(status, path):
@@ -697,7 +765,7 @@ def _write_status(status, path):
 
 def benchmark_name(path):
     name = Path(path).stem
-    return name[:-5] if name.endswith("_test") else name
+    return name.removesuffix("_test")
 
 
 def score_from_payload(family, raw_values):
@@ -759,11 +827,13 @@ def timing_by_seed(args, run_root, pair_name):
             steps = pd.DataFrame(read_jsonl(run_dir / "step_metrics.jsonl"))
             timed = (
                 steps.query("step_seconds > 0 and global_step > 10")
-                if not steps.empty else steps
+                if not steps.empty
+                else steps
             )
             train_seconds = (
                 steps.loc[steps.get("step_seconds", 0) > 0, "step_seconds"].sum()
-                if not steps.empty else np.nan
+                if not steps.empty
+                else np.nan
             )
             epoch_records = read_jsonl(run_dir / "metrics.jsonl")
             peaks = [
@@ -772,23 +842,32 @@ def timing_by_seed(args, run_root, pair_name):
                 if isinstance(record.get("train"), dict)
             ]
             timing = read_timing(run_dir) or {}
-            rows.append({
-                "pair": pair_name,
-                "method": method,
-                "seed": seed,
-                "wall_minutes": timing.get("wall_seconds", np.nan) / 60
-                if timing.get("wall_seconds") is not None else np.nan,
-                "train_gpu_minutes": train_seconds / 60,
-                "mean_step_ms": 1000 * timed["step_seconds"].mean() if not timed.empty else np.nan,
-                "samples_per_second": timed["batch_size"].sum() / timed["step_seconds"].sum()
-                if not timed.empty else np.nan,
-                "peak_memory_gib": np.nanmax(peaks) / 1024 if peaks else np.nan,
-                "started_at": timing.get("started_at"),
-                "finished_at": timing.get("finished_at"),
-                "execution_mode": timing.get("execution_mode", "sequential"),
-                "cuda_visible_devices": timing.get("cuda_visible_devices"),
-                "concurrent_on_same_gpu": timing.get("concurrent_on_same_gpu", False),
-            })
+            rows.append(
+                {
+                    "pair": pair_name,
+                    "method": method,
+                    "seed": seed,
+                    "wall_minutes": timing.get("wall_seconds", np.nan) / 60
+                    if timing.get("wall_seconds") is not None
+                    else np.nan,
+                    "train_gpu_minutes": train_seconds / 60,
+                    "mean_step_ms": 1000 * timed["step_seconds"].mean()
+                    if not timed.empty
+                    else np.nan,
+                    "samples_per_second": timed["batch_size"].sum()
+                    / timed["step_seconds"].sum()
+                    if not timed.empty
+                    else np.nan,
+                    "peak_memory_gib": np.nanmax(peaks) / 1024 if peaks else np.nan,
+                    "started_at": timing.get("started_at"),
+                    "finished_at": timing.get("finished_at"),
+                    "execution_mode": timing.get("execution_mode", "sequential"),
+                    "cuda_visible_devices": timing.get("cuda_visible_devices"),
+                    "concurrent_on_same_gpu": timing.get(
+                        "concurrent_on_same_gpu", False
+                    ),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -808,8 +887,10 @@ def aggregate_pair(args, run_root, pair_name):
     if missing:
         for method, seed, run_dir in missing:
             print(f"  [MISSING] {pair_name} {method} seed={seed}: {run_dir}")
-        print(f"  [SKIP AGGREGATE] {pair_name}: {len(missing)} of "
-              f"{len(args.methods) * len(args.seeds)} runs have no final test.")
+        print(
+            f"  [SKIP AGGREGATE] {pair_name}: {len(missing)} of "
+            f"{len(args.methods) * len(args.seeds)} runs have no final test."
+        )
         return None
 
     metric_order = [n for n in BENCHMARK_ORDER + SUMMARY_ORDER if n in by_seed.columns]
@@ -844,30 +925,60 @@ def aggregate_pair(args, run_root, pair_name):
         paper_latex.to_latex(escape=False), encoding="utf-8"
     )
 
-    efficiency = timing.merge(by_seed[["method", "seed", "avg_all"]],
-                              on=["method", "seed"], how="left")
+    efficiency = timing.merge(
+        by_seed[["method", "seed", "avg_all"]], on=["method", "seed"], how="left"
+    )
     efficiency.to_csv(out_dir / "efficiency_by_seed.csv", index=False)
-    summary = efficiency.groupby("method", sort=False).agg(
-        avg_mean=("avg_all", "mean"), avg_sd=("avg_all", "std"),
-        step_ms_mean=("mean_step_ms", "mean"), step_ms_sd=("mean_step_ms", "std"),
-        throughput_mean=("samples_per_second", "mean"), throughput_sd=("samples_per_second", "std"),
-        train_min_mean=("train_gpu_minutes", "mean"), train_min_sd=("train_gpu_minutes", "std"),
-        wall_min_mean=("wall_minutes", "mean"), wall_min_sd=("wall_minutes", "std"),
-        memory_mean=("peak_memory_gib", "mean"), memory_sd=("peak_memory_gib", "std"),
-        n=("avg_all", "count"),
-    ).reset_index()
+    summary = (
+        efficiency.groupby("method", sort=False)
+        .agg(
+            avg_mean=("avg_all", "mean"),
+            avg_sd=("avg_all", "std"),
+            step_ms_mean=("mean_step_ms", "mean"),
+            step_ms_sd=("mean_step_ms", "std"),
+            throughput_mean=("samples_per_second", "mean"),
+            throughput_sd=("samples_per_second", "std"),
+            train_min_mean=("train_gpu_minutes", "mean"),
+            train_min_sd=("train_gpu_minutes", "std"),
+            wall_min_mean=("wall_minutes", "mean"),
+            wall_min_sd=("wall_minutes", "std"),
+            memory_mean=("peak_memory_gib", "mean"),
+            memory_sd=("peak_memory_gib", "std"),
+            n=("avg_all", "count"),
+        )
+        .reset_index()
+    )
     summary.to_csv(out_dir / "efficiency_mean_std.csv", index=False)
 
-    table = pd.DataFrame({
-        "Method": summary.method.str.upper(),
-        "AVG ↑": [mean_sd(100 * m, 100 * s) for m, s in zip(summary.avg_mean, summary.avg_sd)],
-        "ms/step ↓": [mean_sd(m, s, 1) for m, s in zip(summary.step_ms_mean, summary.step_ms_sd)],
-        "samples/s ↑": [mean_sd(m, s, 1) for m, s in zip(summary.throughput_mean, summary.throughput_sd)],
-        "GPU train min ↓": [mean_sd(m, s, 1) for m, s in zip(summary.train_min_mean, summary.train_min_sd)],
-        "wall min": [mean_sd(m, s, 1) for m, s in zip(summary.wall_min_mean, summary.wall_min_sd)],
-        "peak GiB ↓": [mean_sd(m, s, 2) for m, s in zip(summary.memory_mean, summary.memory_sd)],
-        "n": summary.n,
-    })
+    table = pd.DataFrame(
+        {
+            "Method": summary.method.str.upper(),
+            "AVG ↑": [
+                mean_sd(100 * m, 100 * s)
+                for m, s in zip(summary.avg_mean, summary.avg_sd)
+            ],
+            "ms/step ↓": [
+                mean_sd(m, s, 1)
+                for m, s in zip(summary.step_ms_mean, summary.step_ms_sd)
+            ],
+            "samples/s ↑": [
+                mean_sd(m, s, 1)
+                for m, s in zip(summary.throughput_mean, summary.throughput_sd)
+            ],
+            "GPU train min ↓": [
+                mean_sd(m, s, 1)
+                for m, s in zip(summary.train_min_mean, summary.train_min_sd)
+            ],
+            "wall min": [
+                mean_sd(m, s, 1)
+                for m, s in zip(summary.wall_min_mean, summary.wall_min_sd)
+            ],
+            "peak GiB ↓": [
+                mean_sd(m, s, 2) for m, s in zip(summary.memory_mean, summary.memory_sd)
+            ],
+            "n": summary.n,
+        }
+    )
     table.to_csv(out_dir / "table_3_efficiency.csv", index=False)
     (out_dir / "table_3_efficiency.tex").write_text(
         table.drop(columns="n").to_latex(index=False, escape=False), encoding="utf-8"
@@ -924,14 +1035,17 @@ def ensure_data(args, train_data):
 
     retrieval_dir = REPO_ROOT / "data" / "test_set" / "retrieval"
     missing_retrieval = [
-        name for name in ("arguana", "fiqa", "scidocs")
+        name
+        for name in ("arguana", "fiqa", "scidocs", "scifact", "nfcorpus")
         if not (retrieval_dir / name / "corpus.csv").is_file()
     ]
     build = DATASETS[args.dataset]["build"]
     if missing_retrieval and (args.eval_retrieval or build):
         if not args.auto_fetch_data:
             raise FileNotFoundError(f"Missing retrieval data: {missing_retrieval}")
-        _run_helper(["scripts/data/download_retrieval_benchmarks.py"], "retrieval benchmarks")
+        _run_helper(
+            ["scripts/data/download_retrieval_benchmarks.py"], "retrieval benchmarks"
+        )
 
     if not train_data.is_file():
         if build is None or not args.auto_fetch_data:
@@ -967,40 +1081,88 @@ def parse_args(argv=None):
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--pairs", nargs="+", choices=sorted(PAIRS), default=list(PAIRS),
-                        help="teacher/student pairs to sweep (default: all three)")
-    parser.add_argument("--methods", nargs="+", choices=sorted(METHOD_SETTINGS),
-                        default=list(METHOD_SETTINGS),
-                        help="methods to run (default: every baseline plus geoode)")
+    parser.add_argument(
+        "--pairs",
+        nargs="+",
+        choices=sorted(PAIRS),
+        default=list(PAIRS),
+        help="teacher/student pairs to sweep (default: all three)",
+    )
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        choices=sorted(METHOD_SETTINGS),
+        default=list(METHOD_SETTINGS),
+        help="methods to run (default: every baseline plus geoode)",
+    )
     parser.add_argument("--seeds", nargs="+", type=int, default=DEFAULT_SEEDS)
     parser.add_argument("--dataset", choices=sorted(DATASETS), default=DEFAULT_DATASET)
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--num-workers", type=int, default=NUM_WORKERS)
-    parser.add_argument("--run-root", type=Path, default=REPO_ROOT / "runs",
-                        help="parent of the run directory (default: runs/)")
-    parser.add_argument("--run-name", default=None,
-                        help="name of the run directory; pass an existing one to resume")
-    parser.add_argument("--cache-dir", type=Path, default=None,
-                        help="shared teacher cache (default: <run-root>/teacher_cache)")
+    parser.add_argument(
+        "--run-root",
+        type=Path,
+        default=REPO_ROOT / "runs",
+        help="parent of the run directory (default: runs/)",
+    )
+    parser.add_argument(
+        "--run-name",
+        default=None,
+        help="name of the run directory; pass an existing one to resume",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="shared teacher cache (default: <run-root>/teacher_cache)",
+    )
     parser.add_argument("--cuda-visible-devices", default=CUDA_VISIBLE_DEVICES)
-    parser.add_argument("--jobs-per-gpu", type=int, default=0,
-                        help="independent jobs per GPU; 0 keeps sequential model splitting")
-    parser.add_argument("--adopt-running", type=Path, default=None,
-                        help="take over detached workers from a saved handoff JSON (Linux)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="print the plan and the exact commands, run nothing")
-    parser.add_argument("--aggregate-only", action="store_true",
-                        help="skip training, rebuild the tables from what is on disk")
-    parser.add_argument("--retry-unfinished", action="store_true",
-                        help="move an unfinished run aside and start it again")
-    parser.add_argument("--keep-going", dest="stop_on_error", action="store_false",
-                        help="carry on after a failed job instead of stopping")
+    parser.add_argument(
+        "--jobs-per-gpu",
+        type=int,
+        default=0,
+        help="independent jobs per GPU; 0 keeps sequential model splitting",
+    )
+    parser.add_argument(
+        "--adopt-running",
+        type=Path,
+        default=None,
+        help="take over detached workers from a saved handoff JSON (Linux)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan and the exact commands, run nothing",
+    )
+    parser.add_argument(
+        "--aggregate-only",
+        action="store_true",
+        help="skip training, rebuild the tables from what is on disk",
+    )
+    parser.add_argument(
+        "--retry-unfinished",
+        action="store_true",
+        help="move an unfinished run aside and start it again",
+    )
+    parser.add_argument(
+        "--keep-going",
+        dest="stop_on_error",
+        action="store_false",
+        help="carry on after a failed job instead of stopping",
+    )
     parser.add_argument("--eval-retrieval", action="store_true", default=EVAL_RETRIEVAL)
-    parser.add_argument("--hold-out-validation", action="store_true",
-                        default=HOLD_OUT_VALIDATION,
-                        help="validation every epoch and test once, instead of test only")
-    parser.add_argument("--no-auto-fetch-data", dest="auto_fetch_data",
-                        action="store_false", help="fail instead of building missing data")
+    parser.add_argument(
+        "--hold-out-validation",
+        action="store_true",
+        default=HOLD_OUT_VALIDATION,
+        help="validation every epoch and test once, instead of test only",
+    )
+    parser.add_argument(
+        "--no-auto-fetch-data",
+        dest="auto_fetch_data",
+        action="store_false",
+        help="fail instead of building missing data",
+    )
     parser.add_argument("--skip-gpu-check", action="store_true")
     args = parser.parse_args(argv)
     if len(set(args.seeds)) != len(args.seeds) or len(args.seeds) < 2:
@@ -1019,7 +1181,9 @@ def main(argv=None):
     args = parse_args(argv)
 
     stamp = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y%m%d-%H%M%S")
-    run_name = args.run_name or f"main_results_{args.dataset}_{len(args.seeds)}seeds_{stamp}"
+    run_name = (
+        args.run_name or f"main_results_{args.dataset}_{len(args.seeds)}seeds_{stamp}"
+    )
     run_root = args.run_root / run_name
     cache_dir = args.cache_dir or (args.run_root / "teacher_cache")
     train_data = REPO_ROOT / DATASETS[args.dataset]["path"]
@@ -1031,8 +1195,10 @@ def main(argv=None):
     print(f"Pairs:    {', '.join(args.pairs)}")
     print(f"Methods:  {', '.join(args.methods)}")
     print(f"Seeds:    {args.seeds}")
-    print(f"Plan:     {len(args.pairs)} pairs x {len(args.methods)} methods x "
-          f"{len(args.seeds)} seeds = {len(jobs)} jobs")
+    print(
+        f"Plan:     {len(args.pairs)} pairs x {len(args.methods)} methods x "
+        f"{len(args.seeds)} seeds = {len(jobs)} jobs"
+    )
 
     if args.dry_run:
         for job in jobs:
@@ -1046,30 +1212,42 @@ def main(argv=None):
             check_gpu(args)
         run_root.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
-        (run_root / "plan.json").write_text(json.dumps({
-            "run_name": run_name,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "dataset": args.dataset,
-            "train_data": str(train_data),
-            "cache_dir": str(cache_dir),
-            "epochs": args.epochs,
-            "jobs_per_gpu": args.jobs_per_gpu,
-            "cuda_visible_devices": args.cuda_visible_devices,
-            "max_length": MAX_LENGTH,
-            "pairs": {name: PAIRS[name] for name in args.pairs},
-            "method_settings": {m: METHOD_SETTINGS[m] for m in args.methods},
-            "seeds": args.seeds,
-            "geoode_extra": GEOODE_EXTRA,
-            "hold_out_validation": args.hold_out_validation,
-            "eval_retrieval": args.eval_retrieval,
-            "jobs": [{**_job_keys(job), "command": shlex.join(job["command"])} for job in jobs],
-        }, indent=2, ensure_ascii=False), encoding="utf-8")
+        (run_root / "plan.json").write_text(
+            json.dumps(
+                {
+                    "run_name": run_name,
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "dataset": args.dataset,
+                    "train_data": str(train_data),
+                    "cache_dir": str(cache_dir),
+                    "epochs": args.epochs,
+                    "jobs_per_gpu": args.jobs_per_gpu,
+                    "cuda_visible_devices": args.cuda_visible_devices,
+                    "max_length": MAX_LENGTH,
+                    "pairs": {name: PAIRS[name] for name in args.pairs},
+                    "method_settings": {m: METHOD_SETTINGS[m] for m in args.methods},
+                    "seeds": args.seeds,
+                    "geoode_extra": GEOODE_EXTRA,
+                    "hold_out_validation": args.hold_out_validation,
+                    "eval_retrieval": args.eval_retrieval,
+                    "jobs": [
+                        {**_job_keys(job), "command": shlex.join(job["command"])}
+                        for job in jobs
+                    ],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
         status = run_jobs(args, jobs, run_root)
         print("\nRun status:")
         for row in status.itertuples():
-            print(f"  {row.pair:28s} {row.method:8s} seed={row.seed} "
-                  f"{row.status:18s} {row.wall_seconds / 60:8.1f} min")
+            print(
+                f"  {row.pair:28s} {row.method:8s} seed={row.seed} "
+                f"{row.status:18s} {row.wall_seconds / 60:8.1f} min"
+            )
 
     if not run_root.is_dir():
         raise FileNotFoundError(f"No such run: {run_root}")

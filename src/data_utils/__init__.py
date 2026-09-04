@@ -1,13 +1,14 @@
 # Data utilities for Knowledge Distillation
-from .dataset import TextPairRaw, DualTokenizerCollate
+from .dataset import ALIGNMENT_METHODS, DualTokenizerCollate, TextPairRaw
 from .dataset_cache import (
     DualTokenizerCollateWithTeacher,
     TextPairWithTeacher,
 )
 
 __all__ = [
-    'TextPairRaw',
-    'DualTokenizerCollate',
-    'DualTokenizerCollateWithTeacher',
-    'TextPairWithTeacher'
+    "ALIGNMENT_METHODS",
+    "DualTokenizerCollate",
+    "DualTokenizerCollateWithTeacher",
+    "TextPairRaw",
+    "TextPairWithTeacher",
 ]

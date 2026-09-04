@@ -24,8 +24,8 @@ class BaseConfig:
     teacher_model_name = "sentence-transformers/all-MiniLM-L6-v2"
     teacher_dtype = "float32"
     # Pooling of the teacher sentence vector, for every method that has a teacher:
-    # the cached methods (talas/geoode/rkd) apply it once at cache time, the online
-    # ones (cdm/dskd/emo/stella) every step. "last_token" is the Qwen3-Embedding
+    # the cached methods (talas/geoode/rkd/stella) apply it once at cache time, the
+    # online ones (cdm/dskd/emo) every step. "last_token" is the Qwen3-Embedding
     # convention; encoder teachers such as BGE-M3 read "cls". CLI: --teacher_pooling.
     pooling_method = "last_token"
 
@@ -41,7 +41,8 @@ class BaseConfig:
     # sentences plus 25k MS MARCO queries and 25k MS MARCO passages, all raw
     # text. Built by scripts/data/build_train_corpus.py.
     train_data_path = "data/train_set/train_150k.csv"
-    # Shared directory for the cached teacher embeddings of talas/geoode/rkd. When
+    # Shared directory for the cached teacher embeddings of the methods that read
+    # one (talas/geoode/rkd/stella). When
     # set it wins over cache_path, and the filename is derived from what a cache's
     # reusability actually depends on (teacher, pooling, normalisation, max_length
     # and the corpus *contents*), so one directory holds every cache the project
@@ -112,7 +113,7 @@ class BaseConfig:
     # reductions on the host, so the stride is what decides its share of the run --
     # set it against the measured step time rather than by feel. In exchange the
     # post-hoc ladder, five points per run and a re-encode away, becomes a curve.
-    # Only the cached-teacher methods (talas/geoode/rkd) can run it: it reads teacher
+    # Only the cached-teacher methods can run it: it reads teacher
     # embeddings from the training cache rather than running the teacher again.
     # CLI: --probe_every.
     probe_every = 0
