@@ -15,7 +15,7 @@ Huber loss, which keeps a single badly placed pair from dominating the batch.
 
 This is the relational baseline the paper is stated against: it constrains the
 geometry of the final layer only, and says nothing about the trajectory that
-reaches it. Like GeoODE-KD it holds no parameters, so the two rows differ by
+reaches it. Like GATE-KD it holds no parameters, so the two rows differ by
 their objective rather than by what was added to the student.
 """
 

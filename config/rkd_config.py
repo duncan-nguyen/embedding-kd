@@ -52,11 +52,11 @@ class RKDConfig(BaseConfig):
 
     batch_size = 32
     epochs = 5
-    # 2e-5 is the untuned shared default; GeoODE-KD, the method this row is the
+    # 2e-5 is the untuned shared default; GATE-KD, the method this row is the
     # baseline for, is run at 7e-5 and Stella at 5e-5. Since RKD is the slowest
     # of the objectives to converge, leaving it at the lowest rate in the table
-    # is what handicaps it, so it gets the same peak rate as GeoODE-KD. min_lr is
-    # deliberately left at 2e-6, which is the floor GeoODE-KD actually runs with
+    # is what handicaps it, so it gets the same peak rate as GATE-KD. min_lr is
+    # deliberately left at 2e-6, which is the floor GATE-KD actually runs with
     # once the notebook overrides its rate: same peak, same schedule shape.
     learning_rate = 7e-5
     min_lr = 2e-6
@@ -66,6 +66,5 @@ class RKDConfig(BaseConfig):
     pooling_method = "last_token"
     normalize_cache = True
     cache_dtype = "float32"
-
 
     save_dir = "checkpoints/rkd"

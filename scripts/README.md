@@ -139,7 +139,7 @@ gap instead of publishing it. Timings are still written for an unfinished pair.
 ## Everything else
 
 ```bash
-python3 scripts/data/download_retrieval_benchmarks.py     # ArguAna, FiQA, SCIDOCS
+python3 scripts/data/download_retrieval_benchmarks.py     # ArguAna, FiQA, SCIDOCS, SciFact, NFCorpus
 python3 scripts/data/download_eval_train_splits.py        # train splits of the eval sets
 python3 scripts/data/build_train_corpus.py --total 150000 # the distillation corpus
 python3 scripts/data/build_merged_all.py                  # every train split, uncapped

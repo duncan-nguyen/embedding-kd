@@ -4,7 +4,8 @@
     \vspace{0.5em}
     \centering
     \scriptsize
-    \setlength{\tabcolsep}{2.6pt}
+    \newcommand{\resultcell}[2]{#1{\tiny $\pm$ #2}}
+    \setlength{\tabcolsep}{1pt}
     \begin{tabular}{@{}lcccccccccc@{}}
         \toprule
         & \multicolumn{3}{c}{Classification (F1)}
@@ -50,83 +51,83 @@
         & 54.36 \\
         \midrule
         \raisebox{0.7ex}{RKD}
-        & \shortstack{92.09\\[-0.4ex]{\tiny $\pm$ 0.13}}
-        & \shortstack{72.31\\[-0.4ex]{\tiny $\pm$ 0.21}}
-        & \shortstack{63.63\\[-0.4ex]{\tiny $\pm$ 0.19}}
-        & \shortstack{85.02\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{80.54\\[-0.4ex]{\tiny $\pm$ 0.59}}
-        & \shortstack{66.43\\[-0.4ex]{\tiny $\pm$ 0.11}}
-        & \shortstack{79.39\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{71.96\\[-0.4ex]{\tiny $\pm$ 0.15}}
-        & \shortstack{77.72\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{76.56\\[-0.4ex]{\tiny $\pm$ 0.09}} \\
+        & \resultcell{92.23}{0.15}
+        & \resultcell{71.96}{0.18}
+        & \resultcell{63.79}{0.40}
+        & \resultcell{85.00}{0.04}
+        & \resultcell{80.27}{0.38}
+        & \resultcell{66.31}{0.10}
+        & \resultcell{79.32}{0.02}
+        & \resultcell{71.72}{0.16}
+        & \resultcell{77.70}{0.20}
+        & \resultcell{76.48}{0.04} \\
         \raisebox{0.7ex}{Stella}
-        & \shortstack{90.15\\[-0.4ex]{\tiny $\pm$ 0.10}}
-        & \shortstack{72.05\\[-0.4ex]{\tiny $\pm$ 0.01}}
-        & \shortstack{60.05\\[-0.4ex]{\tiny $\pm$ 0.64}}
-        & \shortstack{\underline{85.96}\\[-0.4ex]{\tiny $\pm$ 0.05}}
-        & \shortstack{79.00\\[-0.4ex]{\tiny $\pm$ 0.36}}
-        & \shortstack{\textbf{69.83}\\[-0.4ex]{\tiny $\pm$ 0.15}}
-        & \shortstack{76.66\\[-0.4ex]{\tiny $\pm$ 0.20}}
-        & \shortstack{69.94\\[-0.4ex]{\tiny $\pm$ 0.28}}
-        & \shortstack{77.22\\[-0.4ex]{\tiny $\pm$ 0.07}}
-        & \shortstack{75.65\\[-0.4ex]{\tiny $\pm$ 0.07}} \\
-        CDM
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & - \\
-        DSKD
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & - \\
-        EMO
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & - \\
+        & \resultcell{90.02}{0.15}
+        & \resultcell{71.90}{0.22}
+        & \resultcell{60.14}{0.45}
+        & \resultcell{\underline{85.96}}{0.05}
+        & \resultcell{78.82}{0.27}
+        & \resultcell{\underline{69.93}}{0.13}
+        & \resultcell{76.53}{0.23}
+        & \resultcell{69.79}{0.12}
+        & \resultcell{77.22}{0.16}
+        & \resultcell{75.59}{0.10} \\
+        \raisebox{0.7ex}{CDM}
+        & \resultcell{89.16}{0.04}
+        & \resultcell{69.63}{0.23}
+        & \resultcell{53.74}{0.13}
+        & \resultcell{85.57}{0.08}
+        & \resultcell{71.22}{0.19}
+        & \resultcell{\textbf{70.04}}{0.05}
+        & \resultcell{71.26}{0.29}
+        & \resultcell{66.97}{0.21}
+        & \resultcell{73.69}{0.38}
+        & \resultcell{72.36}{0.13} \\
+        \raisebox{0.7ex}{DSKD}
+        & \resultcell{88.87}{0.07}
+        & \resultcell{69.05}{0.09}
+        & \resultcell{54.02}{0.56}
+        & \resultcell{85.90}{0.05}
+        & \resultcell{70.02}{0.31}
+        & \resultcell{69.63}{0.21}
+        & \resultcell{71.07}{0.10}
+        & \resultcell{66.52}{0.17}
+        & \resultcell{73.52}{0.01}
+        & \resultcell{72.07}{0.03} \\
+        \raisebox{0.7ex}{EMO}
+        & \resultcell{84.96}{0.84}
+        & \resultcell{68.93}{0.65}
+        & \resultcell{54.80}{1.52}
+        & \resultcell{85.05}{0.04}
+        & \resultcell{65.75}{0.22}
+        & \resultcell{68.80}{0.13}
+        & \resultcell{62.00}{2.71}
+        & \resultcell{61.75}{1.85}
+        & \resultcell{69.54}{0.37}
+        & \resultcell{69.07}{0.89} \\
         \raisebox{0.7ex}{TALAS}
-        & \shortstack{\underline{92.19}\\[-0.4ex]{\tiny $\pm$ 0.02}}
-        & \shortstack{\textbf{75.11}\\[-0.4ex]{\tiny $\pm$ 0.02}}
-        & \shortstack{\underline{72.10}\\[-0.4ex]{\tiny $\pm$ 0.17}}
-        & \shortstack{\textbf{86.31}\\[-0.4ex]{\tiny $\pm$ 0.02}}
-        & \shortstack{\underline{87.00}\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{\underline{67.99}\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\underline{80.24}\\[-0.4ex]{\tiny $\pm$ 0.04}}
-        & \shortstack{\textbf{76.98}\\[-0.4ex]{\tiny $\pm$ 0.10}}
-        & \shortstack{\underline{82.43}\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\underline{80.04}\\[-0.4ex]{\tiny $\pm$ 0.05}} \\
+        & \resultcell{\underline{93.12}}{0.13}
+        & \resultcell{\textbf{74.67}}{0.38}
+        & \resultcell{\underline{71.42}}{0.26}
+        & \resultcell{\textbf{86.30}}{0.01}
+        & \resultcell{\underline{87.06}}{0.12}
+        & \resultcell{68.09}{0.02}
+        & \resultcell{\underline{80.29}}{0.03}
+        & \resultcell{\underline{76.34}}{0.01}
+        & \resultcell{\underline{82.26}}{0.05}
+        & \resultcell{\underline{79.95}}{0.08} \\
         \midrule
-        \raisebox{0.7ex}{\textbf{GeoODE-KD}}
-        & \shortstack{\textbf{93.53}\\[-0.4ex]{\tiny $\pm$ 0.10}}
-        & \shortstack{\underline{74.61}\\[-0.4ex]{\tiny $\pm$ 0.54}}
-        & \shortstack{\textbf{73.12}\\[-0.4ex]{\tiny $\pm$ 0.52}}
-        & \shortstack{85.43\\[-0.4ex]{\tiny $\pm$ 0.07}}
-        & \shortstack{\textbf{87.14}\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{66.39\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{\textbf{81.89}\\[-0.4ex]{\tiny $\pm$ 0.03}}
-        & \shortstack{\underline{76.05}\\[-0.4ex]{\tiny $\pm$ 0.17}}
-        & \shortstack{\textbf{82.49}\\[-0.4ex]{\tiny $\pm$ 0.09}}
-        & \shortstack{\textbf{80.07}\\[-0.4ex]{\tiny $\pm$ 0.08}} \\
+        \raisebox{0.7ex}{\textbf{GATE-KD}}
+        & \resultcell{\textbf{93.47}}{0.12}
+        & \resultcell{\underline{74.18}}{0.25}
+        & \resultcell{\textbf{72.50}}{0.47}
+        & \resultcell{85.45}{0.08}
+        & \resultcell{\textbf{87.24}}{0.12}
+        & \resultcell{66.57}{0.08}
+        & \resultcell{\textbf{81.85}}{0.06}
+        & \resultcell{\textbf{76.40}}{0.07}
+        & \resultcell{\textbf{82.52}}{0.08}
+        & \resultcell{\textbf{80.02}}{0.03} \\
         \midrule
         \multicolumn{11}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
         \midrule
@@ -154,83 +155,83 @@
         & 56.35 \\
         \midrule
         \raisebox{0.7ex}{RKD}
-        & \shortstack{91.60\\[-0.4ex]{\tiny $\pm$ 0.19}}
-        & \shortstack{74.61\\[-0.4ex]{\tiny $\pm$ 0.16}}
-        & \shortstack{63.04\\[-0.4ex]{\tiny $\pm$ 0.73}}
-        & \shortstack{85.83\\[-0.4ex]{\tiny $\pm$ 0.10}}
-        & \shortstack{79.72\\[-0.4ex]{\tiny $\pm$ 0.15}}
-        & \shortstack{63.69\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{76.77\\[-0.4ex]{\tiny $\pm$ 0.11}}
-        & \shortstack{69.14\\[-0.4ex]{\tiny $\pm$ 0.18}}
-        & \shortstack{75.46\\[-0.4ex]{\tiny $\pm$ 0.09}}
-        & \shortstack{75.54\\[-0.4ex]{\tiny $\pm$ 0.07}} \\
-        Stella
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & - \\
+        & \resultcell{91.68}{0.06}
+        & \resultcell{74.57}{0.40}
+        & \resultcell{62.45}{0.75}
+        & \resultcell{85.81}{0.08}
+        & \resultcell{79.81}{0.17}
+        & \resultcell{63.57}{0.13}
+        & \resultcell{76.91}{0.05}
+        & \resultcell{69.54}{0.11}
+        & \resultcell{75.56}{0.09}
+        & \resultcell{75.54}{0.10} \\
+        \raisebox{0.7ex}{Stella}
+        & \resultcell{88.72}{0.41}
+        & \resultcell{73.43}{0.23}
+        & \resultcell{61.63}{0.29}
+        & \resultcell{86.39}{0.08}
+        & \resultcell{74.13}{0.31}
+        & \resultcell{\underline{66.98}}{0.27}
+        & \resultcell{73.32}{0.07}
+        & \resultcell{68.30}{0.12}
+        & \resultcell{72.66}{0.14}
+        & \resultcell{73.95}{0.04} \\
         \raisebox{0.7ex}{CDM}
-        & \shortstack{87.64\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{70.90\\[-0.4ex]{\tiny $\pm$ 0.27}}
-        & \shortstack{56.72\\[-0.4ex]{\tiny $\pm$ 0.56}}
-        & \shortstack{85.65\\[-0.4ex]{\tiny $\pm$ 0.05}}
-        & \shortstack{67.64\\[-0.4ex]{\tiny $\pm$ 0.31}}
-        & \shortstack{\textbf{66.85}\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{70.26\\[-0.4ex]{\tiny $\pm$ 0.47}}
-        & \shortstack{66.73\\[-0.4ex]{\tiny $\pm$ 0.28}}
-        & \shortstack{69.40\\[-0.4ex]{\tiny $\pm$ 0.18}}
-        & \shortstack{71.31\\[-0.4ex]{\tiny $\pm$ 0.13}} \\
-        DSKD
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & - \\
-        EMO
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & -
-        & - \\
+        & \resultcell{87.64}{0.23}
+        & \resultcell{70.82}{0.14}
+        & \resultcell{56.37}{0.57}
+        & \resultcell{85.67}{0.08}
+        & \resultcell{67.69}{0.23}
+        & \resultcell{66.89}{0.20}
+        & \resultcell{70.15}{0.48}
+        & \resultcell{66.68}{0.26}
+        & \resultcell{69.49}{0.15}
+        & \resultcell{71.27}{0.10} \\
+        \raisebox{0.7ex}{DSKD}
+        & \resultcell{86.69}{0.38}
+        & \resultcell{69.76}{0.22}
+        & \resultcell{56.98}{0.39}
+        & \resultcell{84.92}{0.07}
+        & \resultcell{66.75}{0.17}
+        & \resultcell{\textbf{67.23}}{0.10}
+        & \resultcell{68.26}{0.45}
+        & \resultcell{66.28}{0.02}
+        & \resultcell{68.31}{0.35}
+        & \resultcell{70.58}{0.10} \\
+        \raisebox{0.7ex}{EMO}
+        & \resultcell{87.17}{0.59}
+        & \resultcell{71.07}{0.22}
+        & \resultcell{59.32}{0.02}
+        & \resultcell{84.25}{0.41}
+        & \resultcell{67.89}{0.92}
+        & \resultcell{66.09}{0.18}
+        & \resultcell{69.04}{0.38}
+        & \resultcell{62.26}{1.77}
+        & \resultcell{66.47}{0.40}
+        & \resultcell{70.40}{0.35} \\
         \raisebox{0.7ex}{TALAS}
-        & \shortstack{\underline{92.12}\\[-0.4ex]{\tiny $\pm$ 0.02}}
-        & \shortstack{\underline{75.48}\\[-0.4ex]{\tiny $\pm$ 0.23}}
-        & \shortstack{\underline{65.32}\\[-0.4ex]{\tiny $\pm$ 0.72}}
-        & \shortstack{\textbf{87.05}\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\underline{85.39}\\[-0.4ex]{\tiny $\pm$ 0.13}}
-        & \shortstack{\underline{64.40}\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{\underline{78.20}\\[-0.4ex]{\tiny $\pm$ 0.05}}
-        & \shortstack{\underline{71.49}\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{\textbf{81.05}\\[-0.4ex]{\tiny $\pm$ 0.09}}
-        & \shortstack{\underline{77.83}\\[-0.4ex]{\tiny $\pm$ 0.05}} \\
+        & \resultcell{\underline{92.44}}{0.10}
+        & \resultcell{\underline{75.58}}{0.15}
+        & \resultcell{\underline{65.13}}{0.21}
+        & \resultcell{\textbf{87.09}}{0.09}
+        & \resultcell{\underline{85.39}}{0.14}
+        & \resultcell{64.39}{0.12}
+        & \resultcell{\underline{78.14}}{0.06}
+        & \resultcell{\underline{72.56}}{0.13}
+        & \resultcell{\textbf{81.03}}{0.05}
+        & \resultcell{\underline{77.97}}{0.03} \\
         \midrule
-        \raisebox{0.7ex}{\textbf{GeoODE-KD}}
-        & \shortstack{\textbf{92.58}\\[-0.4ex]{\tiny $\pm$ 0.04}}
-        & \shortstack{\textbf{76.40}\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\textbf{66.90}\\[-0.4ex]{\tiny $\pm$ 0.25}}
-        & \shortstack{\underline{86.55}\\[-0.4ex]{\tiny $\pm$ 0.05}}
-        & \shortstack{\textbf{87.34}\\[-0.4ex]{\tiny $\pm$ 0.05}}
-        & \shortstack{63.31\\[-0.4ex]{\tiny $\pm$ 0.02}}
-        & \shortstack{\textbf{79.23}\\[-0.4ex]{\tiny $\pm$ 0.03}}
-        & \shortstack{\textbf{72.72}\\[-0.4ex]{\tiny $\pm$ 0.03}}
-        & \shortstack{\underline{80.60}\\[-0.4ex]{\tiny $\pm$ 0.13}}
-        & \shortstack{\textbf{78.40}\\[-0.4ex]{\tiny $\pm$ 0.04}} \\
+        \raisebox{0.7ex}{\textbf{GATE-KD}}
+        & \resultcell{\textbf{92.56}}{0.04}
+        & \resultcell{\textbf{76.30}}{0.31}
+        & \resultcell{\textbf{65.62}}{0.29}
+        & \resultcell{\underline{86.58}}{0.05}
+        & \resultcell{\textbf{87.20}}{0.06}
+        & \resultcell{63.43}{0.02}
+        & \resultcell{\textbf{79.23}}{0.03}
+        & \resultcell{\textbf{72.69}}{0.05}
+        & \resultcell{\underline{80.60}}{0.13}
+        & \resultcell{\textbf{78.24}}{0.05} \\
         \midrule
         \multicolumn{11}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
@@ -257,84 +258,84 @@
         & 22.08
         & 52.60 \\
         \midrule
-        RKD
-        & 67.41
-        & 69.87
-        & 44.50
-        & 78.38
-        & 64.56
-        & 59.58
-        & 47.60
-        & 21.95
-        & 22.07
-        & 52.88 \\
-        Stella
-        & 84.36
-        & 68.81
-        & 54.01
-        & 81.61
-        & 72.69
-        & \underline{68.53}
-        & 65.30
-        & 61.02
-        & 64.70
-        & 69.00 \\
+        \raisebox{0.7ex}{RKD}
+        & \resultcell{89.74}{0.04}
+        & \resultcell{72.34}{0.22}
+        & \resultcell{57.99}{0.52}
+        & \resultcell{84.13}{0.12}
+        & \resultcell{75.20}{0.14}
+        & \resultcell{\textbf{67.49}}{0.06}
+        & \resultcell{74.48}{0.03}
+        & \resultcell{68.12}{0.15}
+        & \resultcell{72.55}{0.14}
+        & \resultcell{73.56}{0.09} \\
+        \raisebox{0.7ex}{Stella}
+        & \resultcell{85.74}{0.22}
+        & \resultcell{70.25}{0.07}
+        & \resultcell{53.48}{0.28}
+        & \resultcell{84.43}{0.04}
+        & \resultcell{71.23}{0.05}
+        & \resultcell{66.51}{0.14}
+        & \resultcell{70.96}{0.28}
+        & \resultcell{63.02}{0.04}
+        & \resultcell{67.42}{0.24}
+        & \resultcell{70.34}{0.02} \\
         \raisebox{0.7ex}{CDM}
-        & \shortstack{85.16\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{69.12\\[-0.4ex]{\tiny $\pm$ 0.18}}
-        & \shortstack{52.51\\[-0.4ex]{\tiny $\pm$ 0.21}}
-        & \shortstack{83.98\\[-0.4ex]{\tiny $\pm$ 0.09}}
-        & \shortstack{67.97\\[-0.4ex]{\tiny $\pm$ 0.36}}
-        & \shortstack{66.55\\[-0.4ex]{\tiny $\pm$ 0.09}}
-        & \shortstack{69.19\\[-0.4ex]{\tiny $\pm$ 0.19}}
-        & \shortstack{62.92\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{66.50\\[-0.4ex]{\tiny $\pm$ 0.07}}
-        & \shortstack{69.32\\[-0.4ex]{\tiny $\pm$ 0.02}} \\
+        & \resultcell{85.18}{0.08}
+        & \resultcell{69.14}{0.07}
+        & \resultcell{52.30}{0.26}
+        & \resultcell{84.02}{0.04}
+        & \resultcell{68.24}{0.23}
+        & \resultcell{66.57}{0.29}
+        & \resultcell{69.15}{0.13}
+        & \resultcell{63.05}{0.06}
+        & \resultcell{66.55}{0.10}
+        & \resultcell{69.36}{0.08} \\
         \raisebox{0.7ex}{DSKD}
-        & \shortstack{85.00\\[-0.4ex]{\tiny $\pm$ 0.04}}
-        & \shortstack{69.19\\[-0.4ex]{\tiny $\pm$ 0.32}}
-        & \shortstack{52.77\\[-0.4ex]{\tiny $\pm$ 0.31}}
-        & \shortstack{84.44\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{67.44\\[-0.4ex]{\tiny $\pm$ 0.17}}
-        & \shortstack{65.95\\[-0.4ex]{\tiny $\pm$ 0.03}}
-        & \shortstack{69.01\\[-0.4ex]{\tiny $\pm$ 0.21}}
-        & \shortstack{63.59\\[-0.4ex]{\tiny $\pm$ 0.07}}
-        & \shortstack{66.41\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{69.31\\[-0.4ex]{\tiny $\pm$ 0.04}} \\
-        EMO
-        & 84.40
-        & 69.20
-        & 56.13
-        & 81.68
-        & 72.21
-        & 68.22
-        & 63.82
-        & 57.88
-        & 63.34
-        & 68.54 \\
+        & \resultcell{85.04}{0.14}
+        & \resultcell{69.21}{0.13}
+        & \resultcell{52.85}{0.36}
+        & \resultcell{84.34}{0.10}
+        & \resultcell{67.33}{0.24}
+        & \resultcell{65.98}{0.12}
+        & \resultcell{69.01}{0.13}
+        & \resultcell{63.46}{0.21}
+        & \resultcell{66.42}{0.09}
+        & \resultcell{69.29}{0.09} \\
+        \raisebox{0.7ex}{EMO}
+        & \resultcell{85.08}{0.17}
+        & \resultcell{68.11}{0.10}
+        & \resultcell{53.96}{0.60}
+        & \resultcell{84.38}{0.16}
+        & \resultcell{65.48}{0.16}
+        & \resultcell{65.23}{0.17}
+        & \resultcell{68.61}{0.07}
+        & \resultcell{60.00}{0.82}
+        & \resultcell{65.38}{0.38}
+        & \resultcell{68.47}{0.15} \\
         \raisebox{0.7ex}{TALAS}
-        & \shortstack{\underline{89.85}\\[-0.4ex]{\tiny $\pm$ 0.10}}
-        & \shortstack{\underline{73.74}\\[-0.4ex]{\tiny $\pm$ 0.18}}
-        & \shortstack{\underline{63.02}\\[-0.4ex]{\tiny $\pm$ 0.14}}
-        & \shortstack{\textbf{85.96}\\[-0.4ex]{\tiny $\pm$ 0.01}}
-        & \shortstack{\underline{82.02}\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{65.79\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\underline{75.70}\\[-0.4ex]{\tiny $\pm$ 0.04}}
-        & \shortstack{\textbf{73.83}\\[-0.4ex]{\tiny $\pm$ 0.08}}
-        & \shortstack{\underline{78.28}\\[-0.4ex]{\tiny $\pm$ 0.07}}
-        & \shortstack{\underline{76.47}\\[-0.4ex]{\tiny $\pm$ 0.01}} \\
+        & \resultcell{\underline{89.79}}{0.03}
+        & \resultcell{\underline{73.87}}{0.17}
+        & \resultcell{\underline{61.75}}{0.61}
+        & \resultcell{\textbf{85.99}}{0.03}
+        & \resultcell{\underline{82.07}}{0.09}
+        & \resultcell{65.79}{0.04}
+        & \resultcell{\underline{75.67}}{0.05}
+        & \resultcell{\textbf{73.91}}{0.03}
+        & \resultcell{\underline{78.31}}{0.04}
+        & \resultcell{\underline{76.35}}{0.08} \\
         \midrule
-        \raisebox{0.7ex}{\textbf{GeoODE-KD}}
-        & \shortstack{\textbf{91.69}\\[-0.4ex]{\tiny $\pm$ 0.13}}
-        & \shortstack{\textbf{74.36}\\[-0.4ex]{\tiny $\pm$ 0.18}}
-        & \shortstack{\textbf{66.76}\\[-0.4ex]{\tiny $\pm$ 0.37}}
-        & \shortstack{\underline{84.99}\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\textbf{83.53}\\[-0.4ex]{\tiny $\pm$ 0.01}}
-        & \shortstack{67.35\\[-0.4ex]{\tiny $\pm$ 0.04}}
-        & \shortstack{\textbf{77.98}\\[-0.4ex]{\tiny $\pm$ 0.06}}
-        & \shortstack{\underline{72.20}\\[-0.4ex]{\tiny $\pm$ 0.01}}
-        & \shortstack{\textbf{78.32}\\[-0.4ex]{\tiny $\pm$ 0.04}}
-        & \shortstack{\textbf{77.47}\\[-0.4ex]{\tiny $\pm$ 0.04}} \\
+        \raisebox{0.7ex}{\textbf{GATE-KD}}
+        & \resultcell{\textbf{91.68}}{0.09}
+        & \resultcell{\textbf{74.43}}{0.21}
+        & \resultcell{\textbf{66.88}}{0.36}
+        & \resultcell{\underline{85.00}}{0.06}
+        & \resultcell{\textbf{83.46}}{0.02}
+        & \resultcell{\underline{67.44}}{0.04}
+        & \resultcell{\textbf{77.94}}{0.06}
+        & \resultcell{\underline{72.17}}{0.02}
+        & \resultcell{\textbf{78.36}}{0.07}
+        & \resultcell{\textbf{77.48}}{0.04} \\
         \bottomrule
     \end{tabular}
 \end{table}

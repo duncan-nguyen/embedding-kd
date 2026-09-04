@@ -1,4 +1,4 @@
-"""GeoODE-KD: endpoint distillation of sentence embeddings against a frozen teacher map.
+"""GATE-KD: endpoint distillation of sentence embeddings against a frozen teacher map.
 
 The objective is L_end + L_ctr (Eq. 38): the student's final layer is anchored on
 the teacher endpoint (Eq. 36) and regularised by InfoNCE over two dropout views
@@ -26,15 +26,17 @@ import torch.nn.functional as F
 from torch import nn
 
 from src.criterions.h0_topological_loss import (
-    chunk_count,
-    split_chunks,
     Metric,
+    chunk_count,
     h0_death_times,
     h0_loss_against_deaths,
     h0_topological_loss,
+    split_chunks,
 )
 from src.criterions.h1_topological_loss import (
     MIN_BATCH as H1_MIN_BATCH,
+)
+from src.criterions.h1_topological_loss import (
     h1_diagram,
     h1_loss_against_diagram,
     h1_topological_loss,
@@ -346,9 +348,7 @@ class GeoODEKD(nn.Module):
             final_state, teacher_diagram, metric=self.topo_metric
         )
 
-    def h1_loss(
-        self, final_state: torch.Tensor, teacher: torch.Tensor
-    ) -> torch.Tensor:
+    def h1_loss(self, final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
         """``W_2^2`` between the two batches' 1-dimensional persistence diagrams.
 
         Where the H0 term reads how the cloud merges, this reads what it encloses:

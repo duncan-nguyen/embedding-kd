@@ -139,7 +139,7 @@ METHOD_SETTINGS = {
 # The point cloud L_topo reads, in rows, separately from the optimizer's batch:
 # 0 is one diagram per training batch. Copied from the notebook's cell 1, like
 # everything else in this block.
-GEOODE_H0_BATCH_SIZE = 0
+GEOODE_H0_BATCH_SIZE = 128
 
 GEOODE_EXTRA = [
     "--lambda_topo", "1.0",
@@ -445,6 +445,10 @@ def scores_by_seed(args, run_root, pair_name):
             for key in SUMMARY_ORDER:
                 value = summary.get(key)
                 row[key] = np.nan if value is None else float(value)
+            # Recompute from raw per-benchmark scores so aggregating a run written
+            # before retrieval was separated does not preserve its legacy avg_all.
+            sentence_scores = [row[name] for name in BENCHMARK_ORDER if name in row]
+            row["avg_all"] = float(np.mean(sentence_scores))
             rows.append(row)
     return pd.DataFrame(rows), missing
 
@@ -496,8 +500,12 @@ def timing_by_seed(args, run_root, pair_name):
     return pd.DataFrame(rows)
 
 
-def mean_sd(mean, sd, digits=2):
-    return f"{mean:.{digits}f} ± {sd:.{digits}f}"
+def mean_sd(mean, sd, digits=2, separator=" ± "):
+    """Sample std is undefined on a single seed, and f"{nan:.2f}" prints "nan"; a
+    one-seed run reports the mean alone and the _n column says it is one."""
+    if pd.isna(sd):
+        return f"{mean:.{digits}f}"
+    return f"{mean:.{digits}f}{separator}{sd:.{digits}f}"
 
 
 def aggregate_pair(args, run_root, pair_name):
@@ -538,7 +546,8 @@ def aggregate_pair(args, run_root, pair_name):
             mean_sd(m * 100, s * 100) for m, s in zip(means[metric], stds[metric])
         ]
         paper_latex[metric] = [
-            f"{m * 100:.2f} $\\pm$ {s * 100:.2f}" for m, s in zip(means[metric], stds[metric])
+            mean_sd(m * 100, s * 100, separator=" $\\pm$ ")
+            for m, s in zip(means[metric], stds[metric])
         ]
 
     by_seed.to_csv(out_dir / "final_test_by_seed.csv", index=False)
@@ -577,7 +586,8 @@ def aggregate_pair(args, run_root, pair_name):
         table.drop(columns="n").to_latex(index=False, escape=False), encoding="utf-8"
     )
 
-    print(f"\n=== {pair_name} — final test, mean ± sample std (x100) ===")
+    label = "mean ± sample std" if len(args.seeds) > 1 else "mean (one seed, no std)"
+    print(f"\n=== {pair_name} — final test, {label} (x100) ===")
     print(paper_display.to_string())
     print(f"\n=== {pair_name} — efficiency ===")
     print(table.to_string(index=False))
@@ -628,7 +638,7 @@ def ensure_data(args, train_data):
 
     retrieval_dir = REPO_ROOT / "data" / "test_set" / "retrieval"
     missing_retrieval = [
-        name for name in ("arguana", "fiqa", "scidocs")
+        name for name in ("arguana", "fiqa", "scidocs", "scifact", "nfcorpus")
         if not (retrieval_dir / name / "corpus.csv").is_file()
     ]
     build = DATASETS[args.dataset]["build"]
@@ -703,8 +713,11 @@ def parse_args(argv=None):
                         action="store_false", help="fail instead of building missing data")
     parser.add_argument("--skip-gpu-check", action="store_true")
     args = parser.parse_args(argv)
-    if len(set(args.seeds)) != len(args.seeds) or len(args.seeds) < 2:
-        parser.error("--seeds must be at least two distinct values")
+    if not args.seeds or len(set(args.seeds)) != len(args.seeds):
+        # One seed is allowed: a smoke run, or a single setting checked before paying
+        # for the full grid. It only costs the std column, which aggregate_pair drops
+        # rather than printing "nan".
+        parser.error("--seeds must be distinct and non-empty")
     return args
 
 

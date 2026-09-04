@@ -90,19 +90,19 @@ def parse_args():
         "--lambda_end",
         type=float,
         default=None,
-        help="GeoODE-KD: weight of the endpoint distillation loss",
+        help="GATE-KD: weight of the endpoint distillation loss",
     )
     parser.add_argument(
         "--lambda_ctr",
         type=float,
         default=None,
-        help="GeoODE-KD: weight of the contrastive regularizer",
+        help="GATE-KD: weight of the contrastive regularizer",
     )
     parser.add_argument(
         "--endpoint_loss",
         choices=["cosine", "mse", "procrustes"],
         default=None,
-        help='GeoODE-KD: form of the endpoint term. "cosine" is the recipe; "mse" is '
+        help='GATE-KD: form of the endpoint term. "cosine" is the recipe; "mse" is '
         "the sentence-transformers <= v5.4 baseline (squared error between the "
         "unnormalised student state and the projected, un-renormalised teacher "
         "target; per-sample sum over dimensions, batch mean, so it is on the "
@@ -115,7 +115,7 @@ def parse_args():
         "--lambda_gram",
         type=float,
         default=None,
-        help="GeoODE-KD: weight of a pairwise-similarity (Gram) term between student "
+        help="GATE-KD: weight of a pairwise-similarity (Gram) term between student "
         'and target batch Gram matrices. 0 is the recipe; > 0 is the "+ Gram" '
         "control of the recipe ablation",
     )
@@ -123,7 +123,7 @@ def parse_args():
         "--lambda_topo",
         type=float,
         default=None,
-        help="GeoODE-KD: weight of the topological term L_topo = L_H0 + "
+        help="GATE-KD: weight of the topological term L_topo = L_H0 + "
         "lambda_h1 * L_H1, comparing the student batch's persistence diagrams to "
         'those of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ '
         'topo" control. Death times are O(1), so sweep the weight over decades',
@@ -132,7 +132,7 @@ def parse_args():
         "--lambda_h1",
         type=float,
         default=None,
-        help="GeoODE-KD: weight lambda_1 of the H1 half of L_topo -- W_2^2 between "
+        help="GATE-KD: weight lambda_1 of the H1 half of L_topo -- W_2^2 between "
         "the teacher's and the student's 1-dimensional persistence diagrams, "
         "low-persistence cycles matched to the diagonal. 0 leaves L_topo the pure "
         "H0 term. Requires the optional 'gudhi' package and costs O(B^3) simplices "
@@ -142,7 +142,7 @@ def parse_args():
         "--topo_batch_size",
         type=int,
         default=None,
-        help="GeoODE-KD: rows in the point cloud the topological terms read "
+        help="GATE-KD: rows in the point cloud the topological terms read "
         "(0 = the training batch, one diagram per step). A value b >= 2 splits every "
         "batch into B // b clouds of b rows and averages their losses, so the "
         "filtration scale (L_H0 compares b - 1 death times) can be swept without "
@@ -152,14 +152,14 @@ def parse_args():
         "--topo_metric",
         choices=["chord", "angular", "cosine"],
         default=None,
-        help="GeoODE-KD: ground metric of the H0 diagram on the unit sphere -- "
+        help="GATE-KD: ground metric of the H0 diagram on the unit sphere -- "
         '"chord" (Euclidean), "angular" (geodesic) or "cosine" (1 - cos)',
     )
     parser.add_argument(
         "--topo_teacher_source",
         choices=["original", "projected"],
         default=None,
-        help="GeoODE-KD: teacher cloud for H0. 'original' uses the native d_T "
+        help="GATE-KD: teacher cloud for H0. 'original' uses the native d_T "
         "cache; 'projected' uses the frozen d_S endpoint targets",
     )
     parser.add_argument(
@@ -173,7 +173,7 @@ def parse_args():
             "learned_s2t",
         ],
         default=None,
-        help='GeoODE-KD: how the teacher targets reach the student dimension. "pca" '
+        help='GATE-KD: how the teacher targets reach the student dimension. "pca" '
         'is the paper\'s frozen spectral map; "random" draws a Haar-random '
         'orthonormal subspace and "random_gaussian" an unnormalised '
         "Johnson-Lindenstrauss map -- the two data-independent controls for the "
@@ -187,7 +187,7 @@ def parse_args():
         "--projection_seed",
         type=int,
         default=None,
-        help="GeoODE-KD: draw index of the random teacher projection. Different "
+        help="GATE-KD: draw index of the random teacher projection. Different "
         "seeds are different draws of the same control, so their spread is the "
         "null band the PCA map has to clear",
     )
@@ -195,7 +195,7 @@ def parse_args():
         "--learned_projector_lr_scale",
         type=float,
         default=None,
-        help="GeoODE-KD: learning rate of a learned target map (--projection_type "
+        help="GATE-KD: learning rate of a learned target map (--projection_type "
         "learned_*) as a multiple of the student's. The learned arms are the "
         "baselines the frozen map is measured against, so they get a sweep "
         "(e.g. 1 and 5) rather than a single untuned setting",
@@ -204,7 +204,7 @@ def parse_args():
         "--pca_center_fit",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="GeoODE-KD: centre the cache before the SVD that picks the directions. "
+        help="GATE-KD: centre the cache before the SVD that picks the directions. "
         "--no-pca_center_fit is the uncentered-SVD ablation, in which the "
         "teacher mean vector may itself be the first retained direction",
     )
@@ -212,21 +212,21 @@ def parse_args():
         "--pca_subtract_mean",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="GeoODE-KD: subtract the corpus mean before applying P_T (textbook PCA, "
+        help="GATE-KD: subtract the corpus mean before applying P_T (textbook PCA, "
         "removes the common component of the teacher embeddings)",
     )
     parser.add_argument(
         "--gauge_align",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="GeoODE-KD: Procrustes-align the PCA target coordinates to the untrained "
+        help="GATE-KD: Procrustes-align the PCA target coordinates to the untrained "
         "student (P_T = P_PCA R). --no-gauge_align is the ablation",
     )
     parser.add_argument(
         "--gauge_rotation",
         choices=["procrustes", "random", "interpolate", "rank_one"],
         default=None,
-        help='GeoODE-KD: which rotation --gauge_align applies. "procrustes" is the '
+        help='GATE-KD: which rotation --gauge_align applies. "procrustes" is the '
         'informative gauge fitted to the student init; "random" is a '
         "Haar-random rotation of identical cost, the control that separates "
         '"the right orientation" from "an orientation"; "interpolate" is the '
@@ -238,20 +238,20 @@ def parse_args():
         "--gauge_theta",
         type=float,
         default=None,
-        help="GeoODE-KD: theta in [0, 1] for --gauge_rotation interpolate "
+        help="GATE-KD: theta in [0, 1] for --gauge_rotation interpolate "
         "(0 = Procrustes, 1 = random)",
     )
     parser.add_argument(
         "--gauge_random_seed",
         type=int,
         default=None,
-        help="GeoODE-KD: draw index of the random gauge rotation Q",
+        help="GATE-KD: draw index of the random gauge rotation Q",
     )
     parser.add_argument(
         "--gauge_refit_every",
         type=int,
         default=None,
-        help="GeoODE-KD: re-estimate the gauge R against the current student every N "
+        help="GATE-KD: re-estimate the gauge R against the current student every N "
         "epochs using the fixed calibration subset selected before training "
         "(paper default: 1; 0 = keep the initial gauge)",
     )
@@ -259,7 +259,7 @@ def parse_args():
         "--gauge_align_samples",
         type=int,
         default=None,
-        help="GeoODE-KD: size of the calibration subset selected once before "
+        help="GATE-KD: size of the calibration subset selected once before "
         "training and reused for the initial Procrustes fit and every refit",
     )
     parser.add_argument(
@@ -302,8 +302,8 @@ def parse_args():
         "--student_pooling",
         choices=["cls", "mean"],
         default=None,
-        help="GeoODE-KD/RKD/SimCSE: pooling of the student sentence vector "
-        "(GeoODE-KD applies it at every layer)",
+        help="GATE-KD/RKD/SimCSE: pooling of the student sentence vector "
+        "(GATE-KD applies it at every layer)",
     )
     parser.add_argument(
         "--evaluate_test_each_epoch",
@@ -330,8 +330,8 @@ def parse_args():
     parser.add_argument(
         "--no_eval_retrieval",
         action="store_true",
-        help="Skip the ArguAna/FiQA/SCIDOCS nDCG@10 pass in the final test "
-        "evaluation (it embeds ~92k documents)",
+        help="Skip the ArguAna/FiQA/SCIDOCS/SciFact/NFCorpus nDCG@10 pass in the "
+        "final test evaluation (it embeds ~101k documents)",
     )
     parser.add_argument(
         "--eval_every",

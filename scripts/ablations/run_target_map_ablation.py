@@ -206,9 +206,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no_retrieval",
         action="store_true",
-        help="skip ArguAna/FiQA/SCIDOCS. They are ~92k documents to encode per cell, "
-             "so this is the switch that makes a large grid affordable -- at the cost "
-             "of avg_retrieval and of avg_all meaning the same thing as elsewhere",
+        help="skip ArguAna/FiQA/SCIDOCS/SciFact/NFCorpus. They are ~101k documents "
+             "to encode per cell, so this is the switch that makes a large grid "
+             "affordable -- at the cost of omitting avg_retrieval; avg_all remains "
+             "the same nine-task sentence-level aggregate",
     )
     parser.add_argument(
         "--cache_dir",

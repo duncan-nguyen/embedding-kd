@@ -2,7 +2,7 @@ from .base_config import BaseConfig
 
 
 class GeoODEConfig(BaseConfig):
-    """GeoODE-KD: fixed PCA subspace with epoch-wise gauge alignment."""
+    """GATE-KD: fixed PCA subspace with epoch-wise gauge alignment."""
 
     distill_method = "geoode"
 

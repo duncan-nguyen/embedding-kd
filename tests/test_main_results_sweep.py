@@ -54,7 +54,14 @@ def test_the_sweep_settings_are_the_notebook_settings(sweep, notebook_settings):
     assert sweep.PAIRS == notebook_settings["PAIRS"]
     assert sweep.METHOD_SETTINGS == notebook_settings["METHOD_SETTINGS"]
     assert sweep.DATASETS == notebook_settings["DATASETS"]
-    assert sweep.DEFAULT_SEEDS == notebook_settings["SEEDS"]
+    # SEEDS is the one setting that is a per-run choice rather than the recipe: the
+    # notebook edits it in place (one seed for a smoke run, three for the paper table)
+    # while the script takes it as --seeds and keeps its own default grid. What has to
+    # hold is that the script can be asked for exactly the seeds the notebook ran.
+    notebook_seeds = notebook_settings["SEEDS"]
+    assert sweep.parse_args(
+        ["--seeds", *(str(seed) for seed in notebook_seeds)]
+    ).seeds == notebook_seeds
     assert sweep.DEFAULT_DATASET == notebook_settings["DATASET"]
     assert sweep.EPOCHS == notebook_settings["EPOCHS"]
     assert sweep.MAX_LENGTH == notebook_settings["MAX_LENGTH"]
@@ -193,8 +200,17 @@ def test_the_commands_parse_as_main_py_arguments(sweep):
             assert config.seed == 42
 
 
-def test_seeds_must_support_a_sample_standard_deviation(sweep):
-    with pytest.raises(SystemExit):
-        sweep.parse_args(["--seeds", "42"])
+def test_seeds_must_be_distinct_but_a_single_seed_is_allowed(sweep):
+    """A repeated seed is two copies of one run wearing the std of a real pair, so it
+    stays an error. One seed is not: it is a smoke run, or a single setting checked
+    before paying for the full grid, and it simply has no std column."""
+    assert sweep.parse_args(["--seeds", "42"]).seeds == [42]
     with pytest.raises(SystemExit):
         sweep.parse_args(["--seeds", "42", "42", "43"])
+
+
+def test_a_single_seed_table_prints_the_mean_without_a_std(sweep):
+    import numpy as np
+
+    assert sweep.mean_sd(76.25, np.nan) == "76.25"
+    assert sweep.mean_sd(76.25, 0.4) == "76.25 ± 0.40"

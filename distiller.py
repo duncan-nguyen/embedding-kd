@@ -98,7 +98,9 @@ IOD_BENCHMARKS = frozenset({"emotion", "wic", "stsb"})
 # Scored by nDCG@10 over a whole corpus rather than over a sentence pair, so
 # they get their own summary row instead of diluting the sentence-level AVG
 # (OOD) that earlier runs are reported against.
-RETRIEVAL_BENCHMARKS = frozenset({"arguana", "fiqa", "scidocs"})
+RETRIEVAL_BENCHMARKS = frozenset(
+    {"arguana", "fiqa", "scidocs", "scifact", "nfcorpus"}
+)
 
 
 def should_save_epoch(epoch_index: int, save_every: int) -> bool:
@@ -361,7 +363,7 @@ class KnowledgeDistiller:
         return criterion
 
     def _build_geoode_criterion(self):
-        # GeoODE-KD holds no parameters of its own: the targets are fitted and
+        # GATE-KD holds no parameters of its own: the targets are fitted and
         # frozen before training, so nothing is added to the optimizer and the
         # deployed student is the unmodified encoder. The learned-projector
         # baselines are the exception, and the only one -- they put a trainable
@@ -403,7 +405,7 @@ class KnowledgeDistiller:
                 "inference is still the plain student encoder"
             )
         print(
-            "GeoODE-KD criterion initialized: "
+            "GATE-KD criterion initialized: "
             f"lambda_end={cfg.lambda_end}, lambda_ctr={cfg.lambda_ctr}, "
             f"endpoint_loss={getattr(cfg, 'endpoint_loss', 'cosine')}, "
             f"lambda_gram={float(getattr(cfg, 'lambda_gram', 0.0) or 0.0)}, "
@@ -752,7 +754,7 @@ class KnowledgeDistiller:
 
         self.task_head = self._build_task_head(df)
 
-        # TALAS, GeoODE-KD and RKD all train against cached teacher embeddings only:
+        # TALAS, GATE-KD and RKD all train against cached teacher embeddings only:
         # the teacher is run once, offline, and never during student optimization.
         if cfg.distill_method in ("talas", "geoode", "rkd"):
             self._setup_cached_teacher_data(df)
@@ -1285,7 +1287,7 @@ class KnowledgeDistiller:
             "gauge_align": bool(getattr(cfg, "gauge_align", False)),
             "gauge_rotation": gauge_mode,
             "gauge_refit_every": refit_every,
-            "gauge_fit_samples": 0 if gauge_index is None else int(len(gauge_index)),
+            "gauge_fit_samples": 0 if gauge_index is None else len(gauge_index),
             "gauge_subset_policy": "fixed_evenly_spaced",
             "gauge_stats": gauge_stats,
         }
@@ -1956,7 +1958,7 @@ class KnowledgeDistiller:
             )
             # The same in-batch contrastive term the other cached-teacher
             # methods carry, but not at the same strength: TALAS weights it
-            # 0.001 and GeoODE-KD reads it through lambda_ctr at temperature
+            # 0.001 and GATE-KD reads it through lambda_ctr at temperature
             # 0.05, against w_task=1.0 at temperature 0.1 here. The rows
             # therefore differ by how much of the student's own objective is in
             # the total, not by the KD term alone.
@@ -2307,7 +2309,9 @@ class KnowledgeDistiller:
             # Read before the step so the criterion and the optimizer step agree on
             # whether this is a measured one. Nothing this switches changes the
             # gradient; it only decides what gets reported alongside it.
-            self._diagnostics_now = diag_every > 0 and self.global_step % diag_every == 0
+            self._diagnostics_now = (
+                diag_every > 0 and self.global_step % diag_every == 0
+            )
             if self.criterion is not None and hasattr(self.criterion, "diagnostics"):
                 self.criterion.diagnostics = self._diagnostics_now
 
@@ -2575,7 +2579,7 @@ class KnowledgeDistiller:
     def _benchmark_group_averages(
         scores_by_benchmark: dict[str, float],
     ) -> dict[str, dict[str, Any]]:
-        """Average the primary scores over IOD, OOD, retrieval and all benchmarks.
+        """Average primary scores over IOD, OOD, retrieval and sentence-level tasks.
 
         Every benchmark contributes its own primary metric (macro-F1, AP, Spearman
         or nDCG@10), all on a 0-1 scale, so the groups are unweighted means over
@@ -2583,8 +2587,9 @@ class KnowledgeDistiller:
 
         The IOD/OOD split covers the sentence-level probes only: retrieval is held
         out from both and reported on its own row, so AVG (IOD) and AVG (OOD) keep
-        meaning what they meant before retrieval was added. AVG (ALL) spans
-        everything.
+        meaning what they meant before retrieval was added. AVG (ALL) likewise
+        stays the aggregate of all sentence-level benchmarks; retrieval is reported
+        exclusively through AVG (RETRIEVAL).
         """
         sentence_level = [
             name for name in scores_by_benchmark if name not in RETRIEVAL_BENCHMARKS
@@ -2604,7 +2609,7 @@ class KnowledgeDistiller:
                     name for name in scores_by_benchmark if name in RETRIEVAL_BENCHMARKS
                 ),
             ),
-            "avg_all": ("AVG (ALL)", sorted(scores_by_benchmark)),
+            "avg_all": ("AVG (ALL)", sorted(sentence_level)),
         }
         return {
             key: {
@@ -2761,7 +2766,7 @@ class KnowledgeDistiller:
             thresholds=thresholds,
         )
         sts = eval_sts_task(student_model, sts_tasks, self.tok_student)
-        # Retrieval has no validation qrels and embedding the three corpora is ~92k
+        # Retrieval has no validation qrels and embedding the five corpora is ~101k
         # forward passes, so it is scored on the test split only.
         retrieval = {}
         if split == "test" and getattr(self.config, "eval_retrieval", True):
@@ -2840,9 +2845,7 @@ class KnowledgeDistiller:
             record.update(self._drift.measure(self.model_student))
         self.log_probe_records(record)
         if getattr(self, "use_wandb", False) and WANDB_AVAILABLE:
-            wandb.log(
-                self._flatten_metrics("probe", record), step=self.global_step
-            )
+            wandb.log(self._flatten_metrics("probe", record), step=self.global_step)
 
     def log_step_records(self, records: list[dict]):
         """Append one JSONL line per training step to `step_metrics.jsonl`.

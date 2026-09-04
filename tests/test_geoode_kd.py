@@ -1,4 +1,4 @@
-"""Tests for GeoODE-KD.
+"""Tests for GATE-KD.
 
 The objective is L_end + L_ctr: an endpoint anchored on the frozen teacher target
 (Eq. 36) and an InfoNCE regulariser over two dropout views (Eq. 37). These tests pin
@@ -82,6 +82,7 @@ def test_negative_objective_weights_are_rejected():
     with pytest.raises(ValueError, match="must be non-negative"):
         GeoODEKD(lambda_ctr=-1.0)
 
+
 def test_contrastive_term_is_skipped_without_a_second_view():
     criterion = _criterion(lambda_ctr=0.5)
     hidden_states = [torch.randn(4, 5, 8) for _ in range(4)]
@@ -122,6 +123,7 @@ def test_teacher_dimension_mismatch_is_rejected():
 
     with pytest.raises(ValueError, match="projected into the student dimension"):
         criterion(hidden_states=hidden_states, teacher=torch.randn(4, 16))
+
 
 def test_pca_projection_maps_onto_the_student_sphere():
     generator = torch.Generator().manual_seed(50)
@@ -179,11 +181,14 @@ def test_pca_projection_rejects_a_non_positive_dimension():
     with pytest.raises(ValueError, match="out_dim must be positive"):
         fit_pca_projection(torch.randn(16, 32), out_dim=0)
 
+
 def test_gauge_alignment_recovers_a_hidden_rotation():
     """If the student is the target seen through an unknown rotation, Procrustes
     finds that rotation and the aligned targets coincide with the student."""
     generator = torch.Generator().manual_seed(300)
-    targets = torch.nn.functional.normalize(torch.randn(400, 16, generator=generator), dim=-1)
+    targets = torch.nn.functional.normalize(
+        torch.randn(400, 16, generator=generator), dim=-1
+    )
     hidden, _ = torch.linalg.qr(torch.randn(16, 16, generator=generator))
     student = targets @ hidden
 
@@ -199,8 +204,12 @@ def test_gauge_alignment_leaves_the_relational_geometry_unchanged():
     """R rotates inside the PCA subspace: the Gram matrix, and therefore the
     relational geometry and the retained variance, are exactly what they were."""
     generator = torch.Generator().manual_seed(310)
-    targets = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
-    student = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
+    targets = torch.nn.functional.normalize(
+        torch.randn(300, 12, generator=generator), dim=-1
+    )
+    student = torch.nn.functional.normalize(
+        torch.randn(300, 12, generator=generator), dim=-1
+    )
 
     rotation, _ = fit_gauge_alignment(targets, student)
     aligned = targets @ rotation
@@ -219,22 +228,30 @@ def test_gauge_refit_never_lowers_the_cosine_of_the_current_student():
     O(d), so the cosine under the refit gauge is at least the cosine under any
     earlier gauge (here: the one fitted to a different, earlier student)."""
     generator = torch.Generator().manual_seed(320)
-    targets = torch.nn.functional.normalize(torch.randn(500, 16, generator=generator), dim=-1)
+    targets = torch.nn.functional.normalize(
+        torch.randn(500, 16, generator=generator), dim=-1
+    )
     student_initial = torch.nn.functional.normalize(
         targets + 0.8 * torch.randn(500, 16, generator=generator), dim=-1
     )
     rotation_initial, _ = fit_gauge_alignment(targets, student_initial)
     drift, _ = torch.linalg.qr(torch.randn(16, 16, generator=generator))
     student_later = torch.nn.functional.normalize(
-        (targets @ rotation_initial @ drift) + 0.3 * torch.randn(500, 16, generator=generator),
+        (targets @ rotation_initial @ drift)
+        + 0.3 * torch.randn(500, 16, generator=generator),
         dim=-1,
     )
 
-    under_old_gauge = float(((targets @ rotation_initial) * student_later).sum(dim=-1).mean())
+    under_old_gauge = float(
+        ((targets @ rotation_initial) * student_later).sum(dim=-1).mean()
+    )
     _, stats = fit_gauge_alignment(targets, student_later)
 
     assert stats["cos_after"] >= under_old_gauge - 1e-6
-    assert stats["cos_after"] > under_old_gauge + 0.1  # the drift was large, so the refit must matter
+    assert (
+        stats["cos_after"] > under_old_gauge + 0.1
+    )  # the drift was large, so the refit must matter
+
 
 def test_the_supervised_depth_is_the_last_layer_alone():
     """``include_embedding_layer`` shifts which state ``cos_first`` reports, but only
@@ -292,13 +309,17 @@ def test_mse_endpoint_regresses_the_raw_state_onto_the_raw_target():
     hidden_states = [
         torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)
     ]
-    teacher = 0.7 * torch.randn(batch, dim, generator=generator)  # deliberately not unit
+    teacher = 0.7 * torch.randn(
+        batch, dim, generator=generator
+    )  # deliberately not unit
 
     total, metrics = criterion(hidden_states=hidden_states, teacher=teacher)
 
     raw_final = hidden_states[-1][:, 0, :]
     expected = ((raw_final - teacher) ** 2).sum(dim=-1).mean()
-    assert float(expected) == pytest.approx(dim * float(torch.nn.functional.mse_loss(raw_final, teacher)), rel=1e-5)
+    assert float(expected) == pytest.approx(
+        dim * float(torch.nn.functional.mse_loss(raw_final, teacher)), rel=1e-5
+    )
     assert float(total) == pytest.approx(float(expected), rel=1e-5)
     assert metrics["loss_end"] == pytest.approx(float(expected), rel=1e-5)
     unit_final = torch.nn.functional.normalize(raw_final, dim=-1)
@@ -312,7 +333,9 @@ def test_cosine_endpoint_is_unchanged_by_the_new_option():
     criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0)
     batch, dim, tokens = 3, 6, 4
     generator = torch.Generator().manual_seed(8)
-    hidden_states = [torch.randn(batch, tokens, dim, generator=generator) for _ in range(3)]
+    hidden_states = [
+        torch.randn(batch, tokens, dim, generator=generator) for _ in range(3)
+    ]
     teacher = torch.randn(batch, dim, generator=generator)
     total, _ = criterion(hidden_states=hidden_states, teacher=teacher)
     unit_final = torch.nn.functional.normalize(hidden_states[-1][:, 0, :], dim=-1)
@@ -331,7 +354,9 @@ def test_unknown_endpoint_loss_and_mse_with_projector_are_rejected():
 
 def test_projection_can_skip_the_final_renormalisation():
     generator = torch.Generator().manual_seed(9)
-    teacher = torch.nn.functional.normalize(torch.randn(64, 12, generator=generator), dim=-1)
+    teacher = torch.nn.functional.normalize(
+        torch.randn(64, 12, generator=generator), dim=-1
+    )
     projection, mean = fit_pca_projection(teacher, out_dim=4, center=True)
     raw = project_teacher_embeddings(teacher, projection, mean=mean, renormalize=False)
     unit = project_teacher_embeddings(teacher, projection, mean=mean)
@@ -345,7 +370,9 @@ def test_projection_can_skip_the_final_renormalisation():
 # --------------------------------------------------------------------------- #
 
 
-def _hidden_stack(layers: int, batch: int = 4, tokens: int = 5, dim: int = 8, seed: int = 5):
+def _hidden_stack(
+    layers: int, batch: int = 4, tokens: int = 5, dim: int = 8, seed: int = 5
+):
     generator = torch.Generator().manual_seed(seed)
     return [
         torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)
@@ -478,7 +505,9 @@ def test_a_precomputed_diagram_wins_over_the_raw_cache():
 # --------------------------------------------------------------------------- #
 
 
-def _diag_batch(batch: int = 6, dim: int = 8, tokens: int = 5, layers: int = 4, seed: int = 7):
+def _diag_batch(
+    batch: int = 6, dim: int = 8, tokens: int = 5, layers: int = 4, seed: int = 7
+):
     generator = torch.Generator().manual_seed(seed)
     hidden_states = [
         torch.randn(batch, tokens, dim, generator=generator, requires_grad=True)
@@ -527,14 +556,20 @@ def test_grad_norms_carry_the_weight_each_term_enters_with():
     )
 
     # Same term, same batch, a hundredth of the weight: a hundredth of the pull.
-    assert quiet_metrics["g_ctr"] == pytest.approx(0.01 * loud_metrics["g_ctr"], rel=1e-4)
+    assert quiet_metrics["g_ctr"] == pytest.approx(
+        0.01 * loud_metrics["g_ctr"], rel=1e-4
+    )
     # ... while the reported term value is unchanged, which is the whole point.
-    assert quiet_metrics["loss_ctr"] == pytest.approx(loud_metrics["loss_ctr"], rel=1e-6)
+    assert quiet_metrics["loss_ctr"] == pytest.approx(
+        loud_metrics["loss_ctr"], rel=1e-6
+    )
 
 
 def test_a_disabled_term_reports_zero_pull_rather_than_no_key():
     hidden_states, teacher, second_view = _diag_batch()
-    criterion = _criterion(lambda_end=1.0, lambda_ctr=0.0, lambda_gram=0.0, diagnostics=True)
+    criterion = _criterion(
+        lambda_end=1.0, lambda_ctr=0.0, lambda_gram=0.0, diagnostics=True
+    )
 
     _, metrics = criterion(
         hidden_states=hidden_states, teacher=teacher, second_view=second_view

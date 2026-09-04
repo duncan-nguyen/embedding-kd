@@ -1,6 +1,6 @@
 """The retrieval scorer, checked against hand-computed BEIR numbers.
 
-nDCG@10 is the headline number of the three new benchmarks, so the gain and
+nDCG@10 is the headline number of the five retrieval benchmarks, so the gain and
 discount conventions, the rank-0 cut and ArguAna's self-match exclusion are all
 pinned here rather than trusted to read correctly.
 """
@@ -99,7 +99,13 @@ def test_ranking_is_by_cosine_not_dot_product():
 
 @pytest.mark.parametrize(
     "name,documents,queries",
-    [("arguana", 8674, 1406), ("fiqa", 57638, 648), ("scidocs", 25657, 1000)],
+    [
+        ("arguana", 8674, 1406),
+        ("fiqa", 57638, 648),
+        ("scidocs", 25657, 1000),
+        ("scifact", 5183, 300),
+        ("nfcorpus", 3633, 323),
+    ],
 )
 def test_downloaded_benchmarks_match_beir(name, documents, queries):
     benchmark = pytest.importorskip("pandas") and load_benchmark(

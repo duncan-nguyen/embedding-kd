@@ -12,8 +12,8 @@ the unlabelled objective:
 * `is_selected`, `answers` and the qrels are never read. Nothing but raw text is
   written, so the training objective is unchanged;
 * MS MARCO is a *training* source for the retrieval evaluation, never a test one:
-  ArguAna, FiQA and SCIDOCS contribute nothing here, which keeps the retrieval
-  numbers zero-shot cross-dataset rather than in-domain.
+  ArguAna, FiQA, SCIDOCS, SciFact and NFCorpus contribute nothing here, which
+  keeps the retrieval numbers zero-shot cross-dataset rather than in-domain.
 
 The base sample is identical at every size and the MS MARCO rows are accepted in a
 fixed permutation order, so a larger rung *extends* a smaller one instead of
@@ -26,7 +26,7 @@ re-run reproduces the corpus byte for byte.
 
 Every new text is checked, on normalised form, against the rows already in the
 100k base, against the other new rows, and against the queries and corpora of all
-three retrieval benchmarks plus every existing test and validation split. A hit is
+five retrieval benchmarks plus every existing test and validation split. A hit is
 dropped and counted.
 
 Requires `python scripts/data/download_retrieval_benchmarks.py` first.
@@ -60,7 +60,7 @@ MSMARCO_SHA = "a47ee7aae8d7d466ba15f9f0bfac3b3681087b3a"
 # shard keeps the download at 240 MB and the sample reproducible.
 MSMARCO_SHARD = "v2.1/train-00000-of-00007.parquet"
 
-RETRIEVAL_BENCHMARKS = ("arguana", "fiqa", "scidocs")
+RETRIEVAL_BENCHMARKS = ("arguana", "fiqa", "scidocs", "scifact", "nfcorpus")
 # Free text lives under different column names across the repo's splits.
 TEXT_COLUMNS = ("text", "sentence1", "sentence2", "premise", "hypothesis")
 
