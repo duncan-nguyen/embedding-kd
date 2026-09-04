@@ -26,6 +26,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from src.criterions.h0_topological_loss import (
+    chunk_count,
+    split_chunks,
     Metric,
     h0_death_times,
     h0_loss_against_deaths,
@@ -97,6 +99,14 @@ class GeoODEKD(nn.Module):
             The two halves are on different scales by construction -- ``L_H0`` is a
             mean over ``B - 1`` death times, ``W_2^2`` is a sum over matched cycles --
             so this weight carries that ratio as well as the relative importance.
+        topo_batch_size: rows in the point cloud the topological terms read. 0 -- the
+            default -- makes that cloud the optimiser's batch, one diagram per step.
+            Any other value ``b >= 2`` splits the batch into ``B // b`` disjoint
+            clouds of ``b`` rows, averages their losses, and drops the ``B mod b``
+            trailing rows from this term. It decouples the filtration scale from the
+            batch size: ``L_H0`` compares ``b - 1`` death times, so ``b`` alone
+            decides how far up the merge tree the term can see. A batch smaller than
+            ``b`` (an epoch's tail) is read whole.
         topo_metric: ground metric of both diagrams on the unit sphere: ``"chord"``
             (Euclidean), ``"angular"`` (geodesic) or ``"cosine"``.
         pooling: pooling used to turn each layer's token states into a sentence vector.
@@ -135,6 +145,7 @@ class GeoODEKD(nn.Module):
         lambda_topo: float = 0.0,
         lambda_h1: float = 0.0,
         topo_metric: Metric = "chord",
+        topo_batch_size: int = 0,
         diagnostics: bool = False,
     ):
         super().__init__()
@@ -153,6 +164,12 @@ class GeoODEKD(nn.Module):
             raise ValueError(
                 f"topo_metric must be 'chord', 'angular' or 'cosine', got {topo_metric!r}"
             )
+        topo_batch_size = int(topo_batch_size or 0)
+        if topo_batch_size < 0 or topo_batch_size == 1:
+            raise ValueError(
+                "topo_batch_size must be 0 (one diagram per training batch) or >= 2, "
+                f"got {topo_batch_size}"
+            )
         if endpoint_loss not in ("cosine", "mse", "procrustes"):
             raise ValueError(
                 "endpoint_loss must be 'cosine', 'mse' or 'procrustes', "
@@ -168,6 +185,9 @@ class GeoODEKD(nn.Module):
         self.lambda_topo = float(lambda_topo)
         self.lambda_h1 = float(lambda_h1)
         self.topo_metric = topo_metric
+        # The cloud the persistence terms read, in rows. 0 keeps the cloud the
+        # optimiser's batch, which is what it was before this knob existed.
+        self.topo_batch_size = topo_batch_size
 
         self.lambda_end = float(lambda_end)
         self.lambda_ctr = float(lambda_ctr)
@@ -294,7 +314,10 @@ class GeoODEKD(nn.Module):
         :func:`src.criterions.h0_topological_loss.h0_loss_against_deaths`.
         """
         return h0_loss_against_deaths(
-            final_state, teacher_deaths, metric=self.topo_metric
+            final_state,
+            teacher_deaths,
+            metric=self.topo_metric,
+            chunk_size=self.topo_batch_size,
         )
 
     def topological_loss(
@@ -308,7 +331,12 @@ class GeoODEKD(nn.Module):
         their dimensions, which is why ``teacher`` here may be the *unprojected*
         teacher cache. The teacher side is a constant (no_grad inside).
         """
-        return h0_topological_loss(final_state, teacher, metric=self.topo_metric)
+        return h0_topological_loss(
+            final_state,
+            teacher,
+            metric=self.topo_metric,
+            chunk_size=self.topo_batch_size,
+        )
 
     def h1_loss_against_diagram(
         self, final_state: torch.Tensor, teacher_diagram: torch.Tensor
@@ -330,7 +358,12 @@ class GeoODEKD(nn.Module):
         needs no correspondence between the two spaces' axes and ``teacher`` here may
         be the *unprojected* teacher cache. The teacher side is a constant.
         """
-        return h1_topological_loss(final_state, teacher, metric=self.topo_metric)
+        return h1_topological_loss(
+            final_state,
+            teacher,
+            metric=self.topo_metric,
+            chunk_size=self.topo_batch_size,
+        )
 
     def contrastive_loss(
         self, view_a: torch.Tensor, view_b: torch.Tensor
@@ -426,7 +459,15 @@ class GeoODEKD(nn.Module):
         # A zero in the log is otherwise three different things -- the weight is 0,
         # the batch was too small, or the two diagrams already agree -- so each term
         # reports whether it was defined at all next to its value.
-        topo_active = self.lambda_topo > 0.0 and states[-1].shape[0] >= 2
+        # How many rows each diagram is actually built on: the whole batch, or the
+        # chunk ``topo_batch_size`` asked for. ``chunk_count`` falls back to the batch
+        # when the batch is the smaller of the two (an epoch's tail batch), so this is
+        # the size that decides whether a diagram exists at all.
+        topo_rows = states[-1].shape[0]
+        chunks = chunk_count(topo_rows, self.topo_batch_size)
+        if chunks > 1:
+            topo_rows = self.topo_batch_size
+        topo_active = self.lambda_topo > 0.0 and topo_rows >= 2
         if topo_active:
             if teacher_deaths is not None:
                 loss_h0 = self.topological_loss_against_deaths(
@@ -441,10 +482,15 @@ class GeoODEKD(nn.Module):
         h1_active = (
             self.lambda_topo > 0.0
             and self.lambda_h1 > 0.0
-            and states[-1].shape[0] >= H1_MIN_BATCH
+            and topo_rows >= H1_MIN_BATCH
         )
         if h1_active:
-            if teacher_h1 is not None:
+            # A pre-built ``teacher_h1`` is one diagram of the whole batch, so it is
+            # only the teacher side when the batch *is* the cloud. Under chunking the
+            # collate hands over the raw cache instead and the per-chunk diagrams are
+            # built here -- they are ragged ``[K_k, 2]`` tensors that no collate could
+            # have stacked into the batch dict anyway.
+            if teacher_h1 is not None and chunks == 1:
                 loss_h1 = self.h1_loss_against_diagram(states[-1], teacher_h1)
             else:
                 loss_h1 = self.h1_loss(states[-1], topo_target)
@@ -615,12 +661,20 @@ class GeoODEKD(nn.Module):
 
         if topo_active:
             student_deaths = h0_death_times(
-                final_state, metric=self.topo_metric, sort=True
+                final_state,
+                metric=self.topo_metric,
+                sort=True,
+                chunk_size=self.topo_batch_size,
             )
             reference = (
                 teacher_deaths
                 if teacher_deaths is not None
-                else h0_death_times(topo_target, metric=self.topo_metric, sort=True)
+                else h0_death_times(
+                    topo_target,
+                    metric=self.topo_metric,
+                    sort=True,
+                    chunk_size=self.topo_batch_size,
+                )
             )
             reference = reference.to(student_deaths.device, student_deaths.dtype)
             out["death_mean_s"] = student_deaths.mean()
@@ -629,7 +683,12 @@ class GeoODEKD(nn.Module):
                 out["death_bias"] = (student_deaths - reference).mean()
 
         if h1_active:
-            student_diagram = h1_diagram(final_state, metric=self.topo_metric)
+            # Under chunking the loss never sees a batch-sized diagram, so report the
+            # first chunk's -- the same cloud size the term was computed on.
+            student_diagram = h1_diagram(
+                split_chunks(final_state, self.topo_batch_size)[0],
+                metric=self.topo_metric,
+            )
             out["h1_n_s"] = torch.tensor(
                 float(student_diagram.shape[0]), device=final_state.device
             )

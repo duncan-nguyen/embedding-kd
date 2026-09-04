@@ -154,6 +154,26 @@ def test_h0_flags_default_off_and_are_forwarded():
     assert config.topo_metric == "angular"
 
 
+def test_the_topological_batch_size_defaults_to_the_training_batch():
+    """0 means "the cloud is the optimizer's batch", i.e. the term as it always was;
+    any b >= 2 is the knob that sets the filtration scale independently."""
+    default = _config("--method", "geoode")
+    assert default.topo_batch_size == 0
+
+    config = _config(
+        "--method", "geoode", "--batch_size", "128", "--topo_batch_size", "32"
+    )
+    assert config.batch_size == 128
+    assert config.topo_batch_size == 32
+
+
+@pytest.mark.parametrize("value", ["1", "-4"])
+def test_a_topological_batch_size_that_is_not_a_cloud_is_refused(value):
+    # Caught before the teacher cache is built, which is the expensive part of a run.
+    with pytest.raises(ValueError, match="topo_batch_size"):
+        _config("--method", "geoode", "--topo_batch_size", value)
+
+
 def test_topology_source_and_gauge_fit_budget_are_forwarded():
     default = _config("--method", "geoode")
     assert default.topo_teacher_source == "original"

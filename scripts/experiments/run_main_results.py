@@ -136,7 +136,17 @@ METHOD_SETTINGS = {
     "geoode": {"batch_size": 128, "learning_rate": 7e-5},
 }
 
-GEOODE_EXTRA = ["--lambda_topo", "1.0", "--lambda_ctr", "0.0", "--gauge_refit_every", "1"]
+# The point cloud L_topo reads, in rows, separately from the optimizer's batch:
+# 0 is one diagram per training batch. Copied from the notebook's cell 1, like
+# everything else in this block.
+GEOODE_H0_BATCH_SIZE = 0
+
+GEOODE_EXTRA = [
+    "--lambda_topo", "1.0",
+    "--lambda_ctr", "0.0",
+    "--gauge_refit_every", "1",
+    "--topo_batch_size", str(GEOODE_H0_BATCH_SIZE),
+]
 
 BENCHMARK_ORDER = [
     "banking77", "tweet", "emotion",

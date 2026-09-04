@@ -15,6 +15,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 from src.criterions.geoode_kd import GeoODEKD
 from src.criterions.h0_topological_loss import (
     H0TopologicalLoss,
+    chunk_count,
     h0_death_times,
     h0_loss_against_deaths,
     h0_topological_loss,
@@ -261,3 +262,159 @@ def test_a_diagram_from_a_different_batch_is_refused():
     student = torch.randn(8, 4)
     with pytest.raises(ValueError, match="death times"):
         h0_loss_against_deaths(student, torch.zeros(5))
+
+
+# --------------------------------------------------------------------- chunking
+# The cloud a diagram describes and the batch the optimizer steps on are two
+# independent choices; --topo_batch_size separates them. What has to hold is that
+# the chunked term is exactly the per-chunk term averaged, that both sides of the
+# loss cut the batch the same way, and that leaving the knob alone reproduces the
+# whole-batch term bit for bit.
+
+
+@pytest.mark.parametrize("chunk_size", [None, 0, 16, 17, 100])
+def test_a_chunk_that_does_not_fit_twice_is_the_whole_batch(chunk_size):
+    assert chunk_count(16, chunk_size) == 1
+
+
+def test_chunk_count_counts_only_whole_chunks():
+    assert chunk_count(16, 8) == 2
+    assert chunk_count(16, 5) == 3  # the 16th row sits the term out
+    assert chunk_count(16, 2) == 8
+
+
+def test_a_chunk_of_one_point_is_refused():
+    # A one-point cloud has no MST at all, so this is a typo rather than a request.
+    with pytest.raises(ValueError, match="chunk_size"):
+        chunk_count(16, 1)
+
+
+def test_chunked_deaths_are_the_chunks_own_diagrams():
+    x = _cloud(20, 6, 10)
+    chunked = h0_death_times(x, chunk_size=8)
+
+    assert chunked.shape == (2, 7)  # 20 // 8 = 2 clouds; four rows dropped
+    for index in range(2):
+        expected = h0_death_times(x[index * 8 : (index + 1) * 8])
+        assert torch.allclose(chunked[index], expected, atol=1e-7)
+
+
+def test_the_chunked_loss_is_the_mean_of_the_chunk_losses():
+    student, teacher = _cloud(24, 5, 11), _cloud(24, 9, 12)
+
+    chunked = h0_topological_loss(student, teacher, chunk_size=8)
+    by_hand = torch.stack(
+        [
+            h0_topological_loss(student[k * 8 : (k + 1) * 8], teacher[k * 8 : (k + 1) * 8])
+            for k in range(3)
+        ]
+    ).mean()
+
+    assert chunked.item() == pytest.approx(by_hand.item(), rel=1e-6)
+
+
+def test_chunking_off_is_the_term_that_was_there_before():
+    student, teacher = _cloud(12, 5, 13), _cloud(12, 9, 14)
+    assert h0_topological_loss(student, teacher, chunk_size=0).item() == pytest.approx(
+        h0_topological_loss(student, teacher).item()
+    )
+
+
+def test_a_chunked_loss_sees_a_shorter_scale_than_the_whole_batch():
+    """The point of the knob: b sets how far up the merge tree the term can see, so
+    the two readings of the same pair of clouds are genuinely different numbers."""
+    student, teacher = _cloud(32, 5, 15), _cloud(32, 9, 16)
+    whole = h0_topological_loss(student, teacher)
+    chunked = h0_topological_loss(student, teacher, chunk_size=8)
+    assert chunked.item() != pytest.approx(whole.item(), rel=1e-3)
+
+
+def test_a_precomputed_chunked_teacher_diagram_gives_the_same_loss():
+    """The collate builds the [n, b-1] teacher side; the step must cut the student's
+    rows by exactly the same rule or the two diagrams are of different clouds."""
+    generator = torch.Generator().manual_seed(17)
+    student = torch.randn(24, 8, generator=generator, requires_grad=True)
+    teacher = torch.randn(24, 32, generator=generator)
+
+    joint = h0_topological_loss(student, teacher, chunk_size=8)
+    with torch.no_grad():
+        deaths = h0_death_times(teacher, sort=True, chunk_size=8)
+    split = h0_loss_against_deaths(student, deaths, chunk_size=8)
+
+    assert torch.allclose(joint, split, atol=1e-7)
+    joint.backward()
+    reference = student.grad.clone()
+    student.grad = None
+    split.backward()
+    assert torch.allclose(reference, student.grad, atol=1e-7)
+
+
+def test_a_diagram_built_with_a_different_chunk_size_is_refused():
+    student, teacher = _cloud(24, 5, 18), _cloud(24, 9, 19)
+    deaths = h0_death_times(teacher, chunk_size=8)
+    with pytest.raises(ValueError, match="death times"):
+        h0_loss_against_deaths(student, deaths, chunk_size=12)
+
+
+def test_the_dropped_tail_rows_do_not_reach_the_term():
+    """B mod b rows sit L_topo out, so moving them cannot move the loss."""
+    student, teacher = _cloud(20, 5, 20), _cloud(20, 9, 21)
+    moved = student.clone()
+    moved[16:] = _cloud(4, 5, 22)  # only the dropped tail changes
+
+    assert h0_topological_loss(moved, teacher, chunk_size=8).item() == pytest.approx(
+        h0_topological_loss(student, teacher, chunk_size=8).item()
+    )
+
+
+def test_topo_batch_size_makes_the_criterion_read_chunks():
+    hidden_states, teacher, teacher_topo = _geoode_batch(batch=24, teacher_dim=16)
+    whole = GeoODEKD(lambda_ctr=0.0, lambda_topo=1.0)
+    chunked = GeoODEKD(lambda_ctr=0.0, lambda_topo=1.0, topo_batch_size=8)
+
+    _, whole_metrics = whole(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    _, chunk_metrics = chunked(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    student = chunked.endpoint_states(hidden_states, None)[-1]
+    expected = h0_topological_loss(student, teacher_topo.float(), chunk_size=8)
+
+    assert chunk_metrics["loss_h0"] == pytest.approx(expected.item(), rel=1e-5)
+    assert chunk_metrics["loss_h0"] != pytest.approx(whole_metrics["loss_h0"], rel=1e-3)
+
+
+def test_the_criterion_takes_a_chunked_teacher_diagram_from_the_collate():
+    hidden_states, teacher, teacher_topo = _geoode_batch(batch=24, teacher_dim=16)
+    criterion = GeoODEKD(lambda_ctr=0.0, lambda_topo=1.0, topo_batch_size=8)
+
+    _, from_cache = criterion(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    _, from_collate = criterion(
+        hidden_states=hidden_states,
+        teacher=teacher,
+        teacher_deaths=h0_death_times(teacher_topo.float(), sort=True, chunk_size=8),
+    )
+    assert from_collate["loss_h0"] == pytest.approx(from_cache["loss_h0"], rel=1e-6)
+
+
+def test_a_batch_smaller_than_the_chunk_is_still_one_diagram():
+    """An epoch's tail batch is not an error: it is read whole, as it always was."""
+    hidden_states, teacher, teacher_topo = _geoode_batch(batch=6, teacher_dim=16)
+    criterion = GeoODEKD(lambda_ctr=0.0, lambda_topo=1.0, topo_batch_size=8)
+    _, metrics = criterion(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    _, whole = GeoODEKD(lambda_ctr=0.0, lambda_topo=1.0)(
+        hidden_states=hidden_states, teacher=teacher, teacher_topo=teacher_topo
+    )
+    assert metrics["loss_h0"] == pytest.approx(whole["loss_h0"], rel=1e-6)
+
+
+def test_the_criterion_refuses_a_chunk_of_one():
+    with pytest.raises(ValueError, match="topo_batch_size"):
+        GeoODEKD(topo_batch_size=1)
+    with pytest.raises(ValueError, match="topo_batch_size"):
+        GeoODEKD(topo_batch_size=-4)

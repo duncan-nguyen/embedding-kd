@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 from scipy.optimize import linear_sum_assignment
 
-from src.criterions.h0_topological_loss import Metric, pairwise_distance
+from src.criterions.h0_topological_loss import Metric, pairwise_distance, split_chunks
 
 # A 1-cycle needs three vertices to exist at all, so a batch of two has an empty
 # H1 diagram by definition rather than an undefined one.
@@ -239,32 +239,45 @@ def h1_topological_loss(
     student_embeddings: torch.Tensor,
     teacher_embeddings: torch.Tensor,
     metric: Metric = "chord",
+    chunk_size: int | None = None,
 ) -> torch.Tensor:
     """``W_2^2(Dgm_1(T), Dgm_1(Z))`` between a teacher and a student batch.
 
     Teacher and student may live in different ambient dimensions -- a diagram is a
     multiset of scalar pairs, and the only thing the two sides have to share is the
     B corresponding samples of the batch.
+
+    ``chunk_size`` reads the batch as several smaller clouds instead of one (see
+    :func:`src.criterions.h0_topological_loss.chunk_count`) and *averages* their
+    ``W_2^2``. The average, rather than the sum, is what keeps the term's scale a
+    property of the geometry instead of the number of chunks -- the same choice L_H0
+    makes by being a mean over death times. Unlike H0 this also makes the term
+    cheaper by a factor of ``n^2``: the 2-skeleton is ``O(B^3)``.
     """
     if student_embeddings.ndim != 2 or teacher_embeddings.ndim != 2:
         raise ValueError("student_embeddings and teacher_embeddings must be [B, D].")
     if student_embeddings.shape[0] != teacher_embeddings.shape[0]:
         raise ValueError("Teacher and student batch sizes must match.")
 
-    with torch.no_grad():
-        teacher_diagram = h1_diagram(teacher_embeddings, metric=metric)
-
-    return h1_loss_against_diagram(
-        student_embeddings, teacher_diagram, metric=metric
-    )
+    student_chunks = split_chunks(student_embeddings, chunk_size)
+    teacher_chunks = split_chunks(teacher_embeddings, chunk_size)
+    losses = []
+    for student_chunk, teacher_chunk in zip(student_chunks, teacher_chunks):
+        with torch.no_grad():
+            teacher_diagram = h1_diagram(teacher_chunk, metric=metric)
+        losses.append(
+            h1_loss_against_diagram(student_chunk, teacher_diagram, metric=metric)
+        )
+    return torch.stack(losses).mean()
 
 
 class H1TopologicalLoss(nn.Module):
     """nn.Module wrapper."""
 
-    def __init__(self, metric: Metric = "chord") -> None:
+    def __init__(self, metric: Metric = "chord", chunk_size: int | None = None) -> None:
         super().__init__()
         self.metric = metric
+        self.chunk_size = chunk_size
 
     def forward(
         self, student_embeddings: torch.Tensor, teacher_embeddings: torch.Tensor
@@ -273,4 +286,5 @@ class H1TopologicalLoss(nn.Module):
             student_embeddings=student_embeddings,
             teacher_embeddings=teacher_embeddings,
             metric=self.metric,
+            chunk_size=self.chunk_size,
         )
