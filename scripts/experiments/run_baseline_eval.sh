@@ -147,6 +147,13 @@ BENCHMARK_ORDER = [
     "mrpc", "scitail", "wic",
     "sick", "sts12", "stsb",
 ]
+RETRIEVAL_ORDER = ["arguana", "fiqa", "scidocs", "scifact", "nfcorpus"]
+RETRIEVAL_METRICS = ["ndcg_at_10", "recall_at_10", "mrr_at_10"]
+RETRIEVAL_COLUMN_ORDER = [
+    f"{benchmark}_{metric}"
+    for benchmark in RETRIEVAL_ORDER
+    for metric in RETRIEVAL_METRICS
+] + [f"avg_retrieval_{metric}" for metric in RETRIEVAL_METRICS]
 SUMMARY_ORDER = ["avg_iod", "avg_ood", "avg_retrieval", "avg_all"]
 
 # transformers >= 5 renamed the load-dtype keyword.
@@ -233,6 +240,29 @@ def evaluate_baseline(name, settings, seed):
             ),
             "pair_threshold_source": "test",
         }
+        if results["retrieval"]:
+            print("\nRetrieval metrics:")
+            metric_rows = []
+            for path, metrics in results["retrieval"].items():
+                benchmark = KnowledgeDistiller._benchmark_name(path, "test")
+                metric_rows.append(metrics)
+                print(
+                    f"  {benchmark:<10} "
+                    f"nDCG@10={metrics['ndcg_at_10']:.6f}  "
+                    f"Recall@10={metrics['recall_at_10']:.6f}  "
+                    f"MRR@10={metrics['mrr_at_10']:.6f}"
+                )
+            print(
+                f"  {'average':<10} "
+                + "  ".join(
+                    f"{label}={np.mean([row[key] for row in metric_rows]):.6f}"
+                    for key, label in (
+                        ("ndcg_at_10", "nDCG@10"),
+                        ("recall_at_10", "Recall@10"),
+                        ("mrr_at_10", "MRR@10"),
+                    )
+                )
+            )
     finally:
         del encoder
         gc.collect()
@@ -302,6 +332,7 @@ for item in status:
 
 # Aggregate whatever is on disk, so a resumed run still prints the whole table.
 rows = []
+retrieval_rows = []
 missing = []
 for name in MODELS:
     for seed in SEEDS:
@@ -316,6 +347,36 @@ for name in MODELS:
                 row[KnowledgeDistiller._benchmark_name(path, "test")] = score_from_payload(
                     family, values
                 )
+        per_benchmark_retrieval = []
+        for path, values in payload["retrieval"].items():
+            benchmark = KnowledgeDistiller._benchmark_name(path, "test")
+            retrieval_row = {
+                "model": name,
+                "seed": seed,
+                "benchmark": benchmark,
+                **{metric: float(values[metric]) for metric in RETRIEVAL_METRICS},
+            }
+            for metric in RETRIEVAL_METRICS:
+                row[f"{benchmark}_{metric}"] = retrieval_row[metric]
+            retrieval_rows.append(retrieval_row)
+            per_benchmark_retrieval.append(retrieval_row)
+        if per_benchmark_retrieval:
+            retrieval_averages = {
+                metric: float(
+                    np.mean([item[metric] for item in per_benchmark_retrieval])
+                )
+                for metric in RETRIEVAL_METRICS
+            }
+            for metric, value in retrieval_averages.items():
+                row[f"avg_retrieval_{metric}"] = value
+            retrieval_rows.append(
+                {
+                    "model": name,
+                    "seed": seed,
+                    "benchmark": "average",
+                    **retrieval_averages,
+                }
+            )
         for key in SUMMARY_ORDER:
             value = payload["summary"].get(key)
             row[key] = np.nan if value is None else float(value)
@@ -327,7 +388,11 @@ if not rows:
     raise SystemExit("No results.json to aggregate.")
 
 by_seed = pd.DataFrame(rows)
-metric_order = [name for name in BENCHMARK_ORDER + SUMMARY_ORDER if name in by_seed.columns]
+metric_order = [
+    name
+    for name in BENCHMARK_ORDER + SUMMARY_ORDER + RETRIEVAL_COLUMN_ORDER
+    if name in by_seed.columns
+]
 by_seed = by_seed[["model", "seed", *metric_order]].sort_values(["model", "seed"])
 
 grouped = by_seed.groupby("model", sort=False)[metric_order]
@@ -364,6 +429,51 @@ with pd.option_context("display.width", 220, "display.max_columns", None):
     print(display.to_string())
 print(f"\nPer-seed scores: {by_seed_path}")
 print(f"Aggregated:      {summary_path}")
+
+if retrieval_rows:
+    retrieval_by_seed = pd.DataFrame(retrieval_rows)
+    benchmark_rank = {name: index for index, name in enumerate([*RETRIEVAL_ORDER, "average"])}
+    retrieval_by_seed["_order"] = retrieval_by_seed["benchmark"].map(benchmark_rank)
+    retrieval_by_seed = retrieval_by_seed.sort_values(
+        ["model", "_order", "seed"]
+    ).drop(columns="_order")
+
+    retrieval_grouped = retrieval_by_seed.groupby(
+        ["model", "benchmark"], sort=False
+    )[RETRIEVAL_METRICS]
+    retrieval_means = retrieval_grouped.mean()
+    retrieval_stds = retrieval_grouped.std(ddof=1)
+    retrieval_counts = retrieval_grouped.count()
+    retrieval_wide = {}
+    for metric in RETRIEVAL_METRICS:
+        retrieval_wide[f"{metric}_mean"] = retrieval_means[metric]
+        retrieval_wide[f"{metric}_std"] = retrieval_stds[metric]
+        retrieval_wide[f"{metric}_n"] = retrieval_counts[metric]
+    retrieval_summary = pd.DataFrame(retrieval_wide)
+
+    retrieval_display = pd.DataFrame(index=retrieval_means.index)
+    for metric, label in (
+        ("ndcg_at_10", "nDCG@10"),
+        ("recall_at_10", "Recall@10"),
+        ("mrr_at_10", "MRR@10"),
+    ):
+        retrieval_display[label] = [
+            mean_pm_std(mean * 100, std * 100)
+            for mean, std in zip(retrieval_means[metric], retrieval_stds[metric])
+        ]
+
+    retrieval_by_seed_path = RUN_DIR / "retrieval_by_seed.csv"
+    retrieval_summary_path = RUN_DIR / "retrieval_summary.csv"
+    retrieval_by_seed.to_csv(retrieval_by_seed_path, index=False)
+    retrieval_summary.to_csv(retrieval_summary_path)
+
+    print("\nRetrieval — mean ± sample std over seeds, scores ×100")
+    with pd.option_context("display.width", 180, "display.max_columns", None):
+        print(retrieval_display.to_string())
+    print(f"\nRetrieval per seed: {retrieval_by_seed_path}")
+    print(f"Retrieval summary:  {retrieval_summary_path}")
+elif EVAL_RETRIEVAL:
+    print("\nNo retrieval results were found in the completed result files.")
 PY
 
 trap - ERR INT TERM
