@@ -5,6 +5,7 @@ lib/          common.sh, common.ps1 -- everything the eight training runs share
 methods/      one folder per distillation method: train.sh + train.ps1
 data/         builds the training corpus and downloads the benchmarks
 ablations/    the target-map grid
+experiments/  reproducible main, ablation and sensitivity sweeps
 figures/      paper-figure mockups (synthetic data, never evidence)
 ```
 
@@ -167,6 +168,55 @@ A pair is aggregated only once every one of its runs has a final-test record: a
 mean ± std over two of three seeds is a different table, so the sweep reports the
 gap instead of publishing it. Timings are still written for an unfinished pair.
 
+## Ablation and sensitivity sweeps (15K)
+
+Both runners now default to the paper's 15K corpus and seeds 42, 43 and 44. The
+target-map ablation contains six requested arms, for **18 jobs**:
+
+```bash
+python3 scripts/ablations/run_target_map_ablation.py --dry-run
+python3 scripts/ablations/run_target_map_ablation.py --execute
+```
+
+The sensitivity runner varies topology weight, optimizer batch size and
+gauge-calibration sample count one factor at a time. H0 cloud size always equals
+the training batch size. The default point is shared across the three panels,
+giving **10 arms x 3 seeds = 30 jobs**:
+
+```bash
+bash scripts/experiments/run_sensitivity.sh --dry-run
+bash scripts/experiments/run_sensitivity.sh
+```
+
+Both sweeps disable retrieval evaluation, keep W&B off, and resume at completed
+final-test records. For a partial sensitivity run, use the same stable run name;
+pass `--retry-unfinished` to archive and restart an interrupted cell. Aggregated
+results are written to `sensitivity_by_seed.csv` and
+`sensitivity_mean_std.csv` below the run directory.
+
+The signal decomposition is a separate 18-job sweep. Its last two arms isolate
+gauge refitting as a binary choice: both fit the same Procrustes gauge at
+initialization, then only the `on` arm refits it after each epoch.
+
+```bash
+python3 scripts/ablations/run_decomposition.py --dry-run
+python3 scripts/ablations/run_decomposition.py
+```
+
+It writes `decomposition_by_seed.csv` and `decomposition_mean_std.csv`, including
+IOD, OOD, overall Avg., and the final H0 probe residual.
+
+To run both ablation tables sequentially with the shared 15K/three-seed setup,
+use the combined shell launcher:
+
+```bash
+bash scripts/ablations/run_ablations.sh --dry-run
+bash scripts/ablations/run_ablations.sh
+```
+
+Use `--target-map-only` or `--decomposition-only` for one table, and configure
+hardware with `GPUS="0 1" MAX_PARALLEL=2`.
+
 ## Everything else
 
 ```bash
@@ -175,7 +225,6 @@ python3 scripts/data/download_eval_train_splits.py        # train splits of the 
 python3 scripts/data/build_train_corpus.py --total 150000 # the distillation corpus
 python3 scripts/data/build_merged_all.py                  # every train split, uncapped
 
-python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base
 python3 scripts/figures/render_mock_paper_figures.py
 ```
 

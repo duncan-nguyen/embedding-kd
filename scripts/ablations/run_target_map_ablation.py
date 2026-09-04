@@ -39,22 +39,21 @@ is the null band the spectral map and the fitted gauge have to clear, and report
 a spectral-vs-random gap smaller than that band would be reporting noise.
 
 Every cell shares one teacher cache and differs only in the target map, so the
-comparison is clean by construction: same corpus, same objective, same schedule,
-same student init. The objective is the method's default ``L_end + L_ctr``, passed
-explicitly so the run log says what it was, and the corpus default is the one the
-reported GeoODE rows used; benchmark contamination in that corpus inflates every
-arm equally and so does not bias the comparison, though it does inflate the
-absolute numbers.
+comparison is clean by construction: same 15K corpus, endpoint-only objective,
+schedule, and student initialization.  The defaults now match the main paper
+protocol: configuration (c), seeds 42/43/44, batch 128, five epochs, and the
+14,760-row TALAS corpus. Retrieval is disabled because it is not part of the
+target-map claim and would dominate the cost of the grid.
 
 Usage:
     # 1. see the plan (default: prints the commands, runs nothing)
-    python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base
+    python3 scripts/ablations/run_target_map_ablation.py
 
     # 2. run it
-    python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --execute
+    python3 scripts/ablations/run_target_map_ablation.py --execute
 
     # 3. read it back -- every planned cell, done or still missing
-    python3 scripts/ablations/run_target_map_ablation.py --pair qwen3_4b_to_bert_base --collect
+    python3 scripts/ablations/run_target_map_ablation.py --collect
 
     # every subspace x gauge combination, three draws of each random arm
     python3 scripts/ablations/run_target_map_ablation.py --grid full --draws 3 --execute
@@ -82,12 +81,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PAIRS = {
     "qwen3_0.6b_to_minilm_h384": {
         "teacher": "Qwen/Qwen3-Embedding-0.6B",
-        "student": "jim12345/MiniLMv2-L6-H384-distilled-from-BERT-Base",
+        "student": "nreimers/MiniLMv2-L6-H384-distilled-from-BERT-Base",
         "teacher_pooling": "last_token",
     },
     "bge_m3_to_minilm_h768": {
         "teacher": "BAAI/bge-m3",
-        "student": "nreimers/MiniLMv2-L6-H768-distilled-from-BERT-Large",
+        "student": "nreimers/MiniLMv2-L6-H768-distilled-from-BERT-Base",
         "teacher_pooling": "cls",
     },
     "qwen3_4b_to_bert_base": {
@@ -149,17 +148,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--pair", choices=sorted(PAIRS), default="qwen3_4b_to_bert_base")
+    parser.add_argument(
+        "--pair", choices=sorted(PAIRS), default="qwen3_0.6b_to_minilm_h384"
+    )
     parser.add_argument(
         "--train_data",
-        default="data/train_set/train_100k.csv",
-        help="corpus, relative to the repo root; the default is the one the reported "
-             "GeoODE rows were trained on",
+        default="data/train_set/merged_3_data_5k_each.csv",
+        help="corpus, relative to the repo root (default: the 14,760-row 15K corpus)",
     )
     parser.add_argument(
         "--out",
         default=None,
-        help="output root (default runs/target_map_<pair>)",
+        help="output root (default runs/target_map_15k_<pair>)",
     )
     parser.add_argument(
         "--grid",
@@ -194,23 +194,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--seeds",
         type=int,
         nargs="+",
-        default=[42],
+        default=[42, 43, 44],
         help="training seeds; every cell is run at each of them",
     )
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=7e-5)
     parser.add_argument("--max_length", type=int, default=256)
-    parser.add_argument("--lambda_ctr", type=float, default=0.5)
-    parser.add_argument("--num_workers", type=int, default=2)
+    parser.add_argument("--lambda_ctr", type=float, default=0.0)
     parser.add_argument(
-        "--no_retrieval",
-        action="store_true",
-        help="skip ArguAna/FiQA/SCIDOCS/SciFact/NFCorpus. They are ~101k documents "
-             "to encode per cell, so this is the switch that makes a large grid "
-             "affordable -- at the cost of omitting avg_retrieval; avg_all remains "
-             "the same nine-task sentence-level aggregate",
+        "--lambda_topo",
+        type=float,
+        default=0.0,
+        help="held at zero by default so this grid isolates the target map",
     )
+    parser.add_argument("--gauge_align_samples", type=int, default=16384)
+    parser.add_argument("--num_workers", type=int, default=16)
+    retrieval = parser.add_mutually_exclusive_group()
+    retrieval.add_argument(
+        "--eval-retrieval",
+        dest="eval_retrieval",
+        action="store_true",
+        help="also evaluate the five retrieval benchmarks (disabled by default)",
+    )
+    retrieval.add_argument(
+        "--no-retrieval",
+        "--no_retrieval",
+        dest="eval_retrieval",
+        action="store_false",
+        help=argparse.SUPPRESS,
+    )
+    parser.set_defaults(eval_retrieval=False)
     parser.add_argument(
         "--cache_dir",
         default=None,
@@ -221,6 +235,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "the notebook's method runs too",
     )
     parser.add_argument("--execute", action="store_true", help="run the plan")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan without running it (also the default without --execute)",
+    )
     parser.add_argument("--collect", action="store_true", help="summarise the runs")
     parser.add_argument(
         "--cuda_visible_devices",
@@ -304,7 +323,7 @@ def arm_flags(settings: dict) -> list[str]:
 def output_root(args: argparse.Namespace) -> Path:
     if args.out:
         return Path(args.out)
-    return REPO_ROOT / "runs" / f"target_map_{args.pair}"
+    return REPO_ROOT / "runs" / f"target_map_15k_{args.pair}"
 
 
 def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
@@ -324,18 +343,22 @@ def build_command(args: argparse.Namespace, cell: dict) -> list[str]:
         "--save_every", str(args.epochs),
         "--lr", str(args.lr),
         "--max_length", str(args.max_length),
+        "--lambda_end", "1.0",
         "--lambda_ctr", str(args.lambda_ctr),
+        "--lambda_topo", str(args.lambda_topo),
+        "--gauge_align_samples", str(args.gauge_align_samples),
         "--seed", str(cell["seed"]),
         "--num_workers", str(args.num_workers),
         # No per-epoch evaluation: the grid is read off the final test row, and the
         # pair thresholds are swept there, so no extra pass is needed.
         "--eval_every", "0",
         "--pair_threshold_source", "test",
+        "--student_pooling", "cls",
         "--cache_dir", str(cache_dir),
         "--save_dir", str(root / cell["name"]),
         "--no_wandb",
     ]
-    if args.no_retrieval:
+    if not args.eval_retrieval:
         command.append("--no_eval_retrieval")
     command.extend(arm_flags(cell["settings"]))
     # Epoch-wise refitting is the main Procrustes recipe. Every other gauge cell is
@@ -548,7 +571,7 @@ def main() -> None:
     for cell in plan:
         print(f"[{cell['name']}] {shlex.join(build_command(args, cell))}\n")
 
-    if not args.execute:
+    if args.dry_run or not args.execute:
         print("Dry run. Add --execute to run the grid, --collect to read it back.")
         return
     status = execute(args, plan)

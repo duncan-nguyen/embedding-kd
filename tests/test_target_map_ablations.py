@@ -551,6 +551,19 @@ def _config_from(command):
         sys.argv = original
 
 
+def test_default_grid_uses_the_15k_three_seed_protocol():
+    args, plan = _plan()
+
+    assert args.pair == "qwen3_0.6b_to_minilm_h384"
+    assert args.train_data == "data/train_set/merged_3_data_5k_each.csv"
+    assert args.seeds == [42, 43, 44]
+    assert args.batch_size == 128
+    assert args.lr == 7e-5
+    assert args.lambda_ctr == 0.0
+    assert args.lambda_topo == 0.0
+    assert len(plan) == 18
+
+
 @pytest.mark.parametrize("grid", ["requested", "full"])
 def test_every_planned_cell_parses_into_the_arm_it_names(grid):
     """The runner writes main.py flags by hand, so this is what catches a flag that
@@ -591,8 +604,10 @@ def test_cell_names_are_unique_so_runs_cannot_overwrite_each_other():
 
 
 def test_draws_only_multiply_the_stochastic_arms():
-    _, single = _plan("--grid", "full")
-    _, tripled = _plan("--grid", "full", "--draws", "3")
+    # This test isolates map draws, so hold the training seed fixed even though
+    # the paper runner now defaults to three seeds.
+    _, single = _plan("--grid", "full", "--seeds", "42")
+    _, tripled = _plan("--grid", "full", "--draws", "3", "--seeds", "42")
 
     deterministic = [
         cell
@@ -952,13 +967,23 @@ def test_the_learned_arm_records_the_dimensions_the_projector_needs(capsys):
 
 
 def test_the_learned_arms_have_no_gauge_column():
-    _, plan = _plan("--subspace", "learned_t2s", "learned_s2t", "--gauge", "none", "procrustes", "random")
+    _, plan = _plan(
+        "--subspace",
+        "learned_t2s",
+        "learned_s2t",
+        "--gauge",
+        "none",
+        "procrustes",
+        "random",
+        "--seeds",
+        "42",
+    )
 
     assert [cell["name"] for cell in plan] == ["learned_t2s__none", "learned_s2t__none"]
 
 
 def test_the_requested_grid_is_ours_against_the_four_controls():
-    _, plan = _plan("--grid", "requested")
+    _, plan = _plan("--grid", "requested", "--seeds", "42")
 
     assert [cell["name"] for cell in plan] == [
         "pca__procrustes",   # ours
