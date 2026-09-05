@@ -9,6 +9,18 @@ lists the method-specific training hyperparameters.
 
 \input{tables/training_hyperparameters}
 
+\section{Detailed Sensitivity Results}
+\label{app:sensitivity-15k}
+
+Table~\ref{tab:sensitivity-15k} reports the numerical results underlying
+Figure~\ref{fig:sensitivity-15k}. Settings not varied within each block remain
+at the main recipe. The $H_0$ cloud is always the current training batch. The
+batch sweep fixes the number of epochs and is therefore not compute matched.
+
+\input{tables/sensitivity_15k}
+
+\FloatBarrier
+\clearpage
 \section{Results at a Larger Distillation Scale}
 \label{app:results-100k}
 
@@ -26,6 +38,8 @@ Avg. in all three teacher--student configurations. It exceeds TALAS by 0.07,
 margin is narrow for the two larger students and remains largest for the
 compact student.
 
+\FloatBarrier
+\clearpage
 \section{Zero-Shot Retrieval}
 \label{app:retrieval-15k}
 
@@ -46,13 +60,110 @@ All distilled students remain substantially below their teachers, indicating
 that the sentence-level distillation objectives do not fully preserve the
 teachers' zero-shot retrieval capability.
 
+\FloatBarrier
 \clearpage
-\section{Detailed Sensitivity Results}
-\label{app:sensitivity-15k}
+\section{Layerwise Representation Changes}
+\label{app:layerwise-cka}
 
-Table~\ref{tab:sensitivity-15k} reports the numerical results underlying
-Figure~\ref{fig:sensitivity-15k}. Settings not varied within each block remain
-at the main recipe. The $H_0$ cloud is always the current training batch. The
-batch sweep fixes the number of epochs and is therefore not compute matched.
+We examine whether final-embedding supervision changes the internal
+representations of the student even though GATE-KD applies no
+intermediate-layer objective. The probe contains 512 unique sentences sampled
+from the validation splits after excluding sentences found in the distillation
+corpus. For every teacher and student Transformer layer, we compute centered
+linear CKA between their pooled representations \citep{kornblith2019cka}.
+Results for the trained students are averaged over seeds 42, 43, and 44. We
+omit the embedding-output layer because special-token pooling makes this
+representation constant across examples, for which centered CKA is undefined.
 
-\input{tables/sensitivity_15k}
+Figure~\ref{fig:layerwise-raw-cka} shows that the pretrained students already
+share substantial representation structure with their teachers. Raw CKA alone
+therefore combines correspondence inherited from pretraining with changes
+induced by distillation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/layerwise_raw_cka_all_pairs}
+    \caption{Layerwise linear CKA for the pretrained student, GATE-KD, and
+    TALAS across three configurations. Trained results are averaged over three
+    seeds.}
+    \label{fig:layerwise-raw-cka}
+\end{figure}
+
+To isolate the training-induced change, Figure~\ref{fig:layerwise-delta-cka}
+subtracts the pretrained-student CKA matrix from the mean matrix after
+distillation. GATE-KD produces higher final-to-final CKA than TALAS in all
+three configurations. The raw values are 0.8266, 0.8447, and 0.7845 for
+GATE-KD, compared with 0.7741, 0.7901, and 0.7333 for TALAS in configurations
+(a), (b), and (c), respectively. The corresponding changes from initialization
+are 0.2992, 0.2773, and 0.2781 for GATE-KD, compared with 0.2468, 0.2227, and
+0.2269 for TALAS. The final-layer advantage is consequently consistent across
+the three configurations and ranges from 0.051 to 0.055 CKA.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/layerwise_delta_cka_all_pairs}
+    \caption{Change in layerwise linear CKA relative to the pretrained
+    student. Red and blue denote increased and decreased similarity,
+    respectively.}
+    \label{fig:layerwise-delta-cka}
+\end{figure}
+
+The changes are distributed across multiple later student layers rather than
+being confined to a single teacher--student layer pair. This pattern is
+consistent with endpoint supervision inducing an internal reorganization of
+the student despite the absence of explicit intermediate-layer matching. Some
+layer pairs decrease in CKA, so the result does not imply uniformly stronger
+alignment at every depth. Moreover, CKA is descriptive and does not establish
+that the observed internal changes cause the downstream improvements.
+
+\FloatBarrier
+\clearpage
+\section{Target-Rank Sensitivity at Fixed Student Width}
+\label{app:target-rank}
+
+We isolate the subspace selected by the endpoint interface in configuration
+(c). The student architecture, 384-dimensional output, distillation corpus,
+optimizer, training schedule, and Procrustes updates remain fixed, while the
+retained PCA rank varies over $k\in\{64,128,256,384\}$. This experiment uses
+the endpoint-only objective. Targets with $k<384$ are embedded in the native
+student space by appending zero coordinates before Procrustes alignment. This
+padding preserves their Gram matrix and active rank, and does not change the
+capacity or width of the student.
+
+Retained energy is measured on the complete teacher cache. On a fixed sample
+of 2{,}048 normalized teacher embeddings $T$, we measure the normalized
+squared Gram distortion
+$\lVert TT^\top-Y_kY_k^\top\rVert_F^2/\lVert TT^\top\rVert_F^2$, where $Y_k$
+is the normalized rank-$k$ PCA target. We also report the normalized rank
+floor $\sum_{j>k}\sigma_j(T)^4/\sum_j\sigma_j(T)^4$ from
+Equation~\ref{eq:gram-lower-bound}. The Gram quantities are independent of
+the orthogonal gauge and are therefore computed once, while downstream scores
+are averaged over three seeds.
+
+Figure~\ref{fig:target-rank} shows monotonic changes in all three quantities.
+Increasing $k$ from 64 to 384 raises retained teacher energy from 59.32\% to
+92.84\%, reduces normalized Gram distortion from 6.797\% to 0.086\%, and
+improves Avg. from 72.57 to 74.27. The intermediate ranks 128 and 256 attain
+73.77 and 74.21 Avg., respectively. Most of the downstream benefit is therefore
+recovered by rank 256, with the final increase to rank 384 contributing only
+0.06 points in this configuration.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/width_bottleneck}
+    \caption{Sensitivity to retained PCA rank at fixed student width in
+    configuration (c). Downstream scores show mean $\pm$ sample standard
+    deviation over three seeds.}
+    \label{fig:target-rank}
+\end{figure}
+
+The observed PCA distortion remains roughly 21--25 times above the rank floor.
+This difference is expected because the bound applies to the optimal rank-$k$
+Gram approximation, whereas PCA maximizes retained variance before row
+normalization and does not directly optimize the normalized Gram matrix. The
+floor certifies irreducible error rather than predicting the distortion of the
+chosen interface. Overall, the sweep links the retained teacher subspace to
+both geometric fidelity and downstream utility, while its saturation indicates
+diminishing returns from additional principal directions. Because the student
+architecture remains fixed, this result is a target-rank sensitivity analysis
+rather than an ablation of student width.
