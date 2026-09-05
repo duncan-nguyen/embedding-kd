@@ -1,4 +1,4 @@
-"""Render synthetic previews of the three all-pairs layerwise figures.
+"""Render synthetic previews of the two all-pairs CKA figures.
 
 The values are deliberately synthetic and the exported previews carry a visible
 watermark.  The experiment notebook calls the same renderer without that mark.
@@ -13,7 +13,7 @@ import numpy as np
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_DIR))
-from notebooks._layerwise_analysis import render_all_options
+from notebooks._layerwise_analysis import render_cka_figures
 
 
 OUT_DIR = PROJECT_DIR / "docs/latex_iclr/figures/layerwise_options"
@@ -62,43 +62,21 @@ def illustrative_pair(
     ours = np.clip(init + ours_gain, 0.0, 0.98)
     talas = np.clip(init + talas_gain, 0.0, 0.98)
 
-    init_h0 = 0.22 - 0.035 * x - 0.020 * y
-    ours_reduction = 0.008 + 0.020 * x + 0.012 * y
-    ours_reduction += 0.060 * gaussian(
-        x, y, cx=0.88, cy=0.88, sx=0.28, sy=0.30
-    )
-    talas_reduction = 0.004 + 0.010 * x + 0.070 * inherited_band
-    ours_h0 = np.clip(init_h0 - ours_reduction, 0.02, None)
-    talas_h0 = np.clip(init_h0 - talas_reduction, 0.02, None)
-
-    ours_proc = np.clip(ours + 0.035, 0.0, 0.98)
-    talas_proc = np.clip(talas + 0.025, 0.0, 0.98)
     zero = np.zeros_like(init)
 
     return {
         "init_cka": init,
-        "init_h0": init_h0,
         "ours": {
             "cka_mean": ours,
             "cka_std": zero,
             "delta_cka": ours - init,
-            "h0_mean": ours_h0,
-            "h0_std": zero,
-            "h0_reduction": init_h0 - ours_h0,
-            "procrustes_mean": ours_proc,
-            "procrustes_std": zero,
         },
         "talas": {
             "cka_mean": talas,
             "cka_std": zero,
             "delta_cka": talas - init,
-            "h0_mean": talas_h0,
-            "h0_std": zero,
-            "h0_reduction": init_h0 - talas_h0,
-            "procrustes_mean": talas_proc,
-            "procrustes_std": zero,
         },
-        "metadata": {"procrustes_rank": 128},
+        "metadata": {"displayed_layer_offset": 1},
     }
 
 
@@ -109,7 +87,7 @@ def main() -> None:
         key: illustrative_pair(teacher_layers, student_layers, seed=17 + index)
         for index, (key, _, teacher_layers, student_layers) in enumerate(PAIR_SPECS)
     }
-    paths = render_all_options(
+    paths = render_cka_figures(
         results,
         pair_order=pair_order,
         pair_labels=pair_labels,
