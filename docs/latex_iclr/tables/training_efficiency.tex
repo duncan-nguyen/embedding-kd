@@ -1,7 +1,9 @@
 % Timing and Avg. values come from the archived 15K main-results run:
 % runs/main_results_talas15k_h200_gpu67_20260904-082000/.
 \begin{table}[!htbp]
-    \caption{Training efficiency on NVIDIA H200 GPUs.}
+    \caption{Measured student-optimization cost on NVIDIA H200 GPUs. Times
+    exclude teacher-cache construction, setup, gauge-refit passes, and
+    evaluation; they are not end-to-end wall-clock measurements.}
     \label{tab:training-efficiency}
     \vspace{0.5em}
     \centering
@@ -11,7 +13,7 @@
     \begin{tabular}{@{}lccccc@{}}
         \toprule
         Method & Avg. $\uparrow$ & ms/step $\downarrow$ & samples/s $\uparrow$
-        & GPU train min $\downarrow$ & peak GiB $\downarrow$ \\
+        & GPU opt. min $\downarrow$ & peak GiB $\downarrow$ \\
         \midrule
         \multicolumn{6}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
         \midrule

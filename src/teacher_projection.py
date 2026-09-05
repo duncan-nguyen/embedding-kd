@@ -17,7 +17,7 @@ the endpoint loss does not ask the student to rotate its whole pretrained space.
 Both factors are claims that need controls, so each is a switch:
 
 * the *subspace* factor: centered PCA (``fit_pca_projection(center=True)``),
-  uncentered SVD (``center=False``), or a data-independent random map
+  PCA whitening, uncentered SVD (``center=False``), or a data-independent random map
   (:func:`fit_random_projection`, orthonormal or Gaussian). If the teacher's
   leading spectral subspace is what carries the signal, PCA must beat both random
   arms; if it does not, "spectral" is decoration and the paper has no §3.2.
@@ -95,6 +95,58 @@ def fit_pca_projection(
     else:
         projection = principal.transpose(0, 1).contiguous()  # [d_T, out_dim]
     return projection, mean
+
+
+def fit_pca_whitening_projection(
+    embeddings: torch.Tensor,
+    out_dim: int,
+    center: bool = True,
+    eps: float = 1e-5,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Fit a PCA projection whose retained coordinates have unit variance.
+
+    The returned matrix is ``V_k diag(lambda_k^{-1/2})``.  Unlike ordinary PCA,
+    its columns are intentionally not unit length: their scale removes the
+    teacher's anisotropic spectrum before the usual row-wise target normalisation.
+    Eigenvalues below ``eps * lambda_max`` are floored so a nearly constant
+    direction cannot explode.  ``center`` controls the fit exactly as it does for
+    :func:`fit_pca_projection`; applying the fitted mean remains the separate
+    ``pca_subtract_mean`` experiment switch.
+    """
+    if embeddings.dim() != 2:
+        raise ValueError(
+            f"expected a [N, d_T] matrix, got shape {tuple(embeddings.shape)}"
+        )
+    if out_dim <= 0:
+        raise ValueError(f"out_dim must be positive, got {out_dim}")
+    if eps <= 0:
+        raise ValueError(f"eps must be positive, got {eps}")
+
+    matrix = embeddings.detach().to(torch.float32)
+    rows, teacher_dim = matrix.shape
+    mean = matrix.mean(dim=0)
+    work = matrix - mean if center else matrix
+    _, singular, vh = torch.linalg.svd(work, full_matrices=False)
+    kept = min(out_dim, vh.shape[0], teacher_dim)
+    directions = vh[:kept].transpose(0, 1).contiguous()
+
+    if kept < min(out_dim, teacher_dim):
+        stacked = torch.cat(
+            [directions, torch.eye(teacher_dim, dtype=matrix.dtype)], dim=1
+        )
+        completed, _ = torch.linalg.qr(stacked)
+        directions = completed[:, : min(out_dim, teacher_dim)]
+
+    divisor = max(rows - 1 if center else rows, 1)
+    eigenvalues = singular[:kept].square() / divisor
+    largest = eigenvalues.max() if eigenvalues.numel() else torch.tensor(1.0)
+    floor = torch.clamp(largest * eps, min=eps)
+    scales = eigenvalues.clamp_min(floor).rsqrt()
+    if directions.shape[1] > kept:
+        scales = torch.cat(
+            [scales, floor.rsqrt().expand(directions.shape[1] - kept)]
+        )
+    return directions * scales.unsqueeze(0), mean
 
 
 def _haar_orthonormal(rows: int, cols: int, generator: torch.Generator) -> torch.Tensor:
@@ -214,7 +266,7 @@ def fit_mrl_prefix_projection(
     return torch.eye(teacher_dim, dtype=torch.float32)[:, :out_dim].contiguous(), mean
 
 
-PROJECTION_TYPES = ("pca", "random", "random_gaussian", "mrl_prefix")
+PROJECTION_TYPES = ("pca", "pca_whiten", "random", "random_gaussian", "mrl_prefix")
 
 
 def fit_teacher_projection(
@@ -230,11 +282,17 @@ def fit_teacher_projection(
     ``center=False`` the uncentered SVD ablation -- the same routine, differing only
     in whether the corpus mean is removed before the SVD, i.e. whether the first
     retained direction is allowed to be the teacher's mean vector. ``"random"`` and
-    ``"random_gaussian"`` are the two data-independent controls, and
-    ``"mrl_prefix"`` (the leading coordinates) is the third fixed interface.
+    ``"pca_whiten"`` keeps the same principal subspace but flattens its retained
+    spectrum. ``"random_gaussian"`` and ``"random"`` are the two data-independent
+    controls, and ``"mrl_prefix"`` (the leading coordinates) is the third fixed
+    interface.
     """
     if projection_type == "pca":
         return fit_pca_projection(embeddings, out_dim=out_dim, center=center)
+    if projection_type == "pca_whiten":
+        return fit_pca_whitening_projection(
+            embeddings, out_dim=out_dim, center=center
+        )
     if projection_type in ("random", "random_gaussian"):
         return fit_random_projection(
             embeddings,

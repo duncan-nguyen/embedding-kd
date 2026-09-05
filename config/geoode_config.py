@@ -41,6 +41,12 @@ class GeoODEConfig(BaseConfig):
     # (chord), so the term is small -- sweep the weight over decades, 0.01-1.0.
     # CLI: --lambda_topo.
     lambda_topo = 0.0
+    # Which matched structural statistic lambda_topo weights. "h0" is the current
+    # persistence loss. The controls keep comparable scalar budgets: B-1 sampled
+    # pair distances, B-1 teacher-MST edges, or B directed nearest-neighbour
+    # distances at k=1. CLI: --structural_loss / --structural_knn_k.
+    structural_loss = "h0"
+    structural_knn_k = 1
     # Weight lambda_1 of the H1 half of L_topo: W_2^2 between the teacher's and the
     # student's 1-dimensional persistence diagrams, i.e. the cycles of the batch
     # rather than its merge tree, with low-persistence cycles matched to the diagonal.
@@ -84,8 +90,9 @@ class GeoODEConfig(BaseConfig):
 
     # Fixed teacher dimensionality reduction P_T = P_PCA R, Eq. (8).
     # --- factor 1: which d_S-dimensional subspace of the teacher to keep ---
-    # "pca" is the paper's map. "random" (Haar-random orthonormal columns) and
-    # "random_gaussian" (Johnson-Lindenstrauss, no orthonormality) are the
+    # "pca" is the paper's map. "pca_whiten" keeps the same leading subspace but
+    # rescales retained axes to unit variance. "random" (Haar-random orthonormal
+    # columns) and "random_gaussian" (Johnson-Lindenstrauss, no orthonormality) are the
     # data-independent controls for the Eckart-Young claim. "learned_t2s" and
     # "learned_s2t" are the *adaptive* baselines: a linear map trained with the
     # student instead of fitted and frozen, mapping the teacher down or the student

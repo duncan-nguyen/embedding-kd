@@ -68,14 +68,27 @@ improving Avg. OOD from 79.85 to 80.49. The aggregate gain in this configuration
 is therefore driven by OOD performance rather than higher scores on the
 datasets supplying the distillation text.
 
-\subsection{Optimization Efficiency}
+\subsection{Measured Optimization Cost}
 \label{sec:training-efficiency}
 
-Table~\ref{tab:training-efficiency} reports observed optimization cost under
-the same execution protocol on NVIDIA H200 GPUs. Step time and throughput
-exclude the first ten warm-up steps. GPU training time sums the measured
-optimization-step durations and excludes teacher-cache construction,
-tokenization, and final evaluation.
+Table~\ref{tab:training-efficiency} reports the cost of student optimization
+under the same execution protocol on NVIDIA H200 GPUs. Step time and throughput
+exclude the first ten warm-up steps. GPU optimization time sums CUDA-event
+durations for the minibatch forward, loss, backward, and optimizer update. It
+therefore includes the topology computation performed inside GATE-KD's training
+steps, but excludes model and tokenizer loading, data preprocessing, final
+evaluation, teacher-cache construction, the one-time PCA fit, and the four
+student re-encoding passes used for gauge refitting. The table measures the
+cost of the optimization loop rather than end-to-end wall-clock cost.
+
+Teacher access also differs across method families. GATE-KD, RKD, Stella, and
+TALAS read normalized final teacher embeddings from the same reusable cache and
+do not execute the teacher during student optimization. CDM, DSKD, and EMO
+execute the teacher online; EMO additionally consumes teacher hidden states and
+attention. Charging a shared cache entirely to the first cached method would be
+arbitrary, while excluding it understates the cost of a standalone run. We
+therefore report the cache-independent optimization measurement and do not
+interpret it as total training cost.
 
 \input{tables/training_efficiency}
 
@@ -83,6 +96,9 @@ GATE-KD uses 26\%, 31\%, and 38\% of TALAS's measured GPU optimization time in
 configurations (a), (b), and (c), respectively, while also attaining higher
 overall scores. The improvement is primarily in throughput rather than peak
 memory allocation, for which TALAS remains lower across the three
-configurations.
+configurations. A controlled end-to-end comparison would additionally require
+isolated runs that separately time teacher encoding, cache I/O, PCA and gauge
+updates, preprocessing, and evaluation; the present measurements do not support
+such a claim.
 
 \FloatBarrier

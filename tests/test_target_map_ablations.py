@@ -39,6 +39,7 @@ from src.teacher_projection import (
     fit_gauge_alignment,
     fit_gauge_rotation,
     fit_pca_projection,
+    fit_pca_whitening_projection,
     fit_random_projection,
     fit_teacher_projection,
     interpolate_rotation,
@@ -154,10 +155,25 @@ def test_uncentered_svd_spends_its_first_direction_on_the_mean():
     assert abs(float(centered[:, 0] @ mean_direction)) < 0.1
 
 
+def test_pca_whitening_flattens_the_retained_covariance():
+    generator = torch.Generator().manual_seed(91)
+    scales = torch.tensor([9.0, 4.0, 2.0, 0.5, 0.2, 0.1])
+    embeddings = torch.randn(1000, 6, generator=generator) * scales
+    embeddings = embeddings + torch.tensor([8.0, -3.0, 1.0, 0.0, 2.0, -1.0])
+
+    projection, mean = fit_pca_whitening_projection(embeddings, out_dim=4)
+    whitened = (embeddings - mean) @ projection
+    covariance = whitened.T @ whitened / (embeddings.shape[0] - 1)
+
+    assert projection.shape == (6, 4)
+    assert torch.allclose(covariance, torch.eye(4), atol=2e-4, rtol=2e-4)
+    assert not torch.allclose(projection.T @ projection, torch.eye(4), atol=1e-2)
+
+
 def test_fit_teacher_projection_dispatches_every_arm():
     embeddings = _spectral_data()
 
-    for kind in ("pca", "random", "random_gaussian", "mrl_prefix"):
+    for kind in ("pca", "pca_whiten", "random", "random_gaussian", "mrl_prefix"):
         projection, mean = fit_teacher_projection(
             embeddings, out_dim=8, projection_type=kind, seed=10
         )

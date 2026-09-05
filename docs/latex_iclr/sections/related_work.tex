@@ -6,13 +6,23 @@ onto teacher outputs, showing that unlabeled text can provide dense supervision
 without task annotations \citep{reimers2020multilingual}. Subsequent methods
 have enriched this signal through contrastive learning, specialized training
 recipes, and teacher-compatible output spaces
-\citep{xu2023distillcse,zhang2024jasper,li2025ese,leaf}.
+\citep{xu2023distillcse,zhang2024jasper,li2025ese,leaf}. Recent systems also
+emphasize the data and task recipe: Gecko distills LLM-generated and relabeled
+retrieval data, while jina-embeddings-v5-text combines embedding distillation
+with task-targeted contrastive training \citep{lee2024gecko,akram2026jina}.
+These systems demonstrate the practical value of compact embedding models but
+jointly change the transfer data and objective. Our study instead holds the
+unlabeled corpus and downstream protocol fixed to isolate the representation
+interface between a given teacher and student.
 EmbedDistill combines embedding matching with relative geometric supervision
 for information retrieval \citep{kim2023embeddistill}. Other approaches draw on
 the representation hierarchy. EMO transfers token-level relations and aligns
 hidden states across tokenizers, while TALAS anchors upper student layers to the
 teacher endpoint and propagates supervision through lower layers by
-self-distillation \citep{truong2025emo,talas}. Intermediate supervision can
+self-distillation \citep{truong2025emo,talas}. MoL replaces rigid layer pairing
+with similarity-weighted mixtures of teacher layers, and feature-alignment
+distillation likewise transfers intermediate states and attention
+\citep{vu2026mol,wang2024feature}. Intermediate supervision can
 provide additional signals, but it also introduces choices about layer
 correspondence and often requires teacher hidden states or auxiliary mappings.
 Prior analyses have identified overfitting in intermediate-layer distillation
@@ -51,6 +61,15 @@ similarity-preserving distillation matches Gram structure, and contrastive
 distillation transfers relations through positive and negative examples
 \citep{park2019rkd,tung2019similarity,tian2020crd}. Persistent homology extends
 this view from pairwise relations to multiscale properties of a point cloud.
+In graph representation distillation, G-CRD studies preservation of local and
+global embedding topology through contrastive alignment
+\citep{joshi2024representation}. Topology-related embedding objectives also
+appear in more specialized settings: JDCEmb combines relational distillation
+with contrastive learning for task-oriented dialogue, whereas DICE modifies
+text-conditioning embeddings to absorb classifier-free guidance in diffusion
+models \citep{burykina2025jdcemb,zhou2026dice}. The latter settings motivate
+geometry-aware embedding objectives but do not address cross-dimensional
+sentence-encoder compression.
 TopKD transfers global feature topology through approximate persistence images,
 while topological-guidance distillation combines image-derived persistence
 features from multiple teachers \citep{topkd2024,jeon2024topological}. GATE-KD

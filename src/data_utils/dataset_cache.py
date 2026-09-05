@@ -14,6 +14,7 @@ from torch.utils.data import Dataset
 from src.criterions.h0_topological_loss import chunk_count, h0_death_times
 from src.criterions.h1_topological_loss import MIN_BATCH as H1_MIN_BATCH
 from src.criterions.h1_topological_loss import h1_diagram
+from src.criterions.structural_losses import structural_target
 
 
 class TextPairWithTeacher(Dataset):
@@ -83,6 +84,9 @@ class DualTokenizerCollateWithTeacher:
         batch is cut into ``B // b`` chunks of ``b`` rows and the H0 side becomes one
         ``[B // b, b - 1]`` tensor instead of a ``[B - 1]`` vector. The training step
         cuts the student's rows by the same rule, so the two sides stay aligned.
+    ``structural_loss`` / ``structural_knn_k``
+        Select the H0 statistic or one of its matched-compute controls and configure
+        the kNN control. The corresponding frozen teacher statistic is built here.
     """
 
     def __init__(
@@ -96,6 +100,8 @@ class DualTokenizerCollateWithTeacher:
         topo_metric: str | None = None,
         need_h1: bool = False,
         topo_batch_size: int = 0,
+        structural_loss: str = "h0",
+        structural_knn_k: int = 1,
     ):
         self.ts = tok_student
         self.task = task
@@ -105,6 +111,8 @@ class DualTokenizerCollateWithTeacher:
         self.topo_metric = topo_metric
         self.need_h1 = bool(need_h1)
         self.topo_batch_size = int(topo_batch_size or 0)
+        self.structural_loss = structural_loss
+        self.structural_knn_k = int(structural_knn_k)
 
     def _encode(self, texts, side: int, out: dict) -> None:
         encoding = self.ts(
@@ -131,6 +139,18 @@ class DualTokenizerCollateWithTeacher:
             return
         with torch.no_grad():
             topo = topo.float()
+            if self.structural_loss != "h0":
+                values, edges = structural_target(
+                    topo,
+                    self.structural_loss,
+                    metric=self.topo_metric,
+                    chunk_size=self.topo_batch_size,
+                    knn_k=self.structural_knn_k,
+                )
+                out["teacher_structural_values"] = values
+                if edges is not None:
+                    out["teacher_structural_edges"] = edges
+                return
             out["teacher_deaths"] = h0_death_times(
                 topo,
                 metric=self.topo_metric,

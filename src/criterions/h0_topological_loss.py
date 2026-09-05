@@ -97,7 +97,7 @@ def split_chunks(x: torch.Tensor, chunk_size: int | None) -> list[torch.Tensor]:
     return [x[k * chunk_size : (k + 1) * chunk_size] for k in range(n)]
 
 
-def _mst_edge_indices(dist: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def mst_edge_indices(dist: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Endpoints of the MST edges of a dense distance matrix, as index tensors.
 
     The selection is a discrete, non-differentiable decision, which is why the old
@@ -135,7 +135,7 @@ def mst_edge_weights(dist: torch.Tensor) -> torch.Tensor:
     if B < 2:
         raise ValueError("MST requires at least two points.")
 
-    edge_i, edge_j = _mst_edge_indices(dist)
+    edge_i, edge_j = mst_edge_indices(dist)
     return dist[edge_i, edge_j]
 
 

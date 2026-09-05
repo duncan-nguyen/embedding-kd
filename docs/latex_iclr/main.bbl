@@ -1,9 +1,17 @@
-\begin{thebibliography}{38}
+\begin{thebibliography}{45}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Akram et~al.(2026)Akram, Sturua, Havriushenko, Herreros, G{\"u}nther,
+  Werk, and Xiao]{akram2026jina}
+Mohammad~Kalim Akram, Saba Sturua, Nastia Havriushenko, Quentin Herreros,
+  Michael G{\"u}nther, Maximilian Werk, and Han Xiao.
+\newblock {jina-embeddings-v5-text}: Task-targeted embedding distillation.
+\newblock arXiv:2602.15547, 2026.
+\newblock URL \url{https://arxiv.org/abs/2602.15547}.
 
 \bibitem[Bhattarai et~al.(2025)Bhattarai, Amjad, Zhylko, and
   Alhanai]{bhattarai2025shortcut}
@@ -12,6 +20,14 @@ Prajjwal Bhattarai, Mohammad Amjad, Dmytro Zhylko, and Tuka Alhanai.
   alignment.
 \newblock arXiv:2509.25253, 2025.
 \newblock URL \url{https://arxiv.org/abs/2509.25253}.
+
+\bibitem[Burykina et~al.(2025)Burykina, Ledneva, and
+  Kuznetsov]{burykina2025jdcemb}
+A.~I. Burykina, D.~R. Ledneva, and D.~P. Kuznetsov.
+\newblock {JDCEMB}: Joint distillation and contrastive learning for embeddings
+  in task-oriented dialogue systems.
+\newblock \emph{Doklady Mathematics}, 112:\penalty0 319--331, 2025.
+\newblock \doi{10.1134/S1064562425700243}.
 
 \bibitem[Chazal et~al.(2014)Chazal, de~Silva, and Oudot]{chazal2014persistence}
 Fr{\'e}d{\'e}ric Chazal, Vin de~Silva, and Steve Oudot.
@@ -114,6 +130,14 @@ Eun~Som Jeon, Rahul Khurana, Aishani Pathak, and Pavan Turaga.
   Learning Research}, pp.\  158--172, 2024.
 \newblock URL \url{https://proceedings.mlr.press/v251/jeon24a.html}.
 
+\bibitem[Joshi et~al.(2024)Joshi, Liu, Xun, Lin, and
+  Foo]{joshi2024representation}
+Chaitanya~K. Joshi, Fayao Liu, Xu~Xun, Jie Lin, and Chuan-Sheng Foo.
+\newblock On representation knowledge distillation for graph neural networks.
+\newblock \emph{IEEE Transactions on Neural Networks and Learning Systems},
+  35\penalty0 (4):\penalty0 4656--4667, 2024.
+\newblock \doi{10.1109/TNNLS.2022.3223018}.
+
 \bibitem[Kim et~al.(2024)Kim, You, Lee, Kim, and Jung]{topkd2024}
 Jungeun Kim, Junwon You, Dongjin Lee, Ha~Young Kim, and Jae-Hun Jung.
 \newblock Do topological characteristics help in knowledge distillation?
@@ -146,6 +170,19 @@ Jongwoo Ko, Seungjoon Park, Minchan Jeong, Sukjin Hong, Euijai Ahn, Du-Seong
 Simon Kornblith, Mohammad Norouzi, Honglak Lee, and Geoffrey Hinton.
 \newblock Similarity of neural network representations revisited.
 \newblock In \emph{International Conference on Machine Learning}, 2019.
+
+\bibitem[Lee et~al.(2024)Lee, Dai, Ren, Chen, Cer, Cole, Hui, Boratko, Kapadia,
+  Ding, Luan, Duddu, Abrego, Shi, Gupta, Kusupati, Jain, Jonnalagadda, Chang,
+  and Naim]{lee2024gecko}
+Jinhyuk Lee, Zhuyun Dai, Xiaoqi Ren, Blair Chen, Daniel Cer, Jeremy~R. Cole,
+  Kai Hui, Michael Boratko, Rajvi Kapadia, Wen Ding, Yi~Luan, Sai Meher~Karthik
+  Duddu, Gustavo~Hernandez Abrego, Weiqiang Shi, Nithi Gupta, Aditya Kusupati,
+  Prateek Jain, Siddhartha~Reddy Jonnalagadda, Ming-Wei Chang, and Iftekhar
+  Naim.
+\newblock {Gecko}: Versatile text embeddings distilled from large language
+  models.
+\newblock arXiv:2403.20327, 2024.
+\newblock URL \url{https://arxiv.org/abs/2403.20327}.
 
 \bibitem[Li et~al.(2025)Li, Li, Li, Xie, and Li]{li2025ese}
 Xianming Li, Zongxi Li, Jing Li, Haoran Xie, and Qing Li.
@@ -219,6 +256,13 @@ Frederick Tung and Greg Mori.
 \newblock In \emph{Proceedings of the IEEE/CVF International Conference on
   Computer Vision}, 2019.
 
+\bibitem[Vu et~al.(2026)Vu, Truong, Vu, and Ngo~Van]{vu2026mol}
+Hai~An Vu, Minh-Phuc Truong, Tu~Vu, and Linh Ngo~Van.
+\newblock {MoL}: Mixture of layers in cross-tokenizer embedding model
+  distillation.
+\newblock \emph{Knowledge-Based Systems}, pp.\  116001, 2026.
+\newblock \doi{10.1016/j.knosys.2026.116001}.
+
 \bibitem[Vujanic \& R{\"u}ckstie{\ss}(2026)Vujanic and R{\"u}ckstie{\ss}]{leaf}
 Robin Vujanic and Thomas R{\"u}ckstie{\ss}.
 \newblock {LEAF}: Knowledge distillation of text embedding models with
@@ -228,6 +272,14 @@ Robin Vujanic and Thomas R{\"u}ckstie{\ss}.
   2026.
 \newblock \doi{10.18653/v1/2026.acl-long.2008}.
 \newblock URL \url{https://aclanthology.org/2026.acl-long.2008/}.
+
+\bibitem[Wang et~al.(2024)Wang, Wang, Gao, Qi, Zheng, and
+  Liao]{wang2024feature}
+Shuo Wang, Chihang Wang, Jia Gao, Zhen Qi, Hongye Zheng, and Xiaoxuan Liao.
+\newblock Feature alignment-based knowledge distillation for efficient
+  compression of large language models.
+\newblock arXiv:2412.19449, 2024.
+\newblock URL \url{https://arxiv.org/abs/2412.19449}.
 
 \bibitem[Wang et~al.(2021)Wang, Bao, Huang, Dong, and Wei]{wang2021minilmv2}
 Wenhui Wang, Hangbo Bao, Shaohan Huang, Li~Dong, and Furu Wei.
@@ -298,5 +350,12 @@ Junjie Zhou, Ke~Zhu, and Jianxin Wu.
   system.
 \newblock In \emph{Proceedings of the AAAI Conference on Artificial
   Intelligence}, 2025.
+
+\bibitem[Zhou et~al.(2026)Zhou, Chen, Wang, Chen, and Lyu]{zhou2026dice}
+Zhenyu Zhou, Defang Chen, Can Wang, Chun Chen, and Siwei Lyu.
+\newblock {DICE}: Distilling classifier-free guidance into text embeddings.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial
+  Intelligence}, 2026.
+\newblock URL \url{https://arxiv.org/abs/2502.03726}.
 
 \end{thebibliography}

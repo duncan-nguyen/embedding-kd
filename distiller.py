@@ -395,6 +395,8 @@ class KnowledgeDistiller:
             lambda_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0),
             topo_metric=getattr(cfg, "topo_metric", "chord"),
             topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
+            structural_loss=getattr(cfg, "structural_loss", "h0"),
+            structural_knn_k=int(getattr(cfg, "structural_knn_k", 1)),
             pooling=cfg.student_pooling,
             include_embedding_layer=cfg.include_embedding_layer,
             eps_norm=cfg.eps_norm,
@@ -417,7 +419,8 @@ class KnowledgeDistiller:
             f"endpoint_loss={getattr(cfg, 'endpoint_loss', 'cosine')}, "
             f"lambda_gram={float(getattr(cfg, 'lambda_gram', 0.0) or 0.0)}, "
             f"lambda_topo={float(getattr(cfg, 'lambda_topo', 0.0) or 0.0)}, "
-            f"lambda_h1={float(getattr(cfg, 'lambda_h1', 0.0) or 0.0)} "
+            f"lambda_h1={float(getattr(cfg, 'lambda_h1', 0.0) or 0.0)}, "
+            f"structural_loss={getattr(cfg, 'structural_loss', 'h0')} "
             f"({getattr(cfg, 'topo_metric', 'chord')}, "
             f"topo_batch_size={int(getattr(cfg, 'topo_batch_size', 0) or 0)} "
             f"{'= batch' if not int(getattr(cfg, 'topo_batch_size', 0) or 0) else 'rows/diagram'})"
@@ -1006,6 +1009,8 @@ class KnowledgeDistiller:
             ),
             need_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0) > 0.0,
             topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
+            structural_loss=getattr(cfg, "structural_loss", "h0"),
+            structural_knn_k=int(getattr(cfg, "structural_knn_k", 1)),
         )
 
     def _probe_rows(self, texts: list[str]) -> torch.Tensor | None:
@@ -1949,7 +1954,14 @@ class KnowledgeDistiller:
         cfg = self.config
         batch_s = self._student_batch(
             batch,
-            extra=("teacher_cls", "teacher_topo", "teacher_deaths", "teacher_h1"),
+            extra=(
+                "teacher_cls",
+                "teacher_topo",
+                "teacher_deaths",
+                "teacher_h1",
+                "teacher_structural_values",
+                "teacher_structural_edges",
+            ),
         )
         self.optimizer.zero_grad(set_to_none=True)
 
@@ -1985,6 +1997,8 @@ class KnowledgeDistiller:
                 teacher_topo=batch_s.get("teacher_topo"),
                 teacher_deaths=batch_s.get("teacher_deaths"),
                 teacher_h1=batch_s.get("teacher_h1"),
+                teacher_structural_values=batch_s.get("teacher_structural_values"),
+                teacher_structural_edges=batch_s.get("teacher_structural_edges"),
             )
             loss = loss.float()
 

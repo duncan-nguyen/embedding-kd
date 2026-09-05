@@ -123,10 +123,9 @@ def parse_args():
         "--lambda_topo",
         type=float,
         default=None,
-        help="GATE-KD: weight of the topological term L_topo = L_H0 + "
-        "lambda_h1 * L_H1, comparing the student batch's persistence diagrams to "
-        'those of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ '
-        'topo" control. Death times are O(1), so sweep the weight over decades',
+        help="GATE-KD: weight of the structural term chosen by --structural_loss. "
+        "The default is L_H0 + lambda_h1 * L_H1 against the unprojected teacher; "
+        "0 is the recipe and positive values enable the reviewer-control arm",
     )
     parser.add_argument(
         "--lambda_h1",
@@ -137,6 +136,20 @@ def parse_args():
         "low-persistence cycles matched to the diagonal. 0 leaves L_topo the pure "
         "H0 term. Requires the optional 'gudhi' package and costs O(B^3) simplices "
         "per batch on both sides",
+    )
+    parser.add_argument(
+        "--structural_loss",
+        choices=["h0", "sorted_pairwise", "teacher_mst", "knn_distribution"],
+        default=None,
+        help="GATE-KD: structural statistic weighted by --lambda_topo. h0 is the "
+        "persistence loss; the other choices are matched-compute controls",
+    )
+    parser.add_argument(
+        "--structural_knn_k",
+        type=int,
+        default=None,
+        help="GATE-KD: neighbours per row for structural_loss=knn_distribution "
+        "(default 1, giving B scalar distances versus H0's B-1)",
     )
     parser.add_argument(
         "--topo_batch_size",
@@ -166,6 +179,7 @@ def parse_args():
         "--projection_type",
         choices=[
             "pca",
+            "pca_whiten",
             "random",
             "random_gaussian",
             "mrl_prefix",
@@ -174,7 +188,8 @@ def parse_args():
         ],
         default=None,
         help='GATE-KD: how the teacher targets reach the student dimension. "pca" '
-        'is the paper\'s frozen spectral map; "random" draws a Haar-random '
+        'is the paper\'s frozen spectral map; "pca_whiten" additionally flattens '
+        'the retained PCA spectrum; "random" draws a Haar-random '
         'orthonormal subspace and "random_gaussian" an unnormalised '
         "Johnson-Lindenstrauss map -- the two data-independent controls for the "
         'Eckart-Young claim; "mrl_prefix" keeps the teacher\'s leading '
@@ -522,6 +537,8 @@ METHOD_FLAGS = (
             "lambda_gram",
             "lambda_topo",
             "lambda_h1",
+            "structural_loss",
+            "structural_knn_k",
             "topo_batch_size",
             "topo_metric",
             "topo_teacher_source",
@@ -590,6 +607,8 @@ def get_config(method: str, args):
         )
     if args.projection_rank is not None and args.projection_rank < 0:
         raise ValueError("--projection_rank must be 0 (full student width) or positive")
+    if args.structural_knn_k is not None and args.structural_knn_k <= 0:
+        raise ValueError("--structural_knn_k must be positive")
 
     for flag, attribute in COMMON_FLAGS.items():
         value = getattr(args, flag)
@@ -598,6 +617,13 @@ def get_config(method: str, args):
 
     for names, supported in METHOD_FLAGS:
         apply_method_flags(config, args, names, supported)
+
+    if (
+        getattr(config, "distill_method", None) == "geoode"
+        and getattr(config, "structural_loss", "h0") != "h0"
+        and float(getattr(config, "lambda_h1", 0.0) or 0.0) > 0.0
+    ):
+        raise ValueError("--lambda_h1 is only defined with --structural_loss h0")
 
     # The two eval flags describe one protocol, so each implies the other when only
     # one is given: a run either touches the validation split or it does not.
