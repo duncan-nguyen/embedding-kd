@@ -20,9 +20,9 @@ or repeated access to teacher hidden states
 \citep{ko2023revisiting,kim2025layerselection}. More fundamentally, this
 machinery can obscure whether the difficulty lies in coordinating the
 representation hierarchy or in failing to define a comparable final
-representation in the first place. This motivates our central hypothesis that
-the primary bottleneck is the endpoint interface rather than coordination
-across intermediate representations.
+representation in the first place. This motivates our hypothesis that the
+endpoint interface is an under-examined bottleneck in cross-dimensional
+distillation.
 
 We test this hypothesis by separating teacher knowledge into two channels.
 The \emph{extrinsic interface} describes how teacher representations are
@@ -42,15 +42,15 @@ transfers multiscale connectivity directly between native spaces of different
 dimensions. The resulting objective combines pointwise endpoint correspondence
 with coordinate-invariant structure while supervising only the final student
 embedding. It trains no projector, uses no intermediate-layer objective, and
-adds nothing to the student at inference.
+requires no online teacher forward pass during ordinary training.
 
 Experiments across three teacher--student configurations and nine downstream
 benchmarks support this endpoint-centered view. Under endpoint-only supervision,
 adding the Procrustes-aligned gauge to the same PCA subspace raises the average
 score from 69.35 to 74.28, showing that retained teacher variance alone does not
 determine whether a target is easy to learn. Native-space $H_0$ supervision then
-improves the endpoint-only result from 74.26 to 74.79, indicating that intrinsic
-connectivity complements pointwise targets. With both signals active, refitting
+improves the endpoint-only result from 74.28 to 74.79, indicating that intrinsic
+connectivity provides a complementary refinement. With both signals active, refitting
 the gauge across epochs adds 0.31 points over retaining the alignment fitted at
 initialization. Overall, GATE-KD achieves the
 highest aggregate score among the evaluated distilled students in all three
@@ -68,7 +68,8 @@ We make three contributions.
     directly across native spaces.
     \item We introduce GATE-KD, a terminal-only method that combines a fixed PCA
     subspace, epoch-wise closed-form gauge alignment, and native-space $H_0$
-    persistence matching without a trainable projector or inference-time overhead.
+    persistence matching using only cached final teacher embeddings and no
+    trainable alignment module.
     \item Through controlled interface and signal decompositions, we show that
     coordinate comparability and topology provide complementary supervision;
     across three teacher--student configurations, this simple formulation

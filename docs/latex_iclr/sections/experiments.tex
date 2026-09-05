@@ -29,7 +29,7 @@ multi-stage embedding-distillation recipe \citep{zhang2024jasper}. CDM and DSKD
 address cross-tokenizer alignment and dual-space transfer, respectively
 \citep{chen2025cdm,zhang2024dskd}. EMO combines token-level relations with
 hidden-state alignment \citep{truong2025emo}, and TALAS combines teacher
-anchoring with hierarchy-based self-distillation \citep{talas}. Complete
+    anchoring with hierarchy-based self-distillation \citep{talas}. Method-specific
 training hyperparameters are reported in
 Appendix~\ref{app:training-hyperparameters}.
 
@@ -68,7 +68,7 @@ improving Avg. OOD from 79.85 to 80.49. The aggregate gain in this configuration
 is therefore driven by OOD performance rather than higher scores on the
 datasets supplying the distillation text.
 
-\subsection{Training Efficiency}
+\subsection{Optimization Efficiency}
 \label{sec:training-efficiency}
 
 Table~\ref{tab:training-efficiency} reports observed optimization cost under
