@@ -92,6 +92,17 @@ PCA determines which teacher subspace survives the width bottleneck, while
 Procrustes determines how that fixed geometry is presented to the evolving
 student.
 
+\begin{corollary}[Monotone gauge refit]
+With the student fixed, every gauge refit weakly decreases the calibration
+endpoint loss, while leaving the topology term unchanged.
+\end{corollary}
+\begin{proof}
+Equation~\ref{eq:gauge-alignment} minimizes the endpoint loss over all
+$R\in O(d_S)$, so its value cannot exceed that obtained with the previous
+gauge. The topology term depends only on the fixed native teacher and student
+embeddings and is independent of $R$.
+\end{proof}
+
 \subsection{Intrinsic Topology Transfer}
 \label{sec:method-topology}
 
@@ -103,13 +114,36 @@ Equation~\ref{eq:pca-target} need not equal that of the original teacher
 embeddings. We therefore transfer an additional structural signal directly
 from the teacher's native space.
 
+This loss of geometry is unavoidable when the teacher cache has intrinsic rank
+above the student width \citep{bhattarai2025shortcut}.
+\begin{proposition}[Irreducible Gram distortion]
+Let $T\in\mathbb{R}^{N\times d_T}$ collect the normalized teacher cache
+embeddings, with singular values
+$\sigma_1(T)\geq\cdots\geq\sigma_r(T)>0$. For every
+$Z\in\mathbb{R}^{N\times d_S}$,
+\begin{equation}
+    \left\lVert TT^\top-ZZ^\top\right\rVert_F^2
+    \geq \sum_{j>d_S}\sigma_j(T)^4.
+    \label{eq:gram-lower-bound}
+\end{equation}
+Thus exact preservation of the teacher cosine Gram matrix is impossible when
+$\operatorname{rank}(T)>d_S$.
+\end{proposition}
+\begin{proof}
+The eigenvalues of $TT^\top$ are $\sigma_j(T)^2$, whereas
+$\operatorname{rank}(ZZ^\top)\leq d_S$. The Eckart--Young theorem therefore
+lower-bounds the squared error of any such rank-$d_S$ approximation by the
+squared tail eigenvalues \citep{eckart1936approximation}.
+\end{proof}
+
 For a minibatch of $B$ normalized vectors, we use the chord distance
 \begin{equation}
     d(\mathbf{u},\mathbf{v})
     =\sqrt{2-2\langle\mathbf{u},\mathbf{v}\rangle}.
 \end{equation}
 The $B-1$ finite death times of degree-zero Vietoris--Rips persistence are the
-edge weights of the point cloud's minimum spanning tree. Let
+edge weights of the point cloud's minimum spanning tree
+\citep{hofer2020topologically}. Let
 $\delta^S_{(1)}\leq\cdots\leq\delta^S_{(B-1)}$ and
 $\delta^T_{(1)}\leq\cdots\leq\delta^T_{(B-1)}$ denote the sorted death times
 of the student embeddings $\{\mathbf{z}_i\}$ and the original teacher
@@ -120,13 +154,48 @@ embeddings $\{\mathbf{t}_i\}$. We define
       \left(\delta^S_{(j)}-\delta^T_{(j)}\right)^2.
     \label{eq:topological-loss}
 \end{equation}
+For a precise interpretation, define the empirical distributions of finite
+connectivity scales
+\begin{equation}
+    \nu_S=\frac{1}{B-1}\sum_{j=1}^{B-1}\delta_{\delta_{(j)}^S},
+    \qquad
+    \nu_T=\frac{1}{B-1}\sum_{j=1}^{B-1}\delta_{\delta_{(j)}^T},
+\end{equation}
+where $\delta_a$ denotes a Dirac mass at $a$.
+\begin{proposition}[Transport interpretation and stability]
+The topology loss is the squared one-dimensional Wasserstein distance
+\begin{equation}
+    \mathcal{L}_{H_0}=W_2^2(\nu_S,\nu_T).
+    \label{eq:topological-wasserstein}
+\end{equation}
+Moreover, if the two distance matrices on the corresponding batch satisfy
+\begin{equation}
+    \epsilon=\max_{i,j}
+    \left|d(\mathbf{z}_i,\mathbf{z}_j)
+          -d(\mathbf{t}_i,\mathbf{t}_j)\right|,
+\end{equation}
+then $\mathcal{L}_{H_0}\leq\epsilon^2$.
+\end{proposition}
+\begin{proof}
+Optimal transport on the real line pairs equally weighted samples in sorted
+order, which gives Equation~\ref{eq:topological-wasserstein}
+\citep{peyre2019computational}. Under a uniform edge perturbation of at most
+$\epsilon$, every threshold graph at scale $a$ in either metric is contained
+in the other at scale $a+\epsilon$. Kruskal's characterization of the ordered
+minimum-spanning-tree edges then gives
+$|\delta^S_{(j)}-\delta^T_{(j)}|\leq\epsilon$ for every $j$, and averaging their
+squared differences proves the bound. This is the degree-zero finite-space
+case of Vietoris--Rips persistence stability \citep{chazal2014persistence}.
+\end{proof}
+
 The teacher diagram is computed from $\mathbf{t}_i\in\mathbb{R}^{d_T}$ rather
 than $\mathbf{y}_i$ or $\boldsymbol{\tau}_i^{(e)}$. The loss therefore needs
 neither a projection nor a shared orientation. It is piecewise differentiable
-through the selected student edge lengths. Equation~\ref{eq:topological-loss}
-matches the multiset of $H_0$ death times and does not impose correspondence
-between individual minimum-spanning-tree edges or preserve higher-dimensional
-topological features.
+through the selected student edge lengths \citep{hofer2019connectivity}.
+The stability result is one-way. Equation~\ref{eq:topological-loss} matches the
+multiset of $H_0$ death times but does not impose correspondence between
+individual minimum-spanning-tree edges, recover the full metric geometry, or
+preserve higher-dimensional topological features.
 
 \subsection{Objective and Alternating Optimization}
 \label{sec:method-objective}

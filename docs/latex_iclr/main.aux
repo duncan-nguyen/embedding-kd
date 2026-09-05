@@ -9,11 +9,14 @@
 \newlabel{sec:introduction}{{1}{1}{Introduction}{section.1}{}}
 \citation{reimers2020multilingual}
 \citation{xu2023distillcse,zhang2024jasper,li2025ese,leaf}
+\citation{kim2023embeddistill}
 \citation{truong2025emo,talas}
 \citation{ko2023revisiting,kim2025layerselection}
 \citation{hpd}
 \citation{miles2024projector,chen2023projector}
 \citation{vkd2024,tcs}
+\citation{kornblith2019cka,williams2021shape,maystre2025procrustes}
+\citation{han2026equivalence}
 \citation{bhattarai2025shortcut}
 \@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
 \newlabel{sec:related-work}{{2}{2}{Related Work}{section.2}{}}
@@ -28,95 +31,119 @@
 \newlabel{eq:pca-target}{{2}{3}{Subspace selection}{equation.3.2}{}}
 \@writefile{toc}{\contentsline {paragraph}{Gauge alignment.}{3}{section*.2}\protected@file@percent }
 \newlabel{eq:gauge-alignment}{{3}{3}{Gauge alignment}{equation.3.3}{}}
-\newlabel{eq:target}{{4}{3}{Gauge alignment}{equation.3.4}{}}
+\citation{bhattarai2025shortcut}
+\citation{eckart1936approximation}
+\citation{hofer2020topologically}
+\newlabel{eq:target}{{4}{4}{Gauge alignment}{equation.3.4}{}}
 \@writefile{toc}{\contentsline {paragraph}{Relation to the endpoint objective.}{4}{section*.3}\protected@file@percent }
 \newlabel{eq:endpoint-procrustes}{{5}{4}{Relation to the endpoint objective}{equation.3.5}{}}
 \@writefile{toc}{\contentsline {paragraph}{Gauge invariance.}{4}{section*.4}\protected@file@percent }
 \newlabel{eq:gauge-invariance}{{6}{4}{Gauge invariance}{equation.3.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Intrinsic Topology Transfer}{4}{subsection.3.2}\protected@file@percent }
 \newlabel{sec:method-topology}{{3.2}{4}{Intrinsic Topology Transfer}{subsection.3.2}{}}
-\newlabel{eq:topological-loss}{{8}{4}{Intrinsic Topology Transfer}{equation.3.8}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Objective and Alternating Optimization}{4}{subsection.3.3}\protected@file@percent }
-\newlabel{sec:method-objective}{{3.3}{4}{Objective and Alternating Optimization}{subsection.3.3}{}}
-\newlabel{eq:endpoint-loss}{{9}{4}{Objective and Alternating Optimization}{equation.3.9}{}}
-\newlabel{eq:objective}{{10}{4}{Objective and Alternating Optimization}{equation.3.10}{}}
+\newlabel{eq:gram-lower-bound}{{7}{4}{Irreducible Gram distortion}{equation.3.7}{}}
+\citation{peyre2019computational}
+\citation{chazal2014persistence}
+\citation{hofer2019connectivity}
+\citation{talas}
+\citation{devlin2019bert,wang2021minilmv2,chen2024m3,zhang2025qwen3embedding}
+\newlabel{eq:topological-loss}{{9}{5}{Intrinsic Topology Transfer}{equation.3.9}{}}
+\newlabel{eq:topological-wasserstein}{{11}{5}{Transport interpretation and stability}{equation.3.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Objective and Alternating Optimization}{5}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:method-objective}{{3.3}{5}{Objective and Alternating Optimization}{subsection.3.3}{}}
+\newlabel{eq:endpoint-loss}{{13}{5}{Objective and Alternating Optimization}{equation.3.13}{}}
+\newlabel{eq:objective}{{14}{5}{Objective and Alternating Optimization}{equation.3.14}{}}
 \citation{park2019rkd}
 \citation{zhang2024jasper}
 \citation{chen2025cdm,zhang2024dskd}
 \citation{truong2025emo}
 \citation{talas}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{5}{section.4}\protected@file@percent }
-\newlabel{sec:experiments}{{4}{5}{Experiments}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{5}{subsection.4.1}\protected@file@percent }
-\newlabel{sec:exp-setup}{{4.1}{5}{Experimental Setup}{subsection.4.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{Teacher--student configurations.}{5}{section*.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Distillation corpus.}{5}{section*.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Baselines.}{5}{section*.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Evaluation protocol.}{5}{section*.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Main Results}{5}{subsection.4.2}\protected@file@percent }
-\newlabel{sec:main-results}{{4.2}{5}{Main Results}{subsection.4.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Optimization Efficiency}{5}{subsection.4.3}\protected@file@percent }
-\newlabel{sec:training-efficiency}{{4.3}{5}{Optimization Efficiency}{subsection.4.3}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Main results across nine benchmarks. Distilled-student scores are mean $\pm $ sample standard deviation over three seeds. Best and second-best results are shown in bold and underlined, respectively.}}{6}{table.1}\protected@file@percent }
-\newlabel{tab:main-results}{{1}{6}{Main results across nine benchmarks. Distilled-student scores are mean $\pm $ sample standard deviation over three seeds. Best and second-best results are shown in bold and underlined, respectively}{table.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Training efficiency on NVIDIA H200 GPUs.}}{6}{table.2}\protected@file@percent }
-\newlabel{tab:training-efficiency}{{2}{6}{Training efficiency on NVIDIA H200 GPUs}{table.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Analysis}{7}{section.5}\protected@file@percent }
-\newlabel{sec:analysis}{{5}{7}{Analysis}{section.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Coordinate Comparability at the Bottleneck}{7}{subsection.5.1}\protected@file@percent }
-\newlabel{sec:analysis-interface}{{5.1}{7}{Coordinate Comparability at the Bottleneck}{subsection.5.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Endpoint-interface ablation in configuration (c). All variants optimize $\mathcal  {L}_{\mathrm  {end}}$ only. Scores are mean $\pm $ sample standard deviation over three seeds. Random controls use one map draw shared across the training seeds.}}{7}{table.3}\protected@file@percent }
-\newlabel{tab:interface-families}{{3}{7}{Endpoint-interface ablation in configuration (c). All variants optimize $\mathcal {L}_{\mathrm {end}}$ only. Scores are mean $\pm $ sample standard deviation over three seeds. Random controls use one map draw shared across the training seeds}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Complementary Endpoint and Topology Signals}{7}{subsection.5.2}\protected@file@percent }
-\newlabel{sec:analysis-decomposition}{{5.2}{7}{Complementary Endpoint and Topology Signals}{subsection.5.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{6}{section.4}\protected@file@percent }
+\newlabel{sec:experiments}{{4}{6}{Experiments}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{6}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:exp-setup}{{4.1}{6}{Experimental Setup}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Teacher--student configurations.}{6}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Distillation corpus.}{6}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Baselines.}{6}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Evaluation protocol.}{6}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Main Results}{6}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:main-results}{{4.2}{6}{Main Results}{subsection.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Optimization Efficiency}{6}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:training-efficiency}{{4.3}{6}{Optimization Efficiency}{subsection.4.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Main results across nine benchmarks. Distilled-student scores are mean $\pm $ sample standard deviation over three seeds. Best and second-best results are shown in bold and underlined, respectively.}}{7}{table.1}\protected@file@percent }
+\newlabel{tab:main-results}{{1}{7}{Main results across nine benchmarks. Distilled-student scores are mean $\pm $ sample standard deviation over three seeds. Best and second-best results are shown in bold and underlined, respectively}{table.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Training efficiency on NVIDIA H200 GPUs.}}{7}{table.2}\protected@file@percent }
+\newlabel{tab:training-efficiency}{{2}{7}{Training efficiency on NVIDIA H200 GPUs}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Analysis}{8}{section.5}\protected@file@percent }
+\newlabel{sec:analysis}{{5}{8}{Analysis}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Coordinate Comparability at the Bottleneck}{8}{subsection.5.1}\protected@file@percent }
+\newlabel{sec:analysis-interface}{{5.1}{8}{Coordinate Comparability at the Bottleneck}{subsection.5.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Endpoint-interface ablation in configuration (c). All variants optimize $\mathcal  {L}_{\mathrm  {end}}$ only. Scores are mean $\pm $ sample standard deviation over three seeds. Random controls use one map draw shared across the training seeds.}}{8}{table.3}\protected@file@percent }
+\newlabel{tab:interface-families}{{3}{8}{Endpoint-interface ablation in configuration (c). All variants optimize $\mathcal {L}_{\mathrm {end}}$ only. Scores are mean $\pm $ sample standard deviation over three seeds. Random controls use one map draw shared across the training seeds}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Complementary Endpoint and Topology Signals}{8}{subsection.5.2}\protected@file@percent }
+\newlabel{sec:analysis-decomposition}{{5.2}{8}{Complementary Endpoint and Topology Signals}{subsection.5.2}{}}
 \bibdata{references/references}
 \bibcite{bhattarai2025shortcut}{{1}{2025}{{Bhattarai et~al.}}{{Bhattarai, Amjad, Zhylko, and Alhanai}}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Decomposition of endpoint supervision, topology transfer, and gauge refitting in configuration (c). Scores are mean $\pm $ sample standard deviation over three seeds. The $H_0$ residual is measured in the original teacher space.}}{8}{table.4}\protected@file@percent }
-\newlabel{tab:signal-decomposition}{{4}{8}{Decomposition of endpoint supervision, topology transfer, and gauge refitting in configuration (c). Scores are mean $\pm $ sample standard deviation over three seeds. The $H_0$ residual is measured in the original teacher space}{table.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Sensitivity to Training Choices}{8}{subsection.5.3}\protected@file@percent }
-\newlabel{sec:analysis-sensitivity}{{5.3}{8}{Sensitivity to Training Choices}{subsection.5.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Sensitivity to topology weight, training batch size, and gauge-calibration size in configuration (c). Points and error bars show mean $\pm $ sample standard deviation over three seeds. The batch sweep fixes the number of epochs and is not compute matched.}}{8}{figure.1}\protected@file@percent }
-\newlabel{fig:sensitivity-15k}{{1}{8}{Sensitivity to topology weight, training batch size, and gauge-calibration size in configuration (c). Points and error bars show mean $\pm $ sample standard deviation over three seeds. The batch sweep fixes the number of epochs and is not compute matched}{figure.1}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{8}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{8}{Conclusion}{section.6}{}}
-\bibcite{chen2025cdm}{{2}{2025}{{Chen et~al.}}{{Chen, Liu, Meng, Chen, Xu, and Zhou}}}
-\bibcite{chen2023projector}{{3}{2023}{{Chen et~al.}}{{}}}
-\bibcite{talas}{{4}{2026}{{Dao et~al.}}{{Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and Le}}}
-\bibcite{hinton2015distilling}{{5}{2015}{{Hinton et~al.}}{{Hinton, Vinyals, and Dean}}}
-\bibcite{jeon2024topological}{{6}{2024}{{Jeon et~al.}}{{Jeon, Khurana, Pathak, and Turaga}}}
-\bibcite{topkd2024}{{7}{2024}{{Kim et~al.}}{{Kim, You, Lee, Kim, and Jung}}}
-\bibcite{ko2023revisiting}{{8}{2023}{{Ko et~al.}}{{Ko, Park, Jeong, Hong, Ahn, Chang, and Yun}}}
-\bibcite{li2025ese}{{9}{2025}{{Li et~al.}}{{Li, Li, Li, Xie, and Li}}}
-\bibcite{miles2024projector}{{10}{2024}{{Miles \& Mikolajczyk}}{{Miles and Mikolajczyk}}}
-\bibcite{vkd2024}{{11}{2024}{{Miles et~al.}}{{Miles, Elezi, and Deng}}}
-\bibcite{park2019rkd}{{12}{2019}{{Park et~al.}}{{Park, Kim, Lu, and Cho}}}
-\bibcite{reimers2020multilingual}{{13}{2020}{{Reimers \& Gurevych}}{{Reimers and Gurevych}}}
-\bibcite{schonemann1966procrustes}{{14}{1966}{{Sch{\"o}nemann}}{{}}}
-\bibcite{tian2020crd}{{15}{2020}{{Tian et~al.}}{{Tian, Krishnan, and Isola}}}
-\bibcite{truong2025emo}{{16}{2025}{{Truong et~al.}}{{Truong, Vu, Vu, Nguyen, Ngo~Van, Nguyen, and Le}}}
-\bibcite{tung2019similarity}{{17}{2019}{{Tung \& Mori}}{{Tung and Mori}}}
-\bibcite{leaf}{{18}{2026}{{Vujanic \& R{\"u}ckstie{\ss }}}{{Vujanic and R{\"u}ckstie{\ss }}}}
-\bibcite{xu2023distillcse}{{19}{2023}{{Xu et~al.}}{{Xu, Shao, Chen, and Liu}}}
-\bibcite{kim2025layerselection}{{20}{2025}{{Yu et~al.}}{{Yu, Wen, and Mou}}}
-\bibcite{zhang2024jasper}{{21}{2024{a}}{{Zhang et~al.}}{{Zhang, Li, Zeng, and Wang}}}
-\bibcite{zhang2024dskd}{{22}{2024{b}}{{Zhang et~al.}}{{Zhang, Zhang, Sun, Chen, and Xu}}}
-\bibcite{hpd}{{23}{2022}{{Zhao et~al.}}{{Zhao, Yu, Wu, and Li}}}
-\bibcite{tcs}{{24}{2025}{{Zhou et~al.}}{{Zhou, Zhu, and Wu}}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Decomposition of endpoint supervision, topology transfer, and gauge refitting in configuration (c). Scores are mean $\pm $ sample standard deviation over three seeds. The $H_0$ residual is measured in the original teacher space.}}{9}{table.4}\protected@file@percent }
+\newlabel{tab:signal-decomposition}{{4}{9}{Decomposition of endpoint supervision, topology transfer, and gauge refitting in configuration (c). Scores are mean $\pm $ sample standard deviation over three seeds. The $H_0$ residual is measured in the original teacher space}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Sensitivity to Training Choices}{9}{subsection.5.3}\protected@file@percent }
+\newlabel{sec:analysis-sensitivity}{{5.3}{9}{Sensitivity to Training Choices}{subsection.5.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Sensitivity to topology weight, training batch size, and gauge-calibration size in configuration (c). Points and error bars show mean $\pm $ sample standard deviation over three seeds. The batch sweep fixes the number of epochs and is not compute matched.}}{9}{figure.1}\protected@file@percent }
+\newlabel{fig:sensitivity-15k}{{1}{9}{Sensitivity to topology weight, training batch size, and gauge-calibration size in configuration (c). Points and error bars show mean $\pm $ sample standard deviation over three seeds. The batch sweep fixes the number of epochs and is not compute matched}{figure.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{9}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{9}{Conclusion}{section.6}{}}
+\bibcite{chazal2014persistence}{{2}{2014}{{Chazal et~al.}}{{Chazal, de~Silva, and Oudot}}}
+\bibcite{chen2024m3}{{3}{2024}{{Chen et~al.}}{{Chen, Xiao, Zhang, Luo, Lian, and Liu}}}
+\bibcite{chen2025cdm}{{4}{2025}{{Chen et~al.}}{{Chen, Liu, Meng, Chen, Xu, and Zhou}}}
+\bibcite{chen2023projector}{{5}{2023}{{Chen et~al.}}{{Chen, Wang, Liu, Xu, de~Hoog, Kusy, and Huang}}}
+\bibcite{talas}{{6}{2026}{{Dao et~al.}}{{Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and Le}}}
+\bibcite{devlin2019bert}{{7}{2019}{{Devlin et~al.}}{{Devlin, Chang, Lee, and Toutanova}}}
+\bibcite{eckart1936approximation}{{8}{1936}{{Eckart \& Young}}{{Eckart and Young}}}
+\bibcite{han2026equivalence}{{9}{2026}{{Han}}{{}}}
+\bibcite{hinton2015distilling}{{10}{2015}{{Hinton et~al.}}{{Hinton, Vinyals, and Dean}}}
+\bibcite{hofer2019connectivity}{{11}{2019}{{Hofer et~al.}}{{Hofer, Kwitt, Niethammer, and Dixit}}}
+\bibcite{hofer2020topologically}{{12}{2020}{{Hofer et~al.}}{{Hofer, Graf, Rieck, Niethammer, and Kwitt}}}
+\bibcite{jeon2024topological}{{13}{2024}{{Jeon et~al.}}{{Jeon, Khurana, Pathak, and Turaga}}}
+\bibcite{topkd2024}{{14}{2024}{{Kim et~al.}}{{Kim, You, Lee, Kim, and Jung}}}
+\bibcite{kim2023embeddistill}{{15}{2023}{{Kim et~al.}}{{Kim, Rawat, Zaheer, Jayasumana, Sadhanala, Jitkrittum, Menon, Fergus, and Kumar}}}
+\bibcite{ko2023revisiting}{{16}{2023}{{Ko et~al.}}{{Ko, Park, Jeong, Hong, Ahn, Chang, and Yun}}}
+\bibcite{kornblith2019cka}{{17}{2019}{{Kornblith et~al.}}{{Kornblith, Norouzi, Lee, and Hinton}}}
+\bibcite{li2025ese}{{18}{2025}{{Li et~al.}}{{Li, Li, Li, Xie, and Li}}}
+\bibcite{maystre2025procrustes}{{19}{2025}{{Maystre et~al.}}{{Maystre, Ortega~Gonzalez, Park, Dolga, Berariu, Zhao, and Ciosek}}}
+\bibcite{miles2024projector}{{20}{2024}{{Miles \& Mikolajczyk}}{{Miles and Mikolajczyk}}}
+\bibcite{vkd2024}{{21}{2024}{{Miles et~al.}}{{Miles, Elezi, and Deng}}}
+\bibcite{park2019rkd}{{22}{2019}{{Park et~al.}}{{Park, Kim, Lu, and Cho}}}
+\bibcite{peyre2019computational}{{23}{2019}{{Peyr{\'e} \& Cuturi}}{{Peyr{\'e} and Cuturi}}}
+\bibcite{reimers2020multilingual}{{24}{2020}{{Reimers \& Gurevych}}{{Reimers and Gurevych}}}
+\bibcite{schonemann1966procrustes}{{25}{1966}{{Sch{\"o}nemann}}{{}}}
+\bibcite{tian2020crd}{{26}{2020}{{Tian et~al.}}{{Tian, Krishnan, and Isola}}}
+\bibcite{truong2025emo}{{27}{2025}{{Truong et~al.}}{{Truong, Vu, Vu, Nguyen, Ngo~Van, Nguyen, and Le}}}
+\bibcite{tung2019similarity}{{28}{2019}{{Tung \& Mori}}{{Tung and Mori}}}
+\bibcite{leaf}{{29}{2026}{{Vujanic \& R{\"u}ckstie{\ss }}}{{Vujanic and R{\"u}ckstie{\ss }}}}
+\bibcite{wang2021minilmv2}{{30}{2021}{{Wang et~al.}}{{Wang, Bao, Huang, Dong, and Wei}}}
+\bibcite{williams2021shape}{{31}{2021}{{Williams et~al.}}{{Williams, Kunz, Kornblith, and Linderman}}}
+\bibcite{xu2023distillcse}{{32}{2023}{{Xu et~al.}}{{Xu, Shao, Chen, and Liu}}}
+\bibcite{kim2025layerselection}{{33}{2025}{{Yu et~al.}}{{Yu, Wen, and Mou}}}
+\bibcite{zhang2024jasper}{{34}{2024{a}}{{Zhang et~al.}}{{Zhang, Li, Zeng, and Wang}}}
+\bibcite{zhang2024dskd}{{35}{2024{b}}{{Zhang et~al.}}{{Zhang, Zhang, Sun, Chen, and Xu}}}
+\bibcite{zhang2025qwen3embedding}{{36}{2025}{{Zhang et~al.}}{{Zhang, Li, Long, Zhang, Lin, Yang, Xie, Yang, Liu, Lin, Huang, and Zhou}}}
+\bibcite{hpd}{{37}{2022}{{Zhao et~al.}}{{Zhao, Yu, Wu, and Li}}}
+\bibcite{tcs}{{38}{2025}{{Zhou et~al.}}{{Zhou, Zhu, and Wu}}}
 \bibstyle{template/iclr2027_conference}
-\@writefile{toc}{\contentsline {section}{\numberline {A}Training Details}{11}{appendix.A}\protected@file@percent }
-\newlabel{app:training-hyperparameters}{{A}{11}{Training Details}{appendix.A}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Training hyperparameters for the main experiments.}}{11}{table.5}\protected@file@percent }
-\newlabel{tab:training-hyperparameters}{{5}{11}{Training hyperparameters for the main experiments}{table.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {B}Results at a Larger Distillation Scale}{11}{appendix.B}\protected@file@percent }
-\newlabel{app:results-100k}{{B}{11}{Results at a Larger Distillation Scale}{appendix.B}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Results at a larger distillation scale.}}{12}{table.6}\protected@file@percent }
-\newlabel{tab:main-results-100k}{{6}{12}{Results at a larger distillation scale}{table.6}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {C}Zero-Shot Retrieval}{12}{appendix.C}\protected@file@percent }
-\newlabel{app:retrieval-15k}{{C}{12}{Zero-Shot Retrieval}{appendix.C}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Zero-shot retrieval on five BEIR benchmarks after distillation, measured by nDCG@10.}}{13}{table.7}\protected@file@percent }
-\newlabel{tab:retrieval-results-15k}{{7}{13}{Zero-shot retrieval on five BEIR benchmarks after distillation, measured by nDCG@10}{table.7}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {D}Detailed Sensitivity Results}{14}{appendix.D}\protected@file@percent }
-\newlabel{app:sensitivity-15k}{{D}{14}{Detailed Sensitivity Results}{appendix.D}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Numerical sensitivity results for configuration (c).}}{14}{table.8}\protected@file@percent }
-\newlabel{tab:sensitivity-15k}{{8}{14}{Numerical sensitivity results for configuration (c)}{table.8}{}}
-\gdef \@abspage@last{14}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Training Details}{13}{appendix.A}\protected@file@percent }
+\newlabel{app:training-hyperparameters}{{A}{13}{Training Details}{appendix.A}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Training hyperparameters for the main experiments.}}{13}{table.5}\protected@file@percent }
+\newlabel{tab:training-hyperparameters}{{5}{13}{Training hyperparameters for the main experiments}{table.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Results at a Larger Distillation Scale}{13}{appendix.B}\protected@file@percent }
+\newlabel{app:results-100k}{{B}{13}{Results at a Larger Distillation Scale}{appendix.B}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Results at a larger distillation scale.}}{14}{table.6}\protected@file@percent }
+\newlabel{tab:main-results-100k}{{6}{14}{Results at a larger distillation scale}{table.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C}Zero-Shot Retrieval}{14}{appendix.C}\protected@file@percent }
+\newlabel{app:retrieval-15k}{{C}{14}{Zero-Shot Retrieval}{appendix.C}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Zero-shot retrieval on five BEIR benchmarks after distillation, measured by nDCG@10.}}{15}{table.7}\protected@file@percent }
+\newlabel{tab:retrieval-results-15k}{{7}{15}{Zero-shot retrieval on five BEIR benchmarks after distillation, measured by nDCG@10}{table.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {D}Detailed Sensitivity Results}{16}{appendix.D}\protected@file@percent }
+\newlabel{app:sensitivity-15k}{{D}{16}{Detailed Sensitivity Results}{appendix.D}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Numerical sensitivity results for configuration (c).}}{16}{table.8}\protected@file@percent }
+\newlabel{tab:sensitivity-15k}{{8}{16}{Numerical sensitivity results for configuration (c)}{table.8}{}}
+\gdef \@abspage@last{16}

@@ -1,4 +1,4 @@
-\begin{thebibliography}{24}
+\begin{thebibliography}{38}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -13,6 +13,22 @@ Prajjwal Bhattarai, Mohammad Amjad, Dmytro Zhylko, and Tuka Alhanai.
 \newblock arXiv:2509.25253, 2025.
 \newblock URL \url{https://arxiv.org/abs/2509.25253}.
 
+\bibitem[Chazal et~al.(2014)Chazal, de~Silva, and Oudot]{chazal2014persistence}
+Fr{\'e}d{\'e}ric Chazal, Vin de~Silva, and Steve Oudot.
+\newblock Persistence stability for geometric complexes.
+\newblock \emph{Geometriae Dedicata}, 173:\penalty0 193--214, 2014.
+\newblock \doi{10.1007/s10711-013-9937-z}.
+\newblock URL \url{https://arxiv.org/abs/1207.3885}.
+
+\bibitem[Chen et~al.(2024)Chen, Xiao, Zhang, Luo, Lian, and Liu]{chen2024m3}
+Jianlyu Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu Lian, and Zheng Liu.
+\newblock {M3}-embedding: Multi-linguality, multi-functionality,
+  multi-granularity text embeddings through self-knowledge distillation.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  ACL 2024}, pp.\  2318--2335, 2024.
+\newblock \doi{10.18653/v1/2024.findings-acl.137}.
+\newblock URL \url{https://aclanthology.org/2024.findings-acl.137/}.
+
 \bibitem[Chen et~al.(2025)Chen, Liu, Meng, Chen, Xu, and Zhou]{chen2025cdm}
 Yijie Chen, Yijin Liu, Fandong Meng, Yufeng Chen, Jinan Xu, and Jie Zhou.
 \newblock Enhancing cross-tokenizer knowledge distillation with contextual
@@ -22,10 +38,13 @@ Yijie Chen, Yijin Liu, Fandong Meng, Yufeng Chen, Jinan Xu, and Jie Zhou.
 \newblock \doi{10.18653/v1/2025.findings-acl.419}.
 \newblock URL \url{https://aclanthology.org/2025.findings-acl.419/}.
 
-\bibitem[Chen et~al.(2023)]{chen2023projector}
-Yudong Chen et~al.
-\newblock On the effects of projectors in knowledge distillation.
+\bibitem[Chen et~al.(2023)Chen, Wang, Liu, Xu, de~Hoog, Kusy, and
+  Huang]{chen2023projector}
+Yudong Chen, Sen Wang, Jiajun Liu, Xuwei Xu, Frank de~Hoog, Brano Kusy, and
+  Zi~Huang.
+\newblock Understanding the effects of projectors in knowledge distillation.
 \newblock arXiv:2310.17183, 2023.
+\newblock URL \url{https://arxiv.org/abs/2310.17183}.
 
 \bibitem[Dao et~al.(2026)Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and
   Le]{talas}
@@ -39,10 +58,52 @@ Quoc~Phong Dao, Hoang~Son Nguyen, Khanh~Chi Pham, Linh Ngo~Van, Diep Thi-Ngoc
 \newblock \doi{10.18653/v1/2026.acl-long.1509}.
 \newblock URL \url{https://aclanthology.org/2026.acl-long.1509/}.
 
+\bibitem[Devlin et~al.(2019)Devlin, Chang, Lee, and Toutanova]{devlin2019bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock {BERT}: Pre-training of deep bidirectional transformers for language
+  understanding.
+\newblock In \emph{Proceedings of the 2019 Conference of the North American
+  Chapter of the Association for Computational Linguistics: Human Language
+  Technologies}, pp.\  4171--4186, 2019.
+\newblock \doi{10.18653/v1/N19-1423}.
+\newblock URL \url{https://aclanthology.org/N19-1423/}.
+
+\bibitem[Eckart \& Young(1936)Eckart and Young]{eckart1936approximation}
+Carl Eckart and Gale Young.
+\newblock The approximation of one matrix by another of lower rank.
+\newblock \emph{Psychometrika}, 1\penalty0 (3):\penalty0 211--218, 1936.
+\newblock \doi{10.1007/BF02288367}.
+
+\bibitem[Han(2026)]{han2026equivalence}
+Sang~Il Han.
+\newblock Teacher supervision over representation equivalence classes.
+\newblock arXiv:2607.03572, 2026.
+\newblock URL \url{https://arxiv.org/abs/2607.03572}.
+
 \bibitem[Hinton et~al.(2015)Hinton, Vinyals, and Dean]{hinton2015distilling}
 Geoffrey Hinton, Oriol Vinyals, and Jeff Dean.
 \newblock Distilling the knowledge in a neural network.
 \newblock \emph{arXiv preprint arXiv:1503.02531}, 2015.
+
+\bibitem[Hofer et~al.(2019)Hofer, Kwitt, Niethammer, and
+  Dixit]{hofer2019connectivity}
+Christoph Hofer, Roland Kwitt, Marc Niethammer, and Mandar Dixit.
+\newblock Connectivity-optimized representation learning via persistent
+  homology.
+\newblock In \emph{Proceedings of the 36th International Conference on Machine
+  Learning}, volume~97 of \emph{Proceedings of Machine Learning Research}, pp.\
+   2751--2760, 2019.
+\newblock URL \url{https://proceedings.mlr.press/v97/hofer19a.html}.
+
+\bibitem[Hofer et~al.(2020)Hofer, Graf, Rieck, Niethammer, and
+  Kwitt]{hofer2020topologically}
+Christoph Hofer, Florian Graf, Bastian Rieck, Marc Niethammer, and Roland
+  Kwitt.
+\newblock Topologically densified distributions.
+\newblock In \emph{Proceedings of the 37th International Conference on Machine
+  Learning}, volume 119 of \emph{Proceedings of Machine Learning Research},
+  pp.\  4304--4313, 2020.
+\newblock URL \url{https://proceedings.mlr.press/v119/hofer20a.html}.
 
 \bibitem[Jeon et~al.(2024)Jeon, Khurana, Pathak, and
   Turaga]{jeon2024topological}
@@ -61,6 +122,16 @@ Jungeun Kim, Junwon You, Dongjin Lee, Ha~Young Kim, and Jae-Hun Jung.
   pp.\  24674--24693, 2024.
 \newblock URL \url{https://proceedings.mlr.press/v235/kim24aj.html}.
 
+\bibitem[Kim et~al.(2023)Kim, Rawat, Zaheer, Jayasumana, Sadhanala, Jitkrittum,
+  Menon, Fergus, and Kumar]{kim2023embeddistill}
+Seungyeon Kim, Ankit~Singh Rawat, Manzil Zaheer, Sadeep Jayasumana,
+  Veeranjaneyulu Sadhanala, Wittawat Jitkrittum, Aditya~Krishna Menon, Rob
+  Fergus, and Sanjiv Kumar.
+\newblock {EmbedDistill}: A geometric knowledge distillation for information
+  retrieval.
+\newblock arXiv:2301.12005, 2023.
+\newblock URL \url{https://arxiv.org/abs/2301.12005}.
+
 \bibitem[Ko et~al.(2023)Ko, Park, Jeong, Hong, Ahn, Chang, and
   Yun]{ko2023revisiting}
 Jongwoo Ko, Seungjoon Park, Minchan Jeong, Sukjin Hong, Euijai Ahn, Du-Seong
@@ -70,10 +141,24 @@ Jongwoo Ko, Seungjoon Park, Minchan Jeong, Sukjin Hong, Euijai Ahn, Du-Seong
 \newblock In \emph{Findings of the Association for Computational Linguistics:
   EACL 2023}, 2023.
 
+\bibitem[Kornblith et~al.(2019)Kornblith, Norouzi, Lee, and
+  Hinton]{kornblith2019cka}
+Simon Kornblith, Mohammad Norouzi, Honglak Lee, and Geoffrey Hinton.
+\newblock Similarity of neural network representations revisited.
+\newblock In \emph{International Conference on Machine Learning}, 2019.
+
 \bibitem[Li et~al.(2025)Li, Li, Li, Xie, and Li]{li2025ese}
 Xianming Li, Zongxi Li, Jing Li, Haoran Xie, and Qing Li.
 \newblock {ESE}: Espresso sentence embeddings.
 \newblock In \emph{International Conference on Learning Representations}, 2025.
+
+\bibitem[Maystre et~al.(2025)Maystre, Ortega~Gonzalez, Park, Dolga, Berariu,
+  Zhao, and Ciosek]{maystre2025procrustes}
+Lucas Maystre, Alvaro Ortega~Gonzalez, Charles Park, Rares Dolga, Tudor
+  Berariu, Yu~Zhao, and Kamil Ciosek.
+\newblock When embedding models meet: Procrustes bounds and applications.
+\newblock arXiv:2510.13406, 2025.
+\newblock URL \url{https://arxiv.org/abs/2510.13406}.
 
 \bibitem[Miles \& Mikolajczyk(2024)Miles and Mikolajczyk]{miles2024projector}
 Roy Miles and Krystian Mikolajczyk.
@@ -92,6 +177,14 @@ Wonpyo Park, Dongju Kim, Yan Lu, and Minsu Cho.
 \newblock Relational knowledge distillation.
 \newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
   and Pattern Recognition}, 2019.
+
+\bibitem[Peyr{\'e} \& Cuturi(2019)Peyr{\'e} and Cuturi]{peyre2019computational}
+Gabriel Peyr{\'e} and Marco Cuturi.
+\newblock Computational optimal transport.
+\newblock \emph{Foundations and Trends in Machine Learning}, 11\penalty0
+  (5--6):\penalty0 355--607, 2019.
+\newblock \doi{10.1561/2200000073}.
+\newblock URL \url{https://arxiv.org/abs/1803.00567}.
 
 \bibitem[Reimers \& Gurevych(2020)Reimers and
   Gurevych]{reimers2020multilingual}
@@ -136,6 +229,21 @@ Robin Vujanic and Thomas R{\"u}ckstie{\ss}.
 \newblock \doi{10.18653/v1/2026.acl-long.2008}.
 \newblock URL \url{https://aclanthology.org/2026.acl-long.2008/}.
 
+\bibitem[Wang et~al.(2021)Wang, Bao, Huang, Dong, and Wei]{wang2021minilmv2}
+Wenhui Wang, Hangbo Bao, Shaohan Huang, Li~Dong, and Furu Wei.
+\newblock {MiniLMv2}: Multi-head self-attention relation distillation for
+  compressing pretrained transformers.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  ACL-IJCNLP 2021}, pp.\  2140--2151, 2021.
+\newblock \doi{10.18653/v1/2021.findings-acl.188}.
+\newblock URL \url{https://aclanthology.org/2021.findings-acl.188/}.
+
+\bibitem[Williams et~al.(2021)Williams, Kunz, Kornblith, and
+  Linderman]{williams2021shape}
+Alex~H. Williams, Erin Kunz, Simon Kornblith, and Scott~W. Linderman.
+\newblock Generalized shape metrics on neural representations.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2021.
+
 \bibitem[Xu et~al.(2023)Xu, Shao, Chen, and Liu]{xu2023distillcse}
 Jiahao Xu, Wei Shao, Lihui Chen, and Lemao Liu.
 \newblock {DistillCSE}: Distilled contrastive learning for sentence embeddings.
@@ -167,6 +275,15 @@ Songming Zhang, Xue Zhang, Zengkui Sun, Yufeng Chen, and Jinan Xu.
   Natural Language Processing}, pp.\  18164--18181, 2024{\natexlab{b}}.
 \newblock \doi{10.18653/v1/2024.emnlp-main.1010}.
 \newblock URL \url{https://aclanthology.org/2024.emnlp-main.1010/}.
+
+\bibitem[Zhang et~al.(2025)Zhang, Li, Long, Zhang, Lin, Yang, Xie, Yang, Liu,
+  Lin, Huang, and Zhou]{zhang2025qwen3embedding}
+Yanzhao Zhang, Mingxin Li, Dingkun Long, Xin Zhang, Huan Lin, Baosong Yang,
+  Pengjun Xie, An~Yang, Dayiheng Liu, Junyang Lin, Fei Huang, and Jingren Zhou.
+\newblock {Qwen3 Embedding}: Advancing text embedding and reranking through
+  foundation models.
+\newblock arXiv:2506.05176, 2025.
+\newblock URL \url{https://arxiv.org/abs/2506.05176}.
 
 \bibitem[Zhao et~al.(2022)Zhao, Yu, Wu, and Li]{hpd}
 Xuandong Zhao, Zhiguo Yu, Ming Wu, and Lei Li.

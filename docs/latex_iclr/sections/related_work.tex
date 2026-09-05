@@ -7,7 +7,9 @@ without task annotations \citep{reimers2020multilingual}. Subsequent methods
 have enriched this signal through contrastive learning, specialized training
 recipes, and teacher-compatible output spaces
 \citep{xu2023distillcse,zhang2024jasper,li2025ese,leaf}. Other approaches draw
-on the representation hierarchy. EMO transfers token-level relations and aligns
+EmbedDistill combines embedding matching with relative geometric supervision
+for information retrieval \citep{kim2023embeddistill}. Other approaches draw on
+the representation hierarchy. EMO transfers token-level relations and aligns
 hidden states across tokenizers, while TALAS anchors upper student layers to the
 teacher endpoint and propagates supervision through lower layers by
 self-distillation \citep{truong2025emo,talas}. Intermediate supervision can
@@ -26,7 +28,12 @@ projector's parameterization and normalization can substantially change the
 student's optimization dynamics \citep{miles2024projector,chen2023projector}.
 Orthogonally constrained projections preserve intra-batch similarity, while TCS
 uses PCA coordinates extracted from cached teacher features
-\citep{vkd2024,tcs}. Most closely related to our geometric motivation,
+\citep{vkd2024,tcs}. More generally, representation-similarity work treats
+orthogonal transformations as natural equivalences because they preserve inner
+products and distances, with Procrustes providing the corresponding alignment
+\citep{kornblith2019cka,williams2021shape,maystre2025procrustes}. Concurrent
+work formalizes teacher supervision over representation equivalence classes
+\citep{han2026equivalence}. Most closely related to our geometric motivation,
 \citet{bhattarai2025shortcut} show that unconstrained projected matching can
 attain zero feature loss without preserving the teacher's Gram geometry. Under
 their assumptions, zero Procrustes distance is instead equivalent to zero Gram
