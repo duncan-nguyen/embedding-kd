@@ -1,17 +1,58 @@
-\section{Results with the 100K Distillation Corpus}
+\section{Training Details}
+\label{app:training-hyperparameters}
+
+All runs use a maximum sequence length of 256 and seeds 42, 43, and 44. For
+GATE-KD, $\lambda_{\mathrm{topo}}=0.5$, the $H_0$ cloud is the current training
+batch, and the gauge is refitted after each non-final epoch. Gauge calibration
+uses the full distillation corpus. Table~\ref{tab:training-hyperparameters}
+lists the method-specific training hyperparameters.
+
+\input{tables/training_hyperparameters}
+
+\section{Results at a Larger Distillation Scale}
 \label{app:results-100k}
 
-As a data-scale comparison, we repeat the complete method sweep on a fixed
-corpus of 102{,}361 unlabeled sentences drawn from the training splits of all
-nine sentence-level benchmarks.  Table~\ref{tab:main-results-100k} reports these
-results under the same evaluation protocol as the main 15K comparison.
+We repeat the complete method sweep on approximately 100K unlabeled texts drawn
+from the training splits of all nine sentence-level benchmarks. No labels or
+task annotations are used. Relative to the main comparison, this setting
+changes both corpus size and dataset coverage, so it evaluates robustness to
+broader distillation data rather than isolating data scale alone.
 
 \input{tables/main_results}
 
-\section{Zero-Shot Retrieval after 15K Distillation}
+Table~\ref{tab:main-results-100k} shows that GATE-KD attains the highest mean
+Avg. in all three teacher--student configurations. It exceeds TALAS by 0.07,
+0.27, and 1.13 points in configurations (a), (b), and (c), respectively. The
+margin is narrow for the two larger students and remains largest for the
+compact student.
+
+\section{Zero-Shot Retrieval}
 \label{app:retrieval-15k}
 
-Table~\ref{tab:retrieval-results-15k} specifies the complementary retrieval
-evaluation for the 15K-trained models in Table~\ref{tab:main-results}.
+We evaluate the models distilled in the main comparison on ArguAna, SciFact,
+SciDocs, NFCorpus, and FiQA-2018 using exhaustive cosine ranking. Evaluation
+uses no instruction prefix or task-specific retrieval training and reports
+nDCG@10. Retrieval scores are not included in the sentence-level averages of
+Table~\ref{tab:main-results}. Teacher and student-base scores are deterministic,
+while distilled-student scores are mean $\pm$ sample standard deviation over
+three seeds.
 
 \input{tables/retrieval_results_15k}
+\FloatBarrier
+
+GATE-KD achieves the highest retrieval average in configurations (b) and (c).
+In configuration (a), it ranks second to TALAS, with 16.12 versus 18.14 Avg.
+All distilled students remain substantially below their teachers, indicating
+that the sentence-level distillation objectives do not fully preserve the
+teachers' zero-shot retrieval capability.
+
+\clearpage
+\section{Detailed Sensitivity Results}
+\label{app:sensitivity-15k}
+
+Table~\ref{tab:sensitivity-15k} reports the numerical results underlying
+Figure~\ref{fig:sensitivity-15k}. Settings not varied within each block remain
+at the main recipe. The $H_0$ cloud is always the current training batch. The
+batch sweep fixes the number of epochs and is therefore not compute matched.
+
+\input{tables/sensitivity_15k}

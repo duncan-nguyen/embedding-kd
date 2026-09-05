@@ -1,26 +1,86 @@
 \section{Analysis}
 \label{sec:analysis}
 
-\subsection{Is the Bottleneck Compression or Comparability?}
+\subsection{Coordinate Comparability at the Bottleneck}
 \label{sec:analysis-interface}
 
-Table~\ref{tab:interface-families} controls the endpoint objective while changing
-only how teacher and student coordinates are made comparable. A random subspace
-retains far less teacher energy than PCA yet gives a comparable downstream score.
-For either fixed subspace, epoch-wise Procrustes improves the result without
-changing the subspace itself. This suggests that endpoint comparability, rather
-than dimensionality reduction alone, is the operative bottleneck.
+Table~\ref{tab:interface-families} isolates the endpoint interface in
+configuration (c) by holding the endpoint-only objective and training protocol
+fixed. Within the same PCA subspace, the unaligned coordinates reach 69.35
+Avg., a random orthogonal orientation reaches 70.37, and the fitted Procrustes
+gauge reaches 74.28. Procrustes alignment therefore improves the unaligned PCA
+interface by 4.93 points without changing either the retained subspace or its
+pairwise geometry. The fitted gauge also exceeds the random orientation by 3.91
+points, indicating that its benefit comes from alignment with the student rather
+than from rotating the target coordinates alone.
+
+The fixed PCA--Procrustes interface also outperforms learned maps in both
+directions, which reach 61.46 for teacher-to-student mapping and 69.33 for
+student-to-teacher mapping. This result is consistent with avoiding a jointly
+moving target during student optimization. Retained energy alone does not
+explain downstream performance. The random subspace retains 0.381 of the
+teacher energy, compared with 0.928 for PCA, yet exceeds unaligned PCA by 1.57
+points. Together, these controls show that a high-energy subspace is not an
+effective pointwise target unless its coordinates are made comparable to the
+student. The random controls use a single map draw, so they do not establish a
+general ranking between PCA and randomly selected subspaces.
 
 \input{tables/interface_families}
 
-\subsection{Which Signals Require an Interface?}
+\FloatBarrier
+
+\subsection{Complementary Endpoint and Topology Signals}
 \label{sec:analysis-decomposition}
 
-Table~\ref{tab:signal-decomposition} separates the coordinate-dependent endpoint
-term from the coordinate-invariant connectivity term. Endpoint supervision
-provides most of the downstream improvement, while native-space $H_0$ supervision
-substantially reduces the persistent-connectivity residual. Their combination is
-strongest when $H_0$ bypasses the endpoint projection and is computed from the
-original teacher representation.
+Table~\ref{tab:signal-decomposition} separates coordinate-dependent endpoint
+supervision from coordinate-invariant topology transfer. The endpoint-only
+objective provides most of the downstream improvement, raising Avg. from 52.60
+for the base student to 74.26. In contrast, $H_0$-only supervision reaches
+64.22 while reducing the topology residual from 0.3595 to 0.1240. The low
+residual but substantially lower downstream score shows that matching
+connectivity alone does not determine semantic correspondence. Combining the
+two signals improves the endpoint-only result by 0.53 points to 74.79 and lowers
+its topology residual from 0.2122 to 0.1281. Endpoint correspondence and
+topological structure therefore provide complementary supervision.
+
+The remaining comparisons evaluate two refinements within the combined
+objective. Computing $H_0$ from the original teacher space improves Avg. from
+74.57 to 74.79 relative to projected teacher targets and produces a lower
+topology residual, 0.1281 versus 0.1355. Refitting the gauge after each epoch
+improves Avg. from 74.48 to 74.79 over retaining the alignment fitted at
+initialization. Both gains are concentrated more strongly in IOD performance
+and are modest relative to the contribution of the endpoint interface. These
+results support native-space topology and epoch-wise refitting as refinements
+of the complete objective rather than its primary source of improvement.
 
 \input{tables/signal_decomposition}
+
+\FloatBarrier
+
+\subsection{Sensitivity to Training Choices}
+\label{sec:analysis-sensitivity}
+
+Figure~\ref{fig:sensitivity-15k} examines sensitivity to the topology weight,
+training batch size, and gauge-calibration size in configuration (c).
+Performance remains stable across moderate topology weights, with
+$\lambda_{\mathrm{topo}}=0.5$ attaining the highest average and settings from
+$0.5$ to $1.0$ differing by at most 0.24 points. Reducing the
+gauge-calibration set from the full corpus to 2{,}048 examples changes Avg. by
+only 0.28 points, indicating that the alignment can be estimated from a
+relatively small sample. Smaller batches obtain higher scores, but this sweep
+fixes the number of epochs rather than optimizer updates. The batch comparison
+is therefore not compute matched and does not establish that smaller batches
+are intrinsically better. Complete numerical results are reported in
+Appendix~\ref{app:sensitivity-15k}.
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/sensitivity_15k.pdf}
+    \caption{Sensitivity to topology weight, training batch size, and
+    gauge-calibration size in configuration (c). Points and error bars show
+    mean $\pm$ sample standard deviation over three seeds. The batch sweep fixes
+    the number of epochs and is not compute matched.}
+    \label{fig:sensitivity-15k}
+\end{figure}
+
+\FloatBarrier

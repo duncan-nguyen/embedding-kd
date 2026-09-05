@@ -1,108 +1,163 @@
 \section{Method}
 \label{sec:method}
 
-Let $f_T:\mathcal{X}\rightarrow\mathbb{R}^{d_T}$ be a frozen teacher and $f_S$ a
-student with $L$ Transformer layers and width $d_S<d_T$. Writing
-$\operatorname{norm}(\mathbf{x})=\mathbf{x}/(\lVert\mathbf{x}\rVert_2+\epsilon)$,
-we run the teacher once over an unlabeled corpus $\{x_i\}_{i=1}^{N}$ and cache
-only its final sentence embeddings,
-$\widetilde{\boldsymbol{\tau}}_i=\operatorname{norm}(f_T(x_i))$. Pooling and
-normalising the student's final token states gives
-$\mathbf{z}_i\in\mathbb{S}^{d_S-1}$. The two vectors have different widths, so
-nothing can be compared until a map bridges them. We keep its teacher-dependent
-subspace fixed and update only its student-dependent orthogonal gauge.
+Let $f_T:\mathcal{X}\rightarrow\mathbb{R}^{d_T}$ be a frozen teacher and
+$f_S:\mathcal{X}\rightarrow\mathbb{R}^{d_S}$ a student with $d_T>d_S$. We run
+the teacher once over an unlabeled corpus $\{x_i\}_{i=1}^{N}$ and cache its
+normalized final sentence embeddings
+\begin{equation}
+    \mathbf{t}_i=\operatorname{norm}\!\left(f_T(x_i)\right)
+    \in\mathbb{S}^{d_T-1},
+\end{equation}
+where $\operatorname{norm}(\mathbf{x})=\mathbf{x}/\lVert\mathbf{x}\rVert_2$.
+The corresponding student embedding is
+$\mathbf{z}_i=\operatorname{norm}(\operatorname{Pool}(h_i^{(L)}))\in
+\mathbb{S}^{d_S-1}$. GATE-KD transfers teacher knowledge through two terminal
+channels. An extrinsic interface expresses each teacher endpoint in coordinates
+that the student can match pointwise, while an intrinsic objective transfers
+structure that does not require shared coordinates or equal ambient dimension.
 
-\subsection{Teacher Targets}
+\subsection{Extrinsic Endpoint Interface}
 \label{sec:method-targets}
 
-We fit the leading $d_S$-dimensional principal subspace
-$P_{\mathrm{PCA}}\in\mathbb{R}^{d_T\times d_S}$ on the centred cache. Its
-orientation inside that subspace is arbitrary --- invisible to every cosine-metric
-evaluation, but not to a point-wise loss --- so we track it by orthogonal
-Procrustes. We select one calibration subset before training and reuse it unchanged.
-With $\mathbf{T}_{\mathrm{PCA}}$ its normalised principal coordinates and
-$\mathbf{Z}^{(e)}$ the current student's normalised outputs on the same sentences
-\citep{schonemann1966procrustes},
+\paragraph{Subspace selection.}
+Let $\mu=N^{-1}\sum_i\mathbf{t}_i$. We fit the leading $d_S$ principal
+directions of the centered cache and collect them as
+$P_{\mathrm{PCA}}\in\mathbb{R}^{d_T\times d_S}$, with
+$P_{\mathrm{PCA}}^\top P_{\mathrm{PCA}}=I_{d_S}$. Centering is used to
+estimate the principal directions; in the evaluated recipe, the cached vectors
+are not centered when the projection is applied. The normalized coordinates
+before gauge alignment are
 \begin{equation}
-    R^{(e)}=\underset{R\in O(d_S)}{\arg\min}\,
-    \lVert\mathbf{T}_{\mathrm{PCA}}R-\mathbf{Z}^{(e)}\rVert_F=UV^\top,
-    \quad U\Sigma V^\top=\operatorname{svd}\!\left(\mathbf{T}_{\mathrm{PCA}}^\top\mathbf{Z}^{(e)}\right),
+    \mathbf{y}_i
+    =\operatorname{norm}\!\left(\mathbf{t}_iP_{\mathrm{PCA}}\right)
+    \in\mathbb{S}^{d_S-1}.
+    \label{eq:pca-target}
+\end{equation}
+The PCA subspace is fitted once on the full teacher cache and remains fixed
+throughout training.
+
+\paragraph{Gauge alignment.}
+The basis used to express the retained subspace affects a pointwise loss even
+though it does not affect the geometry within that subspace. We resolve this
+coordinate ambiguity with orthogonal Procrustes alignment
+\citep{schonemann1966procrustes,bhattarai2025shortcut}. A calibration subset
+$\mathcal{C}$ is selected before training and reused unchanged. Let
+$Y_{\mathcal{C}}$ contain its projected teacher coordinates and let
+$Z_{\mathcal{C}}^{(e)}$ contain the current student embeddings at the start of
+epoch $e$. We compute
+\begin{equation}
+    R^{(e)}
+    =\underset{R\in O(d_S)}{\arg\min}\,
+      \left\lVert Y_{\mathcal{C}}R-Z_{\mathcal{C}}^{(e)}\right\rVert_F^2
+    =UV^\top,
+    \quad
+    U\Sigma V^\top
+    =\operatorname{svd}\!\left(Y_{\mathcal{C}}^\top
+      Z_{\mathcal{C}}^{(e)}\right).
     \label{eq:gauge-alignment}
 \end{equation}
-where $e=0$ uses the initialized student and the gauge is refitted after each
-training epoch for the next one. The target of sentence $x_i$ in epoch $e$ is
+The initialized student determines $R^{(0)}$. After each non-final epoch, we
+re-encode the same calibration sentences and refit the gauge for the following
+epoch. The target used within epoch $e$ is therefore
 \begin{equation}
-    \boldsymbol{\tau}_i^{(e)}
-    =\operatorname{norm}\!\left(f_T(x_i)\,P_{\mathrm{PCA}}R^{(e)}\right)
-    \in\mathbb{S}^{d_S-1}.
+    \boldsymbol{\tau}_i^{(e)}=\mathbf{y}_iR^{(e)}.
     \label{eq:target}
 \end{equation}
-The PCA factor is fitted once and frozen. Each $R^{(e)}$ is an exact closed-form
-update, not a learned projector. Because it is orthogonal, every refit leaves the
-targets' pairwise cosines and retained variance exactly unchanged: the projection
-decides \emph{what} of the teacher survives, while the rotation only tracks
-\emph{where} that fixed geometry is placed relative to the evolving student.
+Each target is fixed within an epoch. The refit is a closed-form coordinate
+update rather than a learned projector.
 
-\subsection{Objective}
+\paragraph{Relation to the endpoint objective.}
+Because the rows of $Y_{\mathcal{C}}$ and $Z_{\mathcal{C}}^{(e)}$ have unit
+norm, their cosine endpoint objective satisfies
+\begin{equation}
+    \frac{1}{|\mathcal{C}|}\sum_{i\in\mathcal{C}}
+    \left(1-\left\langle\mathbf{z}_i^{(e)},\mathbf{y}_iR\right\rangle\right)
+    =\frac{1}{2|\mathcal{C}|}
+      \left\lVert Z_{\mathcal{C}}^{(e)}-Y_{\mathcal{C}}R\right\rVert_F^2.
+    \label{eq:endpoint-procrustes}
+\end{equation}
+Equation~\ref{eq:gauge-alignment} therefore exactly minimizes the calibration
+endpoint loss over $R$ at each refit boundary with the student fixed.
+
+\paragraph{Gauge invariance.}
+For every orthogonal $R$,
+\begin{equation}
+    (Y R)(Y R)^\top=YY^\top.
+    \label{eq:gauge-invariance}
+\end{equation}
+Consequently, refitting the gauge leaves all pairwise cosines, chord distances,
+and persistent-homology signatures of the projected teacher targets unchanged.
+PCA determines which teacher subspace survives the width bottleneck, while
+Procrustes determines how that fixed geometry is presented to the evolving
+student.
+
+\subsection{Intrinsic Topology Transfer}
+\label{sec:method-topology}
+
+The endpoint interface can reproduce only the geometry retained after
+projection. Although $P_{\mathrm{PCA}}$ has orthonormal columns,
+$P_{\mathrm{PCA}}P_{\mathrm{PCA}}^\top$ is a rank-$d_S$ projector, so the
+cosine Gram matrix of the normalized coordinates in
+Equation~\ref{eq:pca-target} need not equal that of the original teacher
+embeddings. We therefore transfer an additional structural signal directly
+from the teacher's native space.
+
+For a minibatch of $B$ normalized vectors, we use the chord distance
+\begin{equation}
+    d(\mathbf{u},\mathbf{v})
+    =\sqrt{2-2\langle\mathbf{u},\mathbf{v}\rangle}.
+\end{equation}
+The $B-1$ finite death times of degree-zero Vietoris--Rips persistence are the
+edge weights of the point cloud's minimum spanning tree. Let
+$\delta^S_{(1)}\leq\cdots\leq\delta^S_{(B-1)}$ and
+$\delta^T_{(1)}\leq\cdots\leq\delta^T_{(B-1)}$ denote the sorted death times
+of the student embeddings $\{\mathbf{z}_i\}$ and the original teacher
+embeddings $\{\mathbf{t}_i\}$. We define
+\begin{equation}
+    \mathcal{L}_{H_0}
+    =\frac{1}{B-1}\sum_{j=1}^{B-1}
+      \left(\delta^S_{(j)}-\delta^T_{(j)}\right)^2.
+    \label{eq:topological-loss}
+\end{equation}
+The teacher diagram is computed from $\mathbf{t}_i\in\mathbb{R}^{d_T}$ rather
+than $\mathbf{y}_i$ or $\boldsymbol{\tau}_i^{(e)}$. The loss therefore needs
+neither a projection nor a shared orientation. It is piecewise differentiable
+through the selected student edge lengths. Equation~\ref{eq:topological-loss}
+matches the multiset of $H_0$ death times and does not impose correspondence
+between individual minimum-spanning-tree edges or preserve higher-dimensional
+topological features.
+
+\subsection{Objective and Alternating Optimization}
 \label{sec:method-objective}
 
-Only the final student embedding is supervised.  The endpoint term aligns each
-student embedding with its fixed, dimension-matched teacher target:
+The endpoint loss for a training minibatch is
 \begin{equation}
     \mathcal{L}_{\mathrm{end}}^{(e)}
     =\frac{1}{B}\sum_{i=1}^{B}
-    \left(1-\left\langle\mathbf{z}_i,\boldsymbol{\tau}_i^{(e)}\right\rangle\right),
+      \left(1-\left\langle
+      \mathbf{z}_i,\boldsymbol{\tau}_i^{(e)}\right\rangle\right).
     \label{eq:endpoint-loss}
 \end{equation}
-where $B$ is the minibatch size.  This term fixes point-wise correspondence in
-the gauge selected by $P_{\mathrm{PCA}}R^\star$.
-
-The second term matches the topology of the two embedding clouds without
-requiring a shared ambient dimension.  Let
-$\operatorname{Dgm}_k(\mathbf{X})$ denote the degree-$k$ Vietoris--Rips
-persistence diagram of the row-wise normalised point cloud $\mathbf{X}$ under
-the chord distance
-$d(\mathbf{u},\mathbf{v})=\sqrt{2-2\langle\mathbf{u},\mathbf{v}\rangle}$.
-For $k=0$, the finite death times are exactly the $B-1$ edge weights of the
-cloud's minimum spanning tree.  Writing their sorted values as
-$\delta^{S}_{(j)}$ and $\delta^{T}_{(j)}$, we use
-\begin{align}
-    \mathcal{L}_{H_0}
-    &=\frac{1}{B-1}\sum_{j=1}^{B-1}
-      \left(\delta^{S}_{(j)}-\delta^{T}_{(j)}\right)^2, \\
-    \mathcal{L}_{\mathrm{topo}}
-    &=\mathcal{L}_{H_0}
-      +\lambda_{1}\,
-      W_2^2\!\left(
-        \operatorname{Dgm}_1(\mathbf{Z}),
-        \operatorname{Dgm}_1(\widetilde{\mathbf{T}})
-      \right),
-    \label{eq:topological-loss}
-\end{align}
-where $W_2$ permits low-persistence cycles to match to the diagonal.  The
-teacher cloud $\widetilde{\mathbf{T}}$ contains the original cached embeddings
-$\widetilde{\boldsymbol{\tau}}_i\in\mathbb{R}^{d_T}$, not their projected
-targets.  Consequently, $\mathcal{L}_{\mathrm{topo}}$ preserves connectivity
-and cycles from the teacher's own space and is independent of the endpoint
-interface.  Setting $\lambda_1=0$ gives the $H_0$-only variant.
-
-The complete training objective contains only these two losses:
+GATE-KD optimizes the two-term objective
 \begin{equation}
     \mathcal{L}^{(e)}
-    =\lambda_{\mathrm{end}}\mathcal{L}_{\mathrm{end}}^{(e)}
-    +\lambda_{\mathrm{topo}}\mathcal{L}_{\mathrm{topo}}.
+    =\mathcal{L}_{\mathrm{end}}^{(e)}
+    +\lambda_{\mathrm{topo}}\mathcal{L}_{H_0}.
     \label{eq:objective}
 \end{equation}
-The endpoint term transfers sample-wise semantics, while the topological term
-constrains batch-level structure that a point-wise objective does not explicitly
-measure.
+Here, $\mathcal{L}_{H_0}$ is evaluated on the same minibatch using the student
+embeddings and the corresponding unprojected teacher embeddings.
 
-\paragraph{What the method does not contain.}
-No projector is trained, no contrastive or Gram loss is added, no intermediate
-layer is supervised, and nothing is attached to the student at inference: the
-deployed model is the unmodified encoder. Training costs one teacher pass over
-the corpus, one truncated SVD of the cache, and one small $d_S\times d_S$
-Procrustes SVD at initialization and after each non-final epoch. Student embeddings
-for those refits are computed only on the fixed calibration subset; ordinary
-training reads cached teacher embeddings and their epoch-aligned projected targets
---- no teacher hidden state, attention map or online teacher forward pass is used.
+Optimization alternates between stochastic updates of the student parameters
+and exact updates of the coordinate gauge. During epoch $e$, $R^{(e)}$ is held
+fixed while the student is optimized with Equation~\ref{eq:objective}. After
+epoch $e$, unless it is the final epoch, the updated student re-encodes
+$\mathcal{C}$ and Equation~\ref{eq:gauge-alignment} produces $R^{(e+1)}$ for
+the next epoch. The $H_0$ term is unaffected by these gauge updates because it
+is computed from the native teacher embeddings.
+
+Teacher embeddings and the PCA subspace are computed once before student
+optimization. Ordinary training steps use the cached teacher embeddings and
+require no online teacher forward pass. Each gauge update adds one student pass
+over the calibration set and an SVD of a $d_S\times d_S$ matrix.

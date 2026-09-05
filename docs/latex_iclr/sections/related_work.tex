@@ -1,2 +1,54 @@
 \section{Related Work}
 \label{sec:related-work}
+
+Early text-embedding distillation directly regressed student sentence vectors
+onto teacher outputs, showing that unlabeled text can provide dense supervision
+without task annotations \citep{reimers2020multilingual}. Subsequent methods
+have enriched this signal through contrastive learning, specialized training
+recipes, and teacher-compatible output spaces
+\citep{xu2023distillcse,zhang2024jasper,li2025ese,leaf}. Other approaches draw
+on the representation hierarchy. EMO transfers token-level relations and aligns
+hidden states across tokenizers, while TALAS anchors upper student layers to the
+teacher endpoint and propagates supervision through lower layers by
+self-distillation \citep{truong2025emo,talas}. Intermediate supervision can
+provide additional signals, but it also introduces choices about layer
+correspondence and often requires teacher hidden states or auxiliary mappings.
+Prior analyses have identified overfitting in intermediate-layer distillation
+and found that its layer-selection strategy may have limited influence
+\citep{ko2023revisiting,kim2025layerselection}. GATE-KD studies the complementary
+regime in which the teacher is accessed only through cached final embeddings and
+every training signal is applied to the student endpoint.
+
+Dimension mismatch in feature distillation is commonly handled by mapping one
+representation space into the other. HPD learns projection layers that produce
+compact sentence representations \citep{hpd}, and broader studies show that a
+projector's parameterization and normalization can substantially change the
+student's optimization dynamics \citep{miles2024projector,chen2023projector}.
+Orthogonally constrained projections preserve intra-batch similarity, while TCS
+uses PCA coordinates extracted from cached teacher features
+\citep{vkd2024,tcs}. Most closely related to our geometric motivation,
+\citet{bhattarai2025shortcut} show that unconstrained projected matching can
+attain zero feature loss without preserving the teacher's Gram geometry. Under
+their assumptions, zero Procrustes distance is instead equivalent to zero Gram
+discrepancy. GATE-KD instead uses Procrustes to estimate a coordinate gauge on
+a fixed calibration set. The gauge is held constant within
+each epoch and updated in closed form as the student evolves. PCA selects the
+retained teacher subspace, while the orthogonal update changes its orientation
+without altering the projected teacher geometry.
+
+Coordinate-free objectives offer another route to transferring representation
+structure. Relational distillation matches pairwise distances or angles,
+similarity-preserving distillation matches Gram structure, and contrastive
+distillation transfers relations through positive and negative examples
+\citep{park2019rkd,tung2019similarity,tian2020crd}. Persistent homology extends
+this view from pairwise relations to multiscale properties of a point cloud.
+TopKD transfers global feature topology through approximate persistence images,
+while topological-guidance distillation combines image-derived persistence
+features from multiple teachers \citep{topkd2024,jeon2024topological}. GATE-KD
+uses topology neither as a surrogate for all representation geometry nor as a
+replacement for sample-wise supervision. It directly matches the sorted
+degree-zero persistence death times of student batches and unprojected teacher
+batches, which requires neither shared coordinates nor equal ambient dimension.
+The resulting decomposition places coordinate-dependent correspondence behind
+an explicit endpoint interface while allowing coordinate-invariant connectivity
+to transfer directly across native spaces.

@@ -1,2 +1,15 @@
 \section{Conclusion}
 \label{sec:conclusion}
+
+Cross-dimensional embedding distillation is not only a compression problem but
+also requires a well-defined interface between teacher and student coordinates.
+GATE-KD addresses this issue by combining a fixed PCA subspace with closed-form
+gauge alignment and native-space $H_0$ matching, using only final embeddings.
+Across three teacher--student configurations, this terminal-only formulation
+achieves the highest aggregate scores among the evaluated distilled students
+while substantially reducing measured optimization time relative to a strong
+hierarchy-based baseline. Controlled analyses show that coordinate alignment
+matters beyond retained variance and that topology complements pointwise
+endpoint supervision without requiring a shared ambient space. These results
+support treating coordinate-dependent correspondence and coordinate-invariant
+structure as separate design problems in embedding distillation.

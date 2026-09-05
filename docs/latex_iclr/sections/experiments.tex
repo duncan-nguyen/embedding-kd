@@ -6,43 +6,83 @@
 
 \paragraph{Teacher--student configurations.}
 We evaluate three configurations spanning different teacher families, teacher
-widths, and student capacities:
-(a) Qwen3-Embedding-4B ($d_T=2560$, last-token pooling) $\rightarrow$
-BERT-base (109M, $d_S=768$, 12 layers), representing the capacity-gap setting;
-(b) BGE-M3 ($d_T=1024$, an XLM-R encoder with CLS pooling) $\rightarrow$
-MiniLMv2-L6-H768 (66M, $d_S=768$, 6 layers), representing a different teacher
-family; and (c) Qwen3-Embedding-0.6B ($d_T=1024$, last-token pooling)
-$\rightarrow$ MiniLMv2-L6-H384 (22M, $d_S=384$, 6 layers), representing the
-compact-student setting.
+widths, and student capacities. Configuration (a) distills
+Qwen3-Embedding-4B ($d_T=2560$, last-token pooling) into BERT-base (109M,
+$d_S=768$, 12 layers), creating a large teacher--student capacity gap.
+Configuration (b) distills BGE-M3 ($d_T=1024$, an XLM-R encoder with CLS
+pooling) into MiniLMv2-L6-H768 (66M, $d_S=768$, 6 layers), covering a different
+teacher family. Configuration (c) distills Qwen3-Embedding-0.6B ($d_T=1024$,
+last-token pooling) into MiniLMv2-L6-H384 (22M, $d_S=384$, 6 layers), testing a
+compact student.
 
 \paragraph{Distillation corpus.}
-For the main comparison, we distill all methods on the same fixed corpus of
-\textbf{14{,}760 unlabeled sentences}: 5{,}000 from Emotion, 5{,}000 from WiC,
-and all 4{,}760 available from STS-B.  We refer to this as the \emph{15K
-corpus}.  Emotion, WiC, and STS-B are therefore the in-domain (IOD) benchmarks;
-the other six benchmarks are out-of-domain (OOD).  The same corpus is used for
-every run in Table~\ref{tab:main-results}.
-Distillation uses only raw text: labels, pair annotations, and similarity scores
-are excluded from every objective. The teacher therefore provides the only
-supervision.
+We construct the distillation corpus by sampling approximately 5K raw texts
+from each of the Emotion, WiC, and STS-B training sets. No labels or task
+annotations are used during distillation. We regard these three benchmarks as
+in-domain (IOD) and the remaining six evaluation benchmarks as out-of-domain
+(OOD). Every method uses the same corpus.
+
+\paragraph{Baselines.}
+We compare GATE-KD with methods covering complementary transfer mechanisms.
+RKD matches inter-example relations \citep{park2019rkd}, while Stella uses a
+multi-stage embedding-distillation recipe \citep{zhang2024jasper}. CDM and DSKD
+address cross-tokenizer alignment and dual-space transfer, respectively
+\citep{chen2025cdm,zhang2024dskd}. EMO combines token-level relations with
+hidden-state alignment \citep{truong2025emo}, and TALAS combines teacher
+anchoring with hierarchy-based self-distillation \citep{talas}. Complete
+training hyperparameters are reported in
+Appendix~\ref{app:training-hyperparameters}.
 
 \paragraph{Evaluation protocol.}
-We evaluate frozen student embeddings on nine benchmarks spanning three task
-families. For classification (Banking77, Emotion, Tweet), we fit a
+We evaluate frozen student embeddings on nine benchmarks from three task
+families. For classification on Banking77, Emotion, and Tweet, we fit a
 logistic-regression probe on each benchmark's training split and report
-macro-F1. For pair classification (MRPC, SciTail, WiC), we map cosine
+macro-F1. For pair classification on MRPC, SciTail, and WiC, we map cosine
 similarity to $[0,1]$ and report average precision. For semantic textual
-similarity (SICK, STS12, STS-B), we report the Spearman correlation with the
-gold scores. Avg.\ denotes the unweighted mean of the nine primary scores;
-Avg.\ IOD and Avg.\ OOD separately average the three in-domain and six
-out-of-domain scores.
+similarity on SICK, STS12, and STS-B, we report Spearman correlation with the
+gold scores. All metrics are multiplied by 100. Avg. is the unweighted mean of
+the nine primary scores, while Avg. IOD and Avg. OOD average the three in-domain
+and six out-of-domain benchmarks, respectively. We report means and sample
+standard deviations over three seeds.
+
+\subsection{Main Results}
+\label{sec:main-results}
 
 \input{tables/main_results_15k}
 
-\paragraph{Training efficiency.}
-Table~\ref{tab:training-efficiency} reports the observed optimization cost of
-the same 15K runs. GATE-KD uses 26\%, 31\%, and 38\% of TALAS's measured GPU
-training time in configurations (a), (b), and (c), respectively, while improving
-Avg. by $+0.39$, $+0.44$, and $+1.42$ points.
+Table~\ref{tab:main-results} compares GATE-KD with six distillation baselines
+across nine benchmarks and three teacher--student configurations. GATE-KD
+achieves the highest overall average in all three configurations, improving
+over the next-best baseline by 0.38, 0.48, and 1.59 points in configurations
+(a), (b), and (c), respectively. The advantage is largest for the 22M-parameter
+student and therefore does not diminish in the most capacity-constrained
+configuration.
+
+The task-level results show that this advantage is broad but not uniform.
+GATE-KD ranks first on 18 of the 27 individual benchmark comparisons, with its
+most consistent results on classification and semantic textual similarity.
+Other methods remain stronger on some pair-classification benchmarks,
+including MRPC and WiC. In the largest capacity-gap configuration, GATE-KD
+essentially matches TALAS in-domain, with 72.04 versus 72.19 Avg. IOD, while
+improving Avg. OOD from 79.85 to 80.49. The aggregate gain in this configuration
+is therefore driven by OOD performance rather than higher scores on the
+datasets supplying the distillation text.
+
+\subsection{Training Efficiency}
+\label{sec:training-efficiency}
+
+Table~\ref{tab:training-efficiency} reports observed optimization cost under
+the same execution protocol on NVIDIA H200 GPUs. Step time and throughput
+exclude the first ten warm-up steps. GPU training time sums the measured
+optimization-step durations and excludes teacher-cache construction,
+tokenization, and final evaluation.
 
 \input{tables/training_efficiency}
+
+GATE-KD uses 26\%, 31\%, and 38\% of TALAS's measured GPU optimization time in
+configurations (a), (b), and (c), respectively, while also attaining higher
+overall scores. The improvement is primarily in throughput rather than peak
+memory allocation, for which TALAS remains lower across the three
+configurations.
+
+\FloatBarrier

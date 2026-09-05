@@ -1,23 +1,25 @@
-% One row per element of the recipe. Emitted as analysis/table3_recipe_ablation.csv.
+% Compact view of the measured decomposition. This table is not currently
+% included in main.tex; the full version is tables/signal_decomposition.tex.
+% Source:
+% runs/aux_sweeps_20260904-113834/decomposition/decomposition_mean_std.csv
+% The Ours row is synchronized with configuration (c) in
+% Table~\ref{tab:main-results}.
 \begin{table}[t]
-\centering
-\caption{\textbf{Recipe ablation: one design choice at a time.} Pair (c), the
-interface held at ours unless the row changes it, mean $\pm$ std over three
-seeds. ``Within noise'' means inside the seed band of the first row.}
-\label{tab:recipe-ablation}
-\small
-\begin{tabular}{@{}llccc@{}}
-\toprule
-Row & Predicted & cos gap $\downarrow$ & Eff.\ rank & Avg.\ $\uparrow$ \\
-\midrule
-Ours & --- & \ph{--} & \ph{--} & \textbf{77.48 $\pm$ 0.04} \\
-\midrule
-Cosine $\rightarrow$ squared error & below ours & \ph{--} & \ph{--} & \ph{--} \\
-No topological term & weaker structure and score & \ph{--} & \ph{--} & \ph{--} \\
-$+$ Gram term & within noise & \ph{--} & \ph{--} & \ph{--} \\
-No gauge (subspace only) & within noise & \ph{--} & \ph{--} & \ph{--} \\
-Fixed gauge (no epoch-wise refit) & below ours & \ph{--} & \ph{--} & \ph{--} \\
-No teacher (floor) & floor & \ph{--} & \ph{--} & \ph{--} \\
-\bottomrule
-\end{tabular}
+    \centering
+    \caption{\textbf{Recipe ablation in configuration (c).} Mean $\pm$ sample
+    standard deviation over three seeds on the 15K corpus.}
+    \label{tab:recipe-ablation}
+    \small
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Configuration & $H_0$ source & Gauge refit & Avg. $\uparrow$ \\
+        \midrule
+        Ours & Original & On & \textbf{74.79 $\pm$ 0.06} \\
+        Projected topology & Projected & On & 74.57 $\pm$ 0.04 \\
+        Fixed gauge & Original & Off & 74.48 $\pm$ 0.01 \\
+        No topology & --- & On & 74.26 $\pm$ 0.02 \\
+        $H_0$ only & Original & --- & 64.22 $\pm$ 0.73 \\
+        No teacher & --- & --- & 52.60 $\pm$ 0.00 \\
+        \bottomrule
+    \end{tabular}
 \end{table}

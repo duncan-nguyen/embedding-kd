@@ -1,16 +1,7 @@
 % Timing and Avg. values come from the archived 15K main-results run:
 % runs/main_results_talas15k_h200_gpu67_20260904-082000/.
-\begin{table}[t]
-    \caption{\textbf{Training efficiency on NVIDIA H200 GPUs.} Results are
-    mean $\pm$ sample standard deviation over three seeds from the same runs
-    as Table~\ref{tab:main-results}. Step time and throughput exclude the first
-    ten warm-up steps. GPU train minutes sum all measured optimization-step
-    times, excluding teacher-cache construction, tokenization, and final
-    evaluation. Peak GiB is the maximum allocated memory on the busiest GPU.
-    Bold and underlined values denote the best and second-best results within
-    each teacher--student configuration. All jobs in this sweep shared an H200
-    with another concurrent job, so these are observed sweep costs rather than
-    controlled single-job hardware benchmarks.}
+\begin{table}[!htbp]
+    \caption{Training efficiency on NVIDIA H200 GPUs.}
     \label{tab:training-efficiency}
     \vspace{0.5em}
     \centering
@@ -30,7 +21,7 @@
         DSKD & \effcell{71.14}{0.10} & \effcell{290.9}{9.0} & \effcell{437.7}{13.3} & \effcell{2.88}{0.09} & \effcell{9.45}{0.00} \\
         EMO & \effcell{69.17}{0.24} & \effcell{721.1}{12.9} & \effcell{176.5}{3.1} & \effcell{7.02}{0.12} & \effcell{9.30}{0.00} \\
         TALAS & \effcell{\underline{77.29}}{0.04} & \effcell{329.0}{12.5} & \effcell{387.1}{15.0} & \effcell{3.23}{0.11} & \effcell{\textbf{1.43}}{0.00} \\
-        \textbf{GATE-KD} & \effcell{\textbf{77.68}}{0.02} & \effcell{\textbf{83.4}}{3.8} & \effcell{\textbf{1527.2}}{70.8} & \effcell{\textbf{0.84}}{0.04} & \effcell{1.72}{0.00} \\
+        \textbf{GATE-KD} & \effcell{\textbf{77.67}}{0.03} & \effcell{\textbf{83.4}}{3.8} & \effcell{\textbf{1527.2}}{70.8} & \effcell{\textbf{0.84}}{0.04} & \effcell{1.72}{0.00} \\
         \midrule
         \multicolumn{6}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
         \midrule
@@ -40,17 +31,17 @@
         DSKD & \effcell{70.83}{0.11} & \effcell{115.0}{21.9} & \effcell{1137.2}{241.0} & \effcell{1.14}{0.20} & \effcell{2.22}{0.01} \\
         EMO & \effcell{69.59}{0.12} & \effcell{394.6}{33.4} & \effcell{324.0}{28.3} & \effcell{3.87}{0.35} & \effcell{2.15}{0.01} \\
         TALAS & \effcell{\underline{75.55}}{0.06} & \effcell{184.4}{4.6} & \effcell{690.2}{17.3} & \effcell{1.82}{0.03} & \effcell{\textbf{0.85}}{0.00} \\
-        \textbf{GATE-KD} & \effcell{\textbf{75.99}}{0.10} & \effcell{\textbf{56.5}}{7.7} & \effcell{\textbf{2281.6}}{310.0} & \effcell{\textbf{0.57}}{0.07} & \effcell{1.07}{0.00} \\
+        \textbf{GATE-KD} & \effcell{\textbf{76.03}}{0.11} & \effcell{\textbf{56.5}}{7.7} & \effcell{\textbf{2281.6}}{310.0} & \effcell{\textbf{0.57}}{0.07} & \effcell{1.07}{0.00} \\
         \midrule
         \multicolumn{6}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
-        RKD & \effcell{71.44}{0.10} & \effcell{\underline{64.8}}{13.7} & \effcell{\textbf{2032.3}}{488.6} & \effcell{\underline{0.68}}{0.14} & \effcell{0.41}{0.00} \\
+        RKD & \effcell{71.44}{0.10} & \effcell{\underline{64.8}}{13.7} & \effcell{\underline{2012.3}}{488.6} & \effcell{\underline{0.68}}{0.14} & \effcell{0.41}{0.00} \\
         Stella & \effcell{68.57}{0.10} & \effcell{150.7}{15.3} & \effcell{850.0}{81.5} & \effcell{1.47}{0.13} & \effcell{0.42}{0.00} \\
         CDM & \effcell{68.69}{0.27} & \effcell{161.8}{21.6} & \effcell{796.3}{113.1} & \effcell{1.65}{0.20} & \effcell{1.53}{0.00} \\
         DSKD & \effcell{68.59}{0.04} & \effcell{175.4}{8.2} & \effcell{726.4}{33.5} & \effcell{1.78}{0.06} & \effcell{1.56}{0.00} \\
         EMO & \effcell{67.62}{0.02} & \effcell{499.3}{1.4} & \effcell{254.8}{0.7} & \effcell{4.90}{0.01} & \effcell{1.53}{0.00} \\
         TALAS & \effcell{\underline{73.20}}{0.06} & \effcell{169.8}{15.4} & \effcell{753.7}{71.4} & \effcell{1.69}{0.14} & \effcell{\textbf{0.34}}{0.00} \\
-        \textbf{GATE-KD} & \effcell{\textbf{74.62}}{0.01} & \effcell{\textbf{62.9}}{3.1} & \effcell{\underline{2025.2}}{98.3} & \effcell{\textbf{0.64}}{0.04} & \effcell{\underline{0.41}}{0.00} \\
+        \textbf{GATE-KD} & \effcell{\textbf{74.79}}{0.06} & \effcell{\textbf{62.9}}{3.1} & \effcell{\textbf{2025.2}}{98.3} & \effcell{\textbf{0.64}}{0.04} & \effcell{\underline{0.41}}{0.00} \\
         \bottomrule
     \end{tabular}
 \end{table}

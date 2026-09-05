@@ -1,2 +1,77 @@
 \section{Introduction}
 \label{sec:introduction}
+
+Text embedding models support retrieval, semantic similarity, clustering, and
+classification, but the strongest encoders are often too costly for
+latency- or memory-constrained deployment. Knowledge distillation offers a
+natural route to compact embedding models by transferring supervision from a
+frozen teacher to a smaller student
+\citep{hinton2015distilling,reimers2020multilingual}. Unlike class logits,
+however, embedding coordinates have no shared semantics across models. Teacher
+and student representations may differ in dimension, orientation, depth, and
+even architecture. Existing methods address this mismatch with learned
+projectors, relational or contrastive objectives, and supervision across
+intermediate layers
+\citep{park2019rkd,tian2020crd,xu2023distillcse,zhang2024jasper,truong2025emo,talas}.
+Intermediate alignment can provide rich supervision, but it presupposes useful
+correspondences between teacher and student depths---an assumption that becomes
+fragile as their architectures diverge---and often requires additional mappings
+or repeated access to teacher hidden states
+\citep{ko2023revisiting,kim2025layerselection}. More fundamentally, this
+machinery can obscure whether the difficulty lies in coordinating the
+representation hierarchy or in failing to define a comparable final
+representation in the first place. This motivates our central hypothesis that
+the primary bottleneck is the endpoint interface rather than coordination
+across intermediate representations.
+
+We test this hypothesis by separating teacher knowledge into two channels.
+The \emph{extrinsic interface} describes how teacher representations are
+expressed in coordinates that the student can match pointwise, whereas
+\emph{intrinsic structure} comprises properties of the representation cloud
+that do not depend on its coordinates or ambient dimension. This decomposition
+leads to \textbf{GATE-KD}, Gauge Alignment and Topology for Embedding
+Distillation. GATE-KD fits a fixed principal-component subspace to cached teacher
+endpoints, selecting the information that can pass through the student-width
+bottleneck. Within that subspace, an orthogonal Procrustes update aligns the
+target coordinates to the current student and is refitted after each epoch on a
+fixed calibration subset. Because each update is orthogonal, it changes only
+the targets' coordinate gauge, leaving their pairwise geometry unchanged. In
+parallel, GATE-KD matches the degree-zero persistent-homology signatures of
+student batches and the original, unprojected teacher batches. This second term
+transfers multiscale connectivity directly between native spaces of different
+dimensions. The resulting objective combines pointwise endpoint correspondence
+with coordinate-invariant structure while supervising only the final student
+embedding. It trains no projector, uses no intermediate-layer objective, and
+adds nothing to the student at inference.
+
+Experiments across three teacher--student configurations and nine downstream
+benchmarks support this endpoint-centered view. Under endpoint-only supervision,
+adding the Procrustes-aligned gauge to the same PCA subspace raises the average
+score from 69.35 to 74.28, showing that retained teacher variance alone does not
+determine whether a target is easy to learn. Native-space $H_0$ supervision then
+improves the endpoint-only result from 74.26 to 74.79, indicating that intrinsic
+connectivity complements pointwise targets. With both signals active, refitting
+the gauge across epochs adds 0.31 points over retaining the alignment fitted at
+initialization. Overall, GATE-KD achieves the
+highest aggregate score among the evaluated distilled students in all three
+configurations, exceeding TALAS by 0.38, 0.48, and 1.59 points while using only
+26--38\% of its measured GPU optimization time. These results show that, in the
+settings we study, strong embedding transfer does not require coordinating the
+intermediate representation hierarchy when the endpoint interface and
+native-space structure are specified explicitly.
+
+We make three contributions.
+\begin{itemize}
+    \item We formulate cross-dimensional embedding distillation as an
+    intrinsic--extrinsic decomposition, separating the coordinate interface
+    required for pointwise supervision from structure that can be transferred
+    directly across native spaces.
+    \item We introduce GATE-KD, a terminal-only method that combines a fixed PCA
+    subspace, epoch-wise closed-form gauge alignment, and native-space $H_0$
+    persistence matching without a trainable projector or inference-time overhead.
+    \item Through controlled interface and signal decompositions, we show that
+    coordinate comparability and topology provide complementary supervision;
+    across three teacher--student configurations, this simple formulation
+    improves aggregate performance while substantially reducing measured
+    optimization cost relative to a strong hierarchy-based baseline.
+\end{itemize}

@@ -1,0 +1,35 @@
+% Source:
+% runs/aux_sweeps_20260904-113834/sensitivity/sensitivity_mean_std.csv
+% The three rows corresponding to the current main recipe are synchronized
+% with configuration (c) in Table~\ref{tab:main-results}.
+\begin{table}[H]
+    \centering
+    \caption{Numerical sensitivity results for configuration (c).}
+    \label{tab:sensitivity-15k}
+    \small
+    \newcommand{\sencell}[2]{#1{\tiny $\pm$ #2}}
+    \setlength{\tabcolsep}{7pt}
+    \begin{tabular}{@{}llccc@{}}
+        \toprule
+        Factor & Value & Avg.~IOD $\uparrow$ & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
+        \midrule
+        \multirow{4}{*}{$\lambda_{\mathrm{topo}}$}
+        & 0    & \sencell{67.54}{0.18} & \sencell{77.54}{0.07} & \sencell{74.21}{0.03} \\
+        & 0.5  & \sencell{\textbf{68.62}}{0.21} & \sencell{\textbf{77.87}}{0.02} & \sencell{\textbf{74.79}}{0.06} \\
+        & 0.75 & \sencell{68.47}{0.13} & \sencell{77.84}{0.04} & \sencell{74.72}{0.04} \\
+        & 1    & \sencell{68.14}{0.06} & \sencell{77.75}{0.03} & \sencell{74.55}{0.03} \\
+        \midrule
+        \multirow{4}{*}{Training/$H_0$ batch}
+        & 16  & \sencell{\textbf{70.28}}{0.09} & \sencell{\textbf{78.42}}{0.09} & \sencell{\textbf{75.71}}{0.03} \\
+        & 64  & \sencell{69.65}{0.09} & \sencell{78.10}{0.08} & \sencell{75.29}{0.05} \\
+        & 128 & \sencell{68.62}{0.21} & \sencell{77.87}{0.02} & \sencell{74.79}{0.06} \\
+        & 256 & \sencell{67.38}{0.03} & \sencell{77.32}{0.07} & \sencell{74.01}{0.05} \\
+        \midrule
+        \multirow{4}{*}{Gauge calibration}
+        & 2{,}048  & \sencell{68.36}{0.11} & \sencell{77.59}{0.04} & \sencell{74.51}{0.06} \\
+        & 4{,}096  & \sencell{68.52}{0.08} & \sencell{77.74}{0.05} & \sencell{74.67}{0.02} \\
+        & 8{,}192  & \sencell{68.26}{0.08} & \sencell{77.78}{0.03} & \sencell{74.61}{0.02} \\
+        & 14{,}760 & \sencell{\textbf{68.62}}{0.21} & \sencell{\textbf{77.87}}{0.02} & \sencell{\textbf{74.79}}{0.06} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

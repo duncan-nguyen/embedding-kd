@@ -1,13 +1,185 @@
-\begin{thebibliography}{1}
+\begin{thebibliography}{24}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
 
+\bibitem[Bhattarai et~al.(2025)Bhattarai, Amjad, Zhylko, and
+  Alhanai]{bhattarai2025shortcut}
+Prajjwal Bhattarai, Mohammad Amjad, Dmytro Zhylko, and Tuka Alhanai.
+\newblock Knowledge distillation through geometry-aware representational
+  alignment.
+\newblock arXiv:2509.25253, 2025.
+\newblock URL \url{https://arxiv.org/abs/2509.25253}.
+
+\bibitem[Chen et~al.(2025)Chen, Liu, Meng, Chen, Xu, and Zhou]{chen2025cdm}
+Yijie Chen, Yijin Liu, Fandong Meng, Yufeng Chen, Jinan Xu, and Jie Zhou.
+\newblock Enhancing cross-tokenizer knowledge distillation with contextual
+  dynamical mapping.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  ACL 2025}, pp.\  8005--8018, 2025.
+\newblock \doi{10.18653/v1/2025.findings-acl.419}.
+\newblock URL \url{https://aclanthology.org/2025.findings-acl.419/}.
+
+\bibitem[Chen et~al.(2023)]{chen2023projector}
+Yudong Chen et~al.
+\newblock On the effects of projectors in knowledge distillation.
+\newblock arXiv:2310.17183, 2023.
+
+\bibitem[Dao et~al.(2026)Dao, Nguyen, Pham, Ngo~Van, Nguyen, Nguyen, and
+  Le]{talas}
+Quoc~Phong Dao, Hoang~Son Nguyen, Khanh~Chi Pham, Linh Ngo~Van, Diep Thi-Ngoc
+  Nguyen, Thien~Huu Nguyen, and Trung Le.
+\newblock {TALAS}: Teacher-anchored layer alignment with adaptive
+  sharpness-aware minimization for embedding distillation.
+\newblock In \emph{Proceedings of the 64th Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pp.\  32705--32723,
+  2026.
+\newblock \doi{10.18653/v1/2026.acl-long.1509}.
+\newblock URL \url{https://aclanthology.org/2026.acl-long.1509/}.
+
+\bibitem[Hinton et~al.(2015)Hinton, Vinyals, and Dean]{hinton2015distilling}
+Geoffrey Hinton, Oriol Vinyals, and Jeff Dean.
+\newblock Distilling the knowledge in a neural network.
+\newblock \emph{arXiv preprint arXiv:1503.02531}, 2015.
+
+\bibitem[Jeon et~al.(2024)Jeon, Khurana, Pathak, and
+  Turaga]{jeon2024topological}
+Eun~Som Jeon, Rahul Khurana, Aishani Pathak, and Pavan Turaga.
+\newblock Leveraging topological guidance for improved knowledge distillation.
+\newblock In \emph{Proceedings of the Geometry-grounded Representation Learning
+  and Generative Modeling Workshop}, volume 251 of \emph{Proceedings of Machine
+  Learning Research}, pp.\  158--172, 2024.
+\newblock URL \url{https://proceedings.mlr.press/v251/jeon24a.html}.
+
+\bibitem[Kim et~al.(2024)Kim, You, Lee, Kim, and Jung]{topkd2024}
+Jungeun Kim, Junwon You, Dongjin Lee, Ha~Young Kim, and Jae-Hun Jung.
+\newblock Do topological characteristics help in knowledge distillation?
+\newblock In \emph{Proceedings of the 41st International Conference on Machine
+  Learning}, volume 235 of \emph{Proceedings of Machine Learning Research},
+  pp.\  24674--24693, 2024.
+\newblock URL \url{https://proceedings.mlr.press/v235/kim24aj.html}.
+
+\bibitem[Ko et~al.(2023)Ko, Park, Jeong, Hong, Ahn, Chang, and
+  Yun]{ko2023revisiting}
+Jongwoo Ko, Seungjoon Park, Minchan Jeong, Sukjin Hong, Euijai Ahn, Du-Seong
+  Chang, and Se-Young Yun.
+\newblock Revisiting intermediate layer distillation for compressing language
+  models: An overfitting perspective.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  EACL 2023}, 2023.
+
+\bibitem[Li et~al.(2025)Li, Li, Li, Xie, and Li]{li2025ese}
+Xianming Li, Zongxi Li, Jing Li, Haoran Xie, and Qing Li.
+\newblock {ESE}: Espresso sentence embeddings.
+\newblock In \emph{International Conference on Learning Representations}, 2025.
+
+\bibitem[Miles \& Mikolajczyk(2024)Miles and Mikolajczyk]{miles2024projector}
+Roy Miles and Krystian Mikolajczyk.
+\newblock Understanding the role of the projector in knowledge distillation.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial
+  Intelligence}, 2024.
+
+\bibitem[Miles et~al.(2024)Miles, Elezi, and Deng]{vkd2024}
+Roy Miles, Ismail Elezi, and Jiankang Deng.
+\newblock {VkD}: Improving knowledge distillation using orthogonal projections.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
+  and Pattern Recognition}, 2024.
+
+\bibitem[Park et~al.(2019)Park, Kim, Lu, and Cho]{park2019rkd}
+Wonpyo Park, Dongju Kim, Yan Lu, and Minsu Cho.
+\newblock Relational knowledge distillation.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
+  and Pattern Recognition}, 2019.
+
+\bibitem[Reimers \& Gurevych(2020)Reimers and
+  Gurevych]{reimers2020multilingual}
+Nils Reimers and Iryna Gurevych.
+\newblock Making monolingual sentence embeddings multilingual using knowledge
+  distillation.
+\newblock In \emph{Proceedings of the 2020 Conference on Empirical Methods in
+  Natural Language Processing}, pp.\  4512--4525, 2020.
+
 \bibitem[Sch{\"o}nemann(1966)]{schonemann1966procrustes}
 Peter~H. Sch{\"o}nemann.
 \newblock A generalized solution of the orthogonal {P}rocrustes problem.
 \newblock \emph{Psychometrika}, 31\penalty0 (1):\penalty0 1--10, 1966.
+
+\bibitem[Tian et~al.(2020)Tian, Krishnan, and Isola]{tian2020crd}
+Yonglong Tian, Dilip Krishnan, and Phillip Isola.
+\newblock Contrastive representation distillation.
+\newblock In \emph{International Conference on Learning Representations}, 2020.
+
+\bibitem[Truong et~al.(2025)Truong, Vu, Vu, Nguyen, Ngo~Van, Nguyen, and
+  Le]{truong2025emo}
+Minh-Phuc Truong, Hai~An Vu, Tu~Vu, Diep Thi-Ngoc Nguyen, Linh Ngo~Van,
+  Thien~Huu Nguyen, and Trung Le.
+\newblock {EMO}: Embedding model distillation via intra-model relation and
+  optimal transport alignments.
+\newblock In \emph{Proceedings of the 2025 Conference on Empirical Methods in
+  Natural Language Processing}, 2025.
+
+\bibitem[Tung \& Mori(2019)Tung and Mori]{tung2019similarity}
+Frederick Tung and Greg Mori.
+\newblock Similarity-preserving knowledge distillation.
+\newblock In \emph{Proceedings of the IEEE/CVF International Conference on
+  Computer Vision}, 2019.
+
+\bibitem[Vujanic \& R{\"u}ckstie{\ss}(2026)Vujanic and R{\"u}ckstie{\ss}]{leaf}
+Robin Vujanic and Thomas R{\"u}ckstie{\ss}.
+\newblock {LEAF}: Knowledge distillation of text embedding models with
+  teacher-aligned representations.
+\newblock In \emph{Proceedings of the 64th Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pp.\  43362--43383,
+  2026.
+\newblock \doi{10.18653/v1/2026.acl-long.2008}.
+\newblock URL \url{https://aclanthology.org/2026.acl-long.2008/}.
+
+\bibitem[Xu et~al.(2023)Xu, Shao, Chen, and Liu]{xu2023distillcse}
+Jiahao Xu, Wei Shao, Lihui Chen, and Lemao Liu.
+\newblock {DistillCSE}: Distilled contrastive learning for sentence embeddings.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  EMNLP 2023}, pp.\  8153--8165, 2023.
+
+\bibitem[Yu et~al.(2025)Yu, Wen, and Mou]{kim2025layerselection}
+Zony Yu, Yuqiao Wen, and Lili Mou.
+\newblock Revisiting intermediate-layer matching in knowledge distillation:
+  Layer-selection strategy doesn't matter (much).
+\newblock In \emph{Proceedings of the 14th International Joint Conference on
+  Natural Language Processing and the 4th Conference of the Asia-Pacific
+  Chapter of the Association for Computational Linguistics}, pp.\  1686--1694,
+  2025.
+\newblock \doi{10.18653/v1/2025.findings-ijcnlp.105}.
+\newblock URL \url{https://aclanthology.org/2025.findings-ijcnlp.105/}.
+
+\bibitem[Zhang et~al.(2024{\natexlab{a}})Zhang, Li, Zeng, and
+  Wang]{zhang2024jasper}
+Dun Zhang, Jiacheng Li, Ziyang Zeng, and Fulong Wang.
+\newblock Jasper and stella: Distillation of sota embedding models.
+\newblock \emph{arXiv preprint arXiv:2412.19048}, 2024{\natexlab{a}}.
+
+\bibitem[Zhang et~al.(2024{\natexlab{b}})Zhang, Zhang, Sun, Chen, and
+  Xu]{zhang2024dskd}
+Songming Zhang, Xue Zhang, Zengkui Sun, Yufeng Chen, and Jinan Xu.
+\newblock Dual-space knowledge distillation for large language models.
+\newblock In \emph{Proceedings of the 2024 Conference on Empirical Methods in
+  Natural Language Processing}, pp.\  18164--18181, 2024{\natexlab{b}}.
+\newblock \doi{10.18653/v1/2024.emnlp-main.1010}.
+\newblock URL \url{https://aclanthology.org/2024.emnlp-main.1010/}.
+
+\bibitem[Zhao et~al.(2022)Zhao, Yu, Wu, and Li]{hpd}
+Xuandong Zhao, Zhiguo Yu, Ming Wu, and Lei Li.
+\newblock Compressing sentence representation for semantic retrieval via
+  homomorphic projective distillation.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  ACL 2022}, 2022.
+
+\bibitem[Zhou et~al.(2025)Zhou, Zhu, and Wu]{tcs}
+Junjie Zhou, Ke~Zhu, and Jianxin Wu.
+\newblock All you need in knowledge distillation is a tailored coordinate
+  system.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial
+  Intelligence}, 2025.
 
 \end{thebibliography}

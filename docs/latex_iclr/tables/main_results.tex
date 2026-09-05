@@ -1,8 +1,5 @@
 \begin{table}[H]
-    \caption{Results after distillation on the 100K corpus of 102,361 unlabeled
-    sentences. Avg.\ denotes the unweighted mean of the nine benchmark scores.
-    Where reported, uncertainty is the sample standard deviation across three
-    seeds.}
+    \caption{Results at a larger distillation scale.}
     \label{tab:main-results-100k}
     \vspace{0.5em}
     \centering
@@ -31,27 +28,27 @@
         \multicolumn{11}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
         \midrule
         Teacher
-        & 93.63
-        & 72.22
-        & 68.94
-        & 84.79
+        & 93.26
+        & 71.04
+        & 69.08
+        & 84.80
         & 91.77
-        & 66.80
+        & 66.79
         & 83.43
         & 82.55
         & 86.87
-        & 81.22 \\
+        & 81.07 \\
         Student base
-        & 84.86
+        & 84.33
+        & 67.08
         & 47.79
-        & 68.02
         & 77.36
         & 67.74
         & 59.22
         & 42.43
         & 21.54
-        & 20.30
-        & 54.36 \\
+        & 20.29
+        & 54.20 \\
         \midrule
         \raisebox{0.7ex}{RKD}
         & \resultcell{92.23}{0.15}
@@ -135,27 +132,27 @@
         \multicolumn{11}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
         \midrule
         Teacher
-        & 93.52
-        & 73.85
-        & 68.56
-        & 85.81
+        & 93.49
+        & 73.75
+        & 69.03
+        & 85.80
         & 91.87
-        & 61.47
+        & 61.46
         & 79.18
-        & 78.73
-        & 84.87
-        & 79.76 \\
+        & 78.74
+        & 84.86
+        & 79.80 \\
         Student base
-        & 81.84
-        & 47.70
-        & 71.67
-        & 79.67
+        & 81.18
+        & 71.30
+        & 48.85
+        & 79.66
         & 65.06
         & 60.89
         & 49.46
         & 26.76
         & 24.12
-        & 56.35 \\
+        & 56.36 \\
         \midrule
         \raisebox{0.7ex}{RKD}
         & \resultcell{91.68}{0.06}
@@ -239,27 +236,27 @@
         \multicolumn{11}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
         Teacher
-        & 93.21
-        & 71.33
-        & 66.53
-        & 83.37
-        & 90.00
-        & 66.85
-        & 80.64
+        & 92.51
+        & 71.28
+        & 65.80
+        & 83.38
+        & 90.09
+        & 66.84
+        & 80.65
         & 77.11
-        & 84.60
-        & 79.29 \\
+        & 84.59
+        & 79.14 \\
         Student base
-        & 68.29
-        & 41.07
-        & 69.90
+        & 67.03
+        & 69.45
+        & 42.90
         & 78.39
-        & 64.56
+        & 64.55
         & 59.58
         & 47.60
-        & 21.95
+        & 21.96
         & 22.08
-        & 52.60 \\
+        & 52.62 \\
         \midrule
         \raisebox{0.7ex}{RKD}
         & \resultcell{89.74}{0.04}

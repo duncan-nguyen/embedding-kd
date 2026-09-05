@@ -1,36 +1,33 @@
-\begin{table*}[t]
+% Source: runs/aux_sweeps_20260904-113834/target_map/target_map_ablation.csv
+\begin{table}[!htbp]
     \centering
-    \caption{\textbf{Endpoint-interface ablation.} All variants optimize
-    $\mathcal{L}_{\mathrm{end}}$ only, with $\mathcal{L}_{H_0}=0$. Retained
-    energy, Gram RMSE, and $k$NN overlap compare the original teacher embeddings
-    with their fixed projected targets and are therefore not applicable to
-    jointly learned interfaces. Orthogonal Procrustes leaves all three fixed-target
-    geometry metrics unchanged. All variants use the 100K corpus and
-    teacher--student configuration (c) from Appendix
-    Table~\ref{tab:main-results-100k}.}
+    \caption{Endpoint-interface ablation in configuration (c). All variants
+    optimize $\mathcal{L}_{\mathrm{end}}$ only. Scores are mean $\pm$ sample
+    standard deviation over three seeds. Random controls use one map draw shared
+    across the training seeds.}
     \label{tab:interface-families}
     \small
-    \setlength{\tabcolsep}{3.5pt}
-    \begin{tabular}{@{}lcccc@{}}
+    \newcommand{\abcell}[2]{#1{\tiny $\pm$ #2}}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{@{}llcccc@{}}
         \toprule
-        & \multicolumn{3}{c}{Fixed-target geometry}
-        & \multicolumn{1}{c}{Downstream} \\
-        \cmidrule(lr){2-4}\cmidrule(l){5-5}
-        Configuration & Retained energy $\uparrow$
-        & Gram RMSE $\downarrow$ & $k$NN@10 $\uparrow$ & Avg. $\uparrow$ \\
+        Target map & Gauge & Retained energy $\uparrow$
+        & Avg.~IOD $\uparrow$ & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
         \midrule
-        Learned $T\!\to\!S$ & N/A & N/A & N/A & 56.76 \\
-        Learned $S\!\to\!T$ & N/A & N/A & N/A & 76.29 \\
+        Learned $T\!\to\!S$ & --- & N/A
+        & \abcell{54.34}{0.68} & \abcell{65.02}{0.25} & \abcell{61.46}{0.39} \\
+        Learned $S\!\to\!T$ & --- & N/A
+        & \abcell{62.54}{0.36} & \abcell{72.72}{0.31} & \abcell{69.33}{0.32} \\
         \midrule
-        PCA only
-        & \textbf{0.918} & \textbf{0.0125} & \textbf{0.936} & 76.25 \\
-        \quad $+$ Procrustes
-        & \textbf{0.918} & \textbf{0.0125} & \textbf{0.936} & \textbf{77.14} \\
-        \midrule
-        Random only
-        & 0.381 & 0.0345 & 0.729 & 76.09 \\
-        \quad $+$ Procrustes
-        & 0.381 & 0.0345 & 0.729 & 76.79 \\
+        PCA & None & 0.928
+        & \abcell{62.49}{0.19} & \abcell{72.78}{0.07} & \abcell{69.35}{0.04} \\
+        PCA & Random orthogonal & 0.928
+        & \abcell{63.68}{0.10} & \abcell{73.72}{0.09} & \abcell{70.37}{0.08} \\
+        Random orthogonal & None & 0.381
+        & \abcell{64.44}{0.14} & \abcell{74.16}{0.04} & \abcell{70.92}{0.07} \\
+        \textbf{PCA} & \textbf{Procrustes}
+        & \textbf{0.928} & \abcell{\textbf{67.76}}{0.05}
+        & \abcell{\textbf{77.54}}{0.07} & \abcell{\textbf{74.28}}{0.03} \\
         \bottomrule
     \end{tabular}
-\end{table*}
+\end{table}

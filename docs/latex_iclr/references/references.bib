@@ -28,6 +28,26 @@
   year    = {2024}
 }
 
+@inproceedings{chen2025cdm,
+  title     = {Enhancing Cross-Tokenizer Knowledge Distillation with Contextual Dynamical Mapping},
+  author    = {Chen, Yijie and Liu, Yijin and Meng, Fandong and Chen, Yufeng and Xu, Jinan and Zhou, Jie},
+  booktitle = {Findings of the Association for Computational Linguistics: ACL 2025},
+  pages     = {8005--8018},
+  year      = {2025},
+  url       = {https://aclanthology.org/2025.findings-acl.419/},
+  doi       = {10.18653/v1/2025.findings-acl.419}
+}
+
+@inproceedings{zhang2024dskd,
+  title     = {Dual-Space Knowledge Distillation for Large Language Models},
+  author    = {Zhang, Songming and Zhang, Xue and Sun, Zengkui and Chen, Yufeng and Xu, Jinan},
+  booktitle = {Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing},
+  pages     = {18164--18181},
+  year      = {2024},
+  url       = {https://aclanthology.org/2024.emnlp-main.1010/},
+  doi       = {10.18653/v1/2024.emnlp-main.1010}
+}
+
 @inproceedings{truong2025emo,
   title     = {{EMO}: Embedding Model Distillation via Intra-Model Relation and Optimal Transport Alignments},
   author    = {Truong, Minh-Phuc and Vu, Hai An and Vu, Tu and Nguyen, Diep Thi-Ngoc and Ngo Van, Linh and Nguyen, Thien Huu and Le, Trung},
@@ -42,11 +62,14 @@
   year      = {2025}
 }
 
-@misc{talas,
+@inproceedings{talas,
   title  = {{TALAS}: Teacher-Anchored Layer Alignment with Adaptive Sharpness-Aware Minimization for Embedding Distillation},
   author = {Dao, Quoc Phong and Nguyen, Hoang Son and Pham, Khanh Chi and Ngo Van, Linh and Nguyen, Diep Thi-Ngoc and Nguyen, Thien Huu and Le, Trung},
-  note   = {Manuscript},
-  year   = {2026}
+  booktitle = {Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages  = {32705--32723},
+  year   = {2026},
+  url    = {https://aclanthology.org/2026.acl-long.1509/},
+  doi    = {10.18653/v1/2026.acl-long.1509}
 }
 
 @article{schonemann1966procrustes,
@@ -67,11 +90,14 @@
 % =====================================================================
 
 % --- 2025-2026 embedding-distillation systems ------------------------
-@misc{leaf,
+@inproceedings{leaf,
   title        = {{LEAF}: Knowledge Distillation of Text Embedding Models with Teacher-Aligned Representations},
-  author       = {Vujanic, Robin and Rueckstiess, Thomas},
-  howpublished = {arXiv:2509.12539},
-  year         = {2025}
+  author       = {Vujanic, Robin and R{\"u}ckstie{\ss}, Thomas},
+  booktitle    = {Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages        = {43362--43383},
+  year         = {2026},
+  url          = {https://aclanthology.org/2026.acl-long.2008/},
+  doi          = {10.18653/v1/2026.acl-long.2008}
 }
 @inproceedings{hpd,
   title     = {Compressing Sentence Representation for Semantic Retrieval via Homomorphic Projective Distillation},
@@ -90,10 +116,12 @@
 % --- projectors, shortcuts, frozen coordinate systems ----------------
 % VERIFY author list against arXiv:2509.25253.
 @misc{bhattarai2025shortcut,
-  title        = {On the Limitations of Projected Feature Matching in Knowledge Distillation},
-  author       = {Bhattarai, Binod and others},
+  title        = {Knowledge Distillation Through Geometry-Aware Representational Alignment},
+  author       = {Bhattarai, Prajjwal and Amjad, Mohammad and Zhylko, Dmytro and Alhanai, Tuka},
   howpublished = {arXiv:2509.25253},
-  year         = {2025}
+  year         = {2025},
+  url          = {https://arxiv.org/abs/2509.25253},
+  doi          = {10.48550/arXiv.2509.25253}
 }
 @inproceedings{miles2024projector,
   title     = {Understanding the Role of the Projector in Knowledge Distillation},
@@ -291,11 +319,37 @@
   year      = {2023}
 }
 % VERIFY author list against arXiv:2502.04499.
-@misc{kim2025layerselection,
-  title        = {The Layer-Selection Strategy Does Not Matter (Much) in Intermediate-Layer Distillation},
-  author       = {{Anonymous}},
-  howpublished = {arXiv:2502.04499},
-  year         = {2025}
+@inproceedings{kim2025layerselection,
+  title     = {Revisiting Intermediate-Layer Matching in Knowledge Distillation: Layer-Selection Strategy Doesn't Matter (Much)},
+  author    = {Yu, Zony and Wen, Yuqiao and Mou, Lili},
+  booktitle = {Proceedings of the 14th International Joint Conference on Natural Language Processing and the 4th Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics},
+  pages     = {1686--1694},
+  year      = {2025},
+  url       = {https://aclanthology.org/2025.findings-ijcnlp.105/},
+  doi       = {10.18653/v1/2025.findings-ijcnlp.105}
+}
+
+% --- topological distillation ----------------------------------------
+@inproceedings{topkd2024,
+  title     = {Do Topological Characteristics Help in Knowledge Distillation?},
+  author    = {Kim, Jungeun and You, Junwon and Lee, Dongjin and Kim, Ha Young and Jung, Jae-Hun},
+  booktitle = {Proceedings of the 41st International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {235},
+  pages     = {24674--24693},
+  year      = {2024},
+  url       = {https://proceedings.mlr.press/v235/kim24aj.html}
+}
+
+@inproceedings{jeon2024topological,
+  title     = {Leveraging Topological Guidance for Improved Knowledge Distillation},
+  author    = {Jeon, Eun Som and Khurana, Rahul and Pathak, Aishani and Turaga, Pavan},
+  booktitle = {Proceedings of the Geometry-grounded Representation Learning and Generative Modeling Workshop},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {251},
+  pages     = {158--172},
+  year      = {2024},
+  url       = {https://proceedings.mlr.press/v251/jeon24a.html}
 }
 
 % --- random projection ------------------------------------------------
