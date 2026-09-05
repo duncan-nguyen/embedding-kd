@@ -114,13 +114,14 @@ Equation~\ref{eq:pca-target} need not equal that of the original teacher
 embeddings. We therefore transfer an additional structural signal directly
 from the teacher's native space.
 
-This loss of geometry is unavoidable when the teacher cache has intrinsic rank
-above the student width \citep{bhattarai2025shortcut}.
+This loss of geometry is unavoidable whenever the normalized teacher cache has
+rank above the student width.
 \begin{proposition}[Irreducible Gram distortion]
 Let $T\in\mathbb{R}^{N\times d_T}$ collect the normalized teacher cache
 embeddings, with singular values
-$\sigma_1(T)\geq\cdots\geq\sigma_r(T)>0$. For every
-$Z\in\mathbb{R}^{N\times d_S}$,
+$\sigma_1(T)\geq\cdots\geq\sigma_r(T)>0$. For every $Z\in
+\mathbb{R}^{N\times d_S}$ collecting student embeddings of the same $N$
+sentences,
 \begin{equation}
     \left\lVert TT^\top-ZZ^\top\right\rVert_F^2
     \geq \sum_{j>d_S}\sigma_j(T)^4.
@@ -163,7 +164,8 @@ connectivity scales
 \end{equation}
 where $\delta_a$ denotes a Dirac mass at $a$.
 \begin{proposition}[Transport interpretation and stability]
-The topology loss is the squared one-dimensional Wasserstein distance
+The $H_0$ loss equals the squared one-dimensional Wasserstein distance between
+the empirical death-scale measures,
 \begin{equation}
     \mathcal{L}_{H_0}=W_2^2(\nu_S,\nu_T).
     \label{eq:topological-wasserstein}

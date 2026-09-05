@@ -6,7 +6,7 @@ onto teacher outputs, showing that unlabeled text can provide dense supervision
 without task annotations \citep{reimers2020multilingual}. Subsequent methods
 have enriched this signal through contrastive learning, specialized training
 recipes, and teacher-compatible output spaces
-\citep{xu2023distillcse,zhang2024jasper,li2025ese,leaf}. Other approaches draw
+\citep{xu2023distillcse,zhang2024jasper,li2025ese,leaf}.
 EmbedDistill combines embedding matching with relative geometric supervision
 for information retrieval \citep{kim2023embeddistill}. Other approaches draw on
 the representation hierarchy. EMO transfers token-level relations and aligns
@@ -31,9 +31,11 @@ uses PCA coordinates extracted from cached teacher features
 \citep{vkd2024,tcs}. More generally, representation-similarity work treats
 orthogonal transformations as natural equivalences because they preserve inner
 products and distances, with Procrustes providing the corresponding alignment
-\citep{kornblith2019cka,williams2021shape,maystre2025procrustes}. Concurrent
+\citep{kornblith2019cka,williams2021shape,maystre2025procrustes}. Recent
 work formalizes teacher supervision over representation equivalence classes
-\citep{han2026equivalence}. Most closely related to our geometric motivation,
+\citep{han2026equivalence}. GATE-KD instantiates this perspective for
+cross-dimensional text embeddings through a terminal-only interface combined
+with native-space $H_0$ transfer. Most closely related to our geometric motivation,
 \citet{bhattarai2025shortcut} show that unconstrained projected matching can
 attain zero feature loss without preserving the teacher's Gram geometry. Under
 their assumptions, zero Procrustes distance is instead equivalent to zero Gram
