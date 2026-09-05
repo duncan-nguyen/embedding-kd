@@ -94,6 +94,12 @@ class GeoODEConfig(BaseConfig):
     # --projection_seed.
     projection_type = "pca"
     projection_seed = 0
+    # Active rank of a fixed teacher interface before it is embedded in the
+    # d_S-wide student space. 0 keeps the paper recipe (the maximal feasible
+    # rank, min(d_T, d_S)). Smaller values support the controlled width-bottleneck
+    # sweep without changing the student architecture; the unused coordinates
+    # are exactly zero before the gauge rotation. CLI: --projection_rank.
+    projection_rank = 0
     # Learning rate of the learned target map, as a multiple of the student's. The
     # learned arms are baselines the recipe is measured against, so this exists to
     # let them be tuned rather than strawmanned; 1.0 gives them the student's own

@@ -192,6 +192,14 @@ def parse_args():
         "null band the PCA map has to clear",
     )
     parser.add_argument(
+        "--projection_rank",
+        type=int,
+        default=None,
+        help="GATE-KD: active rank of a fixed teacher interface before zero-padding "
+        "to the student width (0 = min(teacher width, student width)). This changes the "
+        "retained teacher subspace without changing the student architecture",
+    )
+    parser.add_argument(
         "--learned_projector_lr_scale",
         type=float,
         default=None,
@@ -519,6 +527,7 @@ METHOD_FLAGS = (
             "topo_teacher_source",
             "projection_type",
             "projection_seed",
+            "projection_rank",
             "learned_projector_lr_scale",
             "pca_center_fit",
             "pca_subtract_mean",
@@ -579,6 +588,8 @@ def get_config(method: str, args):
         raise ValueError(
             "--topo_batch_size must be 0 (one diagram per training batch) or >= 2"
         )
+    if args.projection_rank is not None and args.projection_rank < 0:
+        raise ValueError("--projection_rank must be 0 (full student width) or positive")
 
     for flag, attribute in COMMON_FLAGS.items():
         value = getattr(args, flag)

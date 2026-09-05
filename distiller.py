@@ -1163,16 +1163,36 @@ class KnowledgeDistiller:
         teacher_dim = teacher_cls.shape[-1]
 
         projection_type = getattr(cfg, "projection_type", "pca")
+        configured_rank = int(getattr(cfg, "projection_rank", 0) or 0)
         if projection_type in LEARNED_PROJECTIONS:
+            if configured_rank not in (0, student_dim):
+                raise ValueError(
+                    "projection_rank only applies to a fixed teacher interface; "
+                    f"got projection_type={projection_type!r}"
+                )
             return self._learned_teacher_targets(teacher_cls, projection_type)
 
-        projection, mean = fit_teacher_projection(
+        projection_rank = configured_rank or min(student_dim, teacher_dim)
+        if not 1 <= projection_rank <= min(student_dim, teacher_dim):
+            raise ValueError(
+                "projection_rank must lie between 1 and min(student_dim, teacher_dim); "
+                f"got {projection_rank} for dimensions {student_dim} and {teacher_dim}"
+            )
+
+        compact_projection, mean = fit_teacher_projection(
             teacher_cls,
-            out_dim=student_dim,
+            out_dim=projection_rank,
             projection_type=projection_type,
             center=cfg.pca_center_fit,
             seed=int(getattr(cfg, "projection_seed", 0)),
         )
+        explained = retained_energy(teacher_cls, compact_projection)
+        # Embed the rank-k target into the unchanged d_S-wide student space.
+        # A subsequent d_S x d_S gauge rotation can orient this subspace without
+        # changing its rank or Gram matrix.
+        projection = F.pad(
+            compact_projection, (0, student_dim - projection_rank)
+        ).contiguous()
         # The MSE baseline (sentence-transformers recipe) regresses onto the raw
         # projected target, so it is the one case where norm(.) is skipped.
         renormalize = getattr(cfg, "endpoint_loss", "cosine") != "mse"
@@ -1185,8 +1205,7 @@ class KnowledgeDistiller:
             renormalize=renormalize,
         )
 
-        explained = 1.0
-        if teacher_dim <= student_dim:
+        if teacher_dim <= student_dim and projection_rank == teacher_dim:
             print(
                 f"Teacher dim {teacher_dim} <= student dim {student_dim}: "
                 f"P_T discards nothing ({projection_type} map, targets are "
@@ -1197,13 +1216,13 @@ class KnowledgeDistiller:
             # share of the cached embedding energy, i.e. it is the linear map that
             # best preserves the teacher's Gram matrix. This number is
             # what the paper reports for P_T, and it is also the number the random
-            # controls have to be read against: they span a d_S-subspace drawn
-            # without looking at the teacher, so they retain about d_S/d_T.
-            explained = retained_energy(teacher_cls, projection)
+            # controls have to be read against: they span a rank-k subspace drawn
+            # without looking at the teacher, so they retain about k/d_T.
             print(
-                f"Fitted {projection_type} teacher projection {teacher_dim} -> "
-                f"{student_dim} (retains {explained:.1%} of cached embedding "
-                f"energy; a random subspace retains ~{student_dim / teacher_dim:.1%})"
+                f"Fitted rank-{projection_rank} {projection_type} teacher interface "
+                f"{teacher_dim} -> {student_dim} (retains {explained:.1%} of cached "
+                f"embedding energy; a random rank-{projection_rank} subspace retains "
+                f"~{projection_rank / teacher_dim:.1%})"
             )
 
         rotation = None
@@ -1299,8 +1318,9 @@ class KnowledgeDistiller:
             "projection_seed": int(getattr(cfg, "projection_seed", 0)),
             "teacher_dim": teacher_dim,
             "student_dim": student_dim,
+            "projection_rank": projection_rank,
             "explained_energy": float(explained),
-            "random_subspace_energy": student_dim / teacher_dim,
+            "random_subspace_energy": projection_rank / teacher_dim,
             "pca_center_fit": bool(cfg.pca_center_fit),
             "pca_subtract_mean": bool(cfg.pca_subtract_mean),
             "gauge_align": bool(getattr(cfg, "gauge_align", False)),
@@ -1321,11 +1341,13 @@ class KnowledgeDistiller:
                     "teacher_model_name": cfg.teacher_model_name,
                     "student_dim": student_dim,
                     "teacher_dim": teacher_dim,
+                    "projection_rank": projection_rank,
                     "projection_type": projection_type,
                     "projection_seed": int(getattr(cfg, "projection_seed", 0)),
                     "pca_center_fit": cfg.pca_center_fit,
                     "pca_subtract_mean": cfg.pca_subtract_mean,
                     "explained_energy": explained,
+                    "random_subspace_energy": projection_rank / teacher_dim,
                     "gauge_align": bool(getattr(cfg, "gauge_align", False)),
                     "gauge_rotation": gauge_mode,
                     "gauge_random_seed": int(getattr(cfg, "gauge_random_seed", 0)),

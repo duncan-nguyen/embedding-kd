@@ -349,6 +349,33 @@ def test_the_random_projection_seed_changes_the_targets():
     assert not torch.allclose(first, second, atol=1e-3)
 
 
+def test_projection_rank_changes_only_the_active_target_subspace(tmp_path):
+    targets = _targets_for(
+        save_dir=str(tmp_path), projection_rank=3, gauge_align=False
+    )
+    saved = torch.load(tmp_path / "teacher_projection.pt", map_location="cpu")
+
+    assert targets.shape == (64, 8)
+    assert torch.linalg.matrix_rank(targets).item() <= 3
+    assert saved["projection_rank"] == 3
+    assert saved["projection"].shape == (32, 8)
+    assert torch.count_nonzero(saved["projection"][:, 3:]) == 0
+    assert saved["random_subspace_energy"] == pytest.approx(3 / 32)
+
+
+def test_full_projection_rank_reproduces_the_default_targets():
+    implicit = _targets_for(gauge_align=False)
+    explicit = _targets_for(projection_rank=8, gauge_align=False)
+
+    assert torch.equal(implicit, explicit)
+
+
+@pytest.mark.parametrize("rank", [-1, 9])
+def test_projection_rank_rejects_values_outside_the_student_width(rank):
+    with pytest.raises(ValueError, match="projection_rank"):
+        _targets_for(projection_rank=rank)
+
+
 def test_a_random_gauge_cannot_be_refit():
     with pytest.raises(ValueError, match="only defined for gauge_rotation"):
         _targets_for(gauge_rotation="random", gauge_refit_every=1)
