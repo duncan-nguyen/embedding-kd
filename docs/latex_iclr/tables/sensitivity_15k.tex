@@ -4,28 +4,21 @@
 % values from the run manifest selected as the paper source of truth.
 \begin{table}[H]
     \centering
-    \caption{Sensitivity results in configuration (c), reported as mean $\pm$
-    sample standard deviation over three seeds. Best values within each block
-    are bold.}
+    \caption{Topology-weight sensitivity in configuration (c), reported as
+    mean $\pm$ sample standard deviation over three seeds. Best values are
+    bold.}
     \label{tab:sensitivity-15k}
     \small
     \newcommand{\sencell}[2]{#1{\tiny $\pm$ #2}}
-    \setlength{\tabcolsep}{7pt}
-    \begin{tabular}{@{}llccc@{}}
+    \setlength{\tabcolsep}{9pt}
+    \begin{tabular}{@{}lccc@{}}
         \toprule
-        Factor & Value & Avg.~IOD $\uparrow$ & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
+        $\lambda_{\mathrm{topo}}$ & Avg.~IOD $\uparrow$ & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
         \midrule
-        \multirow{4}{*}{$\lambda_{\mathrm{topo}}$}
-        & 0    & \sencell{67.54}{0.18} & \sencell{77.54}{0.07} & \sencell{74.21}{0.03} \\
-        & 0.5  & \sencell{\textbf{68.62}}{0.21} & \sencell{\textbf{77.87}}{0.02} & \sencell{\textbf{74.79}}{0.06} \\
-        & 0.75 & \sencell{68.47}{0.13} & \sencell{77.84}{0.04} & \sencell{74.72}{0.04} \\
-        & 1    & \sencell{68.14}{0.06} & \sencell{77.75}{0.03} & \sencell{74.55}{0.03} \\
-        \midrule
-        \multirow{4}{*}{Gauge calibration}
-        & 2{,}048  & \sencell{68.36}{0.11} & \sencell{77.59}{0.04} & \sencell{74.51}{0.06} \\
-        & 4{,}096  & \sencell{68.52}{0.08} & \sencell{77.74}{0.05} & \sencell{74.67}{0.02} \\
-        & 8{,}192  & \sencell{68.26}{0.08} & \sencell{77.78}{0.03} & \sencell{74.61}{0.02} \\
-        & 14{,}760 & \sencell{\textbf{68.62}}{0.21} & \sencell{\textbf{77.87}}{0.02} & \sencell{\textbf{74.79}}{0.06} \\
+        0    & \sencell{67.54}{0.18} & \sencell{77.54}{0.07} & \sencell{74.21}{0.03} \\
+        0.5  & \sencell{\textbf{68.62}}{0.21} & \sencell{\textbf{77.87}}{0.02} & \sencell{\textbf{74.79}}{0.06} \\
+        0.75 & \sencell{68.47}{0.13} & \sencell{77.84}{0.04} & \sencell{74.72}{0.04} \\
+        1    & \sencell{68.14}{0.06} & \sencell{77.75}{0.03} & \sencell{74.55}{0.03} \\
         \bottomrule
     \end{tabular}
 \end{table}

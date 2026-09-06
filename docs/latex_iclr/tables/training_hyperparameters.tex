@@ -1,21 +1,23 @@
 \begin{table}[H]
-    \caption{Main-experiment training hyperparameters.}
+    \caption{Main-experiment training hyperparameters. Learning rate is the only
+    optimization hyperparameter selected separately by method; each selected
+    value is fixed across all three configurations and reported seeds.}
     \label{tab:training-hyperparameters}
     \vspace{0.5em}
     \centering
-    \small
-    \setlength{\tabcolsep}{8pt}
-    \begin{tabular}{@{}lccc@{}}
+    \scriptsize
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{@{}lccccc@{}}
         \toprule
-        Method & Epochs & Batch size & Learning rate \\
+        Method & Epochs & Batch & Learning rate & Optimizer & Warm-up \\
         \midrule
-        RKD     & 5     & 128 & $7\times10^{-5}$ \\
-        Stella  & $2+3$ & 128 & $5\times10^{-5}$ \\
-        CDM     & 5     & 128 & $2\times10^{-5}$ \\
-        DSKD    & 5     & 128 & $2\times10^{-5}$ \\
-        EMO     & 5     & 128 & $1\times10^{-5}$ \\
-        TALAS   & 5     & 128 & $2\times10^{-5}$ \\
-        GATE-KD & 5     & 128 & $7\times10^{-5}$ \\
+        RKD     & 5     & 128 & $7\times10^{-5}$ & AdamW & 0.06 \\
+        Stella  & $2+3$ & 128 & $5\times10^{-5}$ & AdamW & 0.06 \\
+        CDM     & 5     & 128 & $2\times10^{-5}$ & AdamW & 0.06 \\
+        DSKD    & 5     & 128 & $2\times10^{-5}$ & AdamW & 0.06 \\
+        EMO     & 5     & 128 & $1\times10^{-5}$ & AdamW & 0.10 \\
+        TALAS   & 5     & 128 & $2\times10^{-5}$ & AdamW + adaptive SAM & 0.06 \\
+        GATE-KD & 5     & 128 & $7\times10^{-5}$ & AdamW & 0.06 \\
         \bottomrule
     \end{tabular}
 \end{table}

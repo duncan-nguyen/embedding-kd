@@ -1,12 +1,11 @@
-% Timing and Avg. values come from the archived 15K main-results run:
+% Avg. values and optimization-loop measurements come from:
 % runs/main_results_talas15k_h200_gpu67_20260904-082000/.
 \begin{table}[!htbp]
-    \caption{Student-optimization cost on NVIDIA H200 GPUs. Values are mean
-    $\pm$ sample standard deviation over three seeds; best and second-best are
-    bold and underlined. Timings cover minibatch forward, loss, backward, and
-    optimizer updates only.}
+    \caption{Measured student-optimization cost on NVIDIA H200 GPUs. Values are
+    mean $\pm$ sample standard deviation over three seeds; best and second-best
+    values are bold and underlined. Timings isolate minibatch updates; exact
+    scope is given in Appendix~\ref{app:training-hyperparameters}.}
     \label{tab:training-efficiency}
-    \vspace{0.5em}
     \centering
     \scriptsize
     \newcommand{\effcell}[2]{#1\,{\tiny $\pm$ #2}}
@@ -14,7 +13,7 @@
     \begin{tabular}{@{}lccccc@{}}
         \toprule
         Method & Avg. $\uparrow$ & ms/step $\downarrow$ & samples/s $\uparrow$
-        & GPU opt. min $\downarrow$ & peak GiB $\downarrow$ \\
+        & Opt. min $\downarrow$ & peak GiB $\downarrow$ \\
         \midrule
         \multicolumn{6}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
         \midrule

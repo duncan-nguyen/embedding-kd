@@ -1,27 +1,32 @@
-% All rows require the matched full-base rerun from
-% notebooks/08_h0_pca_review_controls.ipynb. Earlier endpoint-only target-map
-% runs are not comparable because they set lambda_topo=0.
-\begin{table}[t]
+% Control rows: review_h0_pca_controls_20260906-143901, gauge family.
+% Epoch-wise Procrustes reference: main-results configuration (c).
+% Invariant row: invariant_procrustes_c_3seeds_20260906-215912.
+\begin{table}[H]
     \centering
-    \caption{\textbf{Gauge mechanism under the full base objective.}
+    \caption{\textbf{Gauge mechanism under the full GATE-KD objective.}
     Every row uses the same PCA subspace, student, corpus, optimizer, and
-    training schedule, including the same $H_0$ term; only the orientation and
-    its update schedule change.
-    Values are mean $\pm$ sample standard deviation over three seeds.}
+    training schedule, including the same $H_0$ term. Fixed-target rows use the
+    cosine endpoint loss against the indicated orientation; the invariant row
+    instead minimizes that loss over an orthogonal rotation on each minibatch.
+    The \emph{None} row trains against the raw PCA coordinates and serves as
+    the matched fixed-PCA endpoint baseline (a TCS-style target without a
+    fitted orientation). Values are mean $\pm$ sample standard deviation over
+    three seeds.}
     \label{tab:gauge-mechanism}
     \small
     \newcommand{\gcell}[2]{#1{\tiny $\pm$ #2}}
     \setlength{\tabcolsep}{5pt}
-    \begin{tabular}{@{}lccccc@{}}
+    \begin{tabular}{@{}lcc@{}}
         \toprule
-        Gauge & Data fitted & Updates & Config. (a) & Config. (c) \\
+        Orientation treatment & Updates & Config. (c) Avg. $\uparrow$ \\
         \midrule
-        None & No & 0 & \ph{run} & \ph{run} \\
-        Random orthogonal & No & 0 & \ph{run} & \ph{run} \\
-        Fixed $R^{(0)}$ & Calibration set & 0 & \ph{run} & \ph{run} \\
-        One refit & Calibration set & 1 & \ph{run} & \ph{run} \\
-        Epoch-wise Procrustes & Calibration set & 4 & \ph{run}
-        & \ph{run} \\
+        None (fixed PCA target) & 0 & \gcell{72.51}{0.05} \\
+        Random orthogonal & 0 & \gcell{73.02}{0.05} \\
+        Per-minibatch invariant & Every step & \gcell{72.74}{0.07} \\
+        Fixed $R^{(0)}$ & 0 & \gcell{74.63}{0.07} \\
+        One refit & 1 & \gcell{74.64}{0.06} \\
+        Epoch-wise Procrustes & 4
+        & \gcell{\textbf{74.79}}{0.06} \\
         \bottomrule
     \end{tabular}
 \end{table}

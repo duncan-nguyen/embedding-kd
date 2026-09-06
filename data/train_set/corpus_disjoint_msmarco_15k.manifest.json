@@ -1,0 +1,55 @@
+{
+  "output": "data/train_set/corpus_disjoint_msmarco_15k.csv",
+  "rows": 15000,
+  "seed": 42,
+  "exclude_benchmark_train_splits": true,
+  "base": {
+    "file": "data/train_set/train_100k.csv",
+    "rows": 0,
+    "overlap_with_excluded_sets": {
+      "arguana": 0,
+      "fiqa": 0,
+      "scidocs": 0,
+      "scifact": 0,
+      "nfcorpus": 0,
+      "sentence_eval_splits": 0,
+      "sentence_train_splits": 0
+    }
+  },
+  "msmarco": {
+    "repo": "microsoft/ms_marco",
+    "revision": "a47ee7aae8d7d466ba15f9f0bfac3b3681087b3a",
+    "shard": "v2.1/train-00000-of-00007.parquet",
+    "queries": 7500,
+    "passages": 7500,
+    "duplicates_skipped": {
+      "query": 0,
+      "passage": 17
+    },
+    "overlap_dropped": {
+      "query": {
+        "arguana": 0,
+        "fiqa": 0,
+        "scidocs": 0,
+        "scifact": 0,
+        "nfcorpus": 0,
+        "sentence_eval_splits": 0,
+        "sentence_train_splits": 0
+      },
+      "passage": {
+        "arguana": 0,
+        "fiqa": 0,
+        "scidocs": 0,
+        "scifact": 0,
+        "nfcorpus": 0,
+        "sentence_eval_splits": 0,
+        "sentence_train_splits": 0
+      }
+    },
+    "labels_used": null
+  },
+  "sources": {
+    "MSMARCO_QUERY": 7500,
+    "MSMARCO_PASSAGE": 7500
+  }
+}

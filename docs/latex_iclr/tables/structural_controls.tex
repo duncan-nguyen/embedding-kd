@@ -1,35 +1,24 @@
-% Endpoint-only and H0 values come from the lambda_topo=0 and lambda_topo=0.5
-% arms of runs/aux_sweeps_20260904-113834/sensitivity/sensitivity_mean_std.csv.
-% Matched structural controls require completed runs; do not replace \ph{run}
-% with estimates.
+% Structural alternatives: latest structural-control runs supplied by the author.
+% None reference: Table 8 endpoint-only row. H0 reference: main-results config. (c).
 \begin{table}[H]
     \centering
     \caption{\textbf{Matched structural controls in configuration (c).}
     All variants retain the same PCA--Procrustes endpoint objective and differ
-    only in the auxiliary structural statistic. ``Correspondence'' indicates
-    whether the loss compares the same indexed sample pairs. Optimization time
-    is measured over the same forward--backward scope as Table~\ref{tab:training-efficiency}.}
+    only in the auxiliary structural statistic.}
     \label{tab:structural-controls}
     \small
     \newcommand{\scell}[2]{#1{\tiny $\pm$ #2}}
-    \setlength{\tabcolsep}{5pt}
-    \begin{tabular}{@{}lllccc@{}}
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}lcc@{}}
         \toprule
-        Auxiliary term & Matched object & Correspondence
-        & Avg. $\uparrow$ & $\Delta$ endpoint & ms/step $\downarrow$ \\
+        Auxiliary term & Avg. $\uparrow$ & $\Delta$ endpoint \\
         \midrule
-        None & --- & Pointwise endpoint
-        & \scell{74.21}{0.03} & --- & \ph{run} \\
-        Sorted spanning path & Distance distribution & No
-        & \ph{run} & \ph{run} & \ph{run} \\
-        kNN distribution & Local-scale distribution & No
-        & \ph{run} & \ph{run} & \ph{run} \\
-        Teacher-MST edges & $B-1$ selected distances & Yes
-        & \ph{run} & \ph{run} & \ph{run} \\
-        Native Gram matching & All pairwise cosines & Yes
-        & \ph{run} & \ph{run} & \ph{run} \\
-        $H_0$ & Sorted MST death scales & No
-        & \scell{\textbf{74.79}}{0.06} & +0.58 & \ph{run} \\
+        None & \scell{74.26}{0.02} & --- \\
+        Sorted spanning path & \scell{73.66}{0.04} & $-0.60$ \\
+        kNN distribution & \scell{{74.47}}{0.01} & $+0.21$ \\
+        Teacher-MST edges & \scell{74.33}{0.08} & $+0.07$ \\
+        Native Gram matching & \scell{73.57}{0.01} & $-0.69$ \\
+        $H_0$ & \scell{\textbf{74.79}}{0.06} & $+0.53$ \\
         \bottomrule
     \end{tabular}
 \end{table}

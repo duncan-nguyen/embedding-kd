@@ -1,3 +1,20 @@
 \begin{abstract}
-Embedding distillation transfers knowledge from a large teacher to a smaller student, but their representations often differ in dimension and orientation. We propose GATE-KD, a final-embedding distillation method built around a comparable endpoint interface. A fixed principal-component projection selects a teacher subspace at the student dimension, while closed-form orthogonal Procrustes alignment follows the evolving student across epochs without altering the projected teacher geometry. We augment this interface with a native-space topological regularizer that matches degree-zero connectivity scales without requiring equal embedding dimensions. GATE-KD uses only cached final teacher embeddings and introduces no trainable alignment module. Under a label-free task-adapted protocol spanning three teacher--student configurations and nine sentence-level benchmarks, GATE-KD obtains the numerically highest aggregate score among the evaluated distilled students, exceeding the next-best baseline by 0.38--1.59 points while reducing measured GPU optimization-loop time by 62--74\%. Controlled analyses identify coordinate alignment as the primary mechanism, while the topological term provides a smaller complementary regularization effect. These results support a gauge-aligned endpoint interface as a competitive alternative to more complex pipelines in the task-adapted sentence-level regime studied here.
+Knowledge distillation can compress text embedding models, but directly
+matching teacher and student vectors is difficult when their dimensions and
+coordinate systems differ. We propose GATE-KD, a final-embedding method that
+first reduces teacher embeddings to the student dimension with a fixed PCA
+projection and then fits their orientation to the student using closed-form
+orthogonal Procrustes alignment. This produces pointwise training targets from
+cached teacher embeddings without a trainable alignment module or intermediate
+teacher states. As an auxiliary signal, GATE-KD also matches degree-zero
+persistence summaries, namely distributions of connectivity scales, in the
+original teacher and student spaces; this signal remains well-defined across
+different dimensions. Under a label-free but task-adapted protocol spanning
+three teacher--student configurations and nine sentence-level benchmarks,
+GATE-KD achieves the highest numerical average among the evaluated distillation
+methods, improving over the strongest baseline by 0.38--1.59 points. Controlled
+experiments show that a per-minibatch rotation-invariant baseline trails
+GATE-KD by 2.05 points; separate schedule controls associate most of this gap
+with a corpus-level fitted gauge rather than repeated refitting, while $H_0$
+adds 0.53 points over endpoint-only training.
 \end{abstract}

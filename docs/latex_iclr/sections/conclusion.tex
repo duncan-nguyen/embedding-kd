@@ -5,10 +5,14 @@ GATE-KD treats cross-dimensional embedding distillation as an interface problem,
 using a fixed PCA subspace and closed-form gauge alignment with native-space
 $H_0$ regularization. Across three teacher--student configurations, this
 final-embedding-only formulation obtains the numerically highest aggregate
-scores among the evaluated distilled students while reducing measured
-optimization-loop time relative
-to TALAS. The analyses identify coordinate comparability as the primary source
-of improvement and $H_0$ as a complementary regularizer.
+scores among the evaluated distilled students while recording the lowest
+update time and cumulative optimization time within the measured minibatch
+loop. Controlled analyses show that fitted coordinate comparability provides
+the dominant gain: a per-minibatch rotation-invariant control trails GATE-KD by
+2.05 points, while separate schedule controls identify repeated refitting as a
+secondary optimization refinement with a smaller numerical increment.
+Native-space $H_0$ adds 0.53 points in the compact comparison and performs
+best among the evaluated structural auxiliaries.
 The current sentence-level objective does not fully preserve the teacher's
 zero-shot retrieval capability, leaving broader retrieval transfer for future
 work. In addition, the current corpus uses training text from three downstream

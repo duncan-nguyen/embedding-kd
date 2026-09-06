@@ -16,9 +16,12 @@ $1024\rightarrow384$, respectively. The Qwen teachers use last-token pooling,
 whereas BGE-M3 uses CLS pooling.
 
 \paragraph{Distillation corpus.}
-We construct a shared distillation corpus by sampling approximately 5K
-unlabeled training texts from each of Emotion, WiC, and STS-B. No labels or task
-annotations are used during distillation, and every method uses the same corpus.
+Following the data-construction protocol of TALAS \citep{talas}, we form a
+shared distillation corpus by sampling approximately 5K unlabeled training
+texts from each of Emotion, WiC, and STS-B. We retain this protocol to enable a
+controlled, like-for-like comparison with TALAS and the reproduced baselines.
+No labels or task annotations are used during distillation, and every method
+uses the same corpus.
 We refer to these three benchmarks as source tasks and the remaining six as
 non-source tasks. Tables retain the compact labels IOD and OOD, respectively;
 here OOD means only that a benchmark did not supply distillation text, not an
@@ -56,51 +59,34 @@ Table~\ref{tab:main-results} compares GATE-KD with six distillation baselines
 across nine benchmarks and three teacher--student configurations. GATE-KD
 obtains the numerically highest overall average in all three configurations, improving
 over the next-best baseline by 0.38, 0.48, and 1.59 points in configurations
-(a), (b), and (c), respectively. The advantage is largest for the 22M-parameter
-student and therefore does not diminish in the most capacity-constrained
-configuration.
+(a), (b), and (c), respectively. The largest margin occurs in the evaluated
+configuration with the compact 22M-parameter student.
 
 The task-level results show that this advantage is broad but not uniform.
 GATE-KD ranks first on 18 of the 27 individual benchmark comparisons, with its
 most consistent results on classification and semantic textual similarity.
 Other methods remain stronger on some pair-classification benchmarks,
-including MRPC and WiC. In the largest capacity-gap configuration, GATE-KD
-essentially matches TALAS in-domain, with 72.04 versus 72.19 Avg. IOD, while
-improving Avg. OOD from 79.85 to 80.49. The aggregate gain in this configuration
-is therefore driven by OOD performance rather than higher scores on the
-datasets supplying the distillation text.
+including MRPC and WiC. Relative to TALAS, GATE-KD improves Avg. OOD by 0.64,
+0.31, and 1.16 points across configurations (a), (b), and (c), respectively. In
+configuration (a), it essentially matches TALAS on the source benchmarks, with
+72.04 versus 72.19 Avg. IOD, so its aggregate gain there is driven by the six
+non-source benchmarks. In configurations (b) and (c), GATE-KD improves both
+Avg. IOD and Avg. OOD, with the largest gains for the compact 22M student.
 
-\subsection{Measured Optimization Cost}
+\subsection{Student Optimization Efficiency}
 \label{sec:training-efficiency}
 
-Table~\ref{tab:training-efficiency} reports the cost of student optimization
-under the same execution protocol on NVIDIA H200 GPUs. Step time and throughput
-exclude the first ten warm-up steps. GPU optimization time sums CUDA-event
-durations for the minibatch forward, loss, backward, and optimizer update. It
-therefore includes the topology computation performed inside GATE-KD's training
-steps, but excludes model and tokenizer loading, data preprocessing, final
-evaluation, teacher-cache construction, the one-time PCA fit, and the four
-student re-encoding passes used for gauge refitting. The table measures the
-cost of the optimization loop rather than end-to-end wall-clock cost.
-
-Teacher access also differs across method families. GATE-KD, RKD, Stella, and
-TALAS read normalized final teacher embeddings from the same reusable cache and
-do not execute the teacher during student optimization. CDM, DSKD, and EMO
-execute the teacher online; EMO additionally consumes teacher hidden states and
-attention. Charging a shared cache entirely to the first cached method would be
-arbitrary, while excluding it understates the cost of a standalone run. We
-therefore report the cache-independent optimization measurement and do not
-interpret it as total training cost.
+Table~\ref{tab:training-efficiency} isolates the repeated minibatch optimization
+path, reporting update latency, throughput, cumulative optimization time, and
+peak allocated memory. Exact measurement scope is given in
+Appendix~\ref{app:training-hyperparameters}.
 
 \input{tables/training_efficiency}
 
-GATE-KD uses 26\%, 31\%, and 38\% of TALAS's measured GPU optimization time in
-configurations (a), (b), and (c), respectively, while also attaining higher
-overall scores. The improvement is primarily in throughput rather than peak
-memory allocation, for which TALAS remains lower across the three
-configurations. A controlled end-to-end comparison would additionally require
-isolated runs that separately time teacher encoding, cache I/O, PCA and gauge
-updates, preprocessing, and evaluation; the present measurements support only
-the stated optimization-loop comparison, not an end-to-end efficiency claim.
+GATE-KD records the lowest mean update time and cumulative optimization time,
+and the highest throughput, among the evaluated methods in all three
+configurations. It does so while attaining the highest aggregate score in each
+configuration. The comparison characterizes the repeatedly executed
+optimization loop rather than end-to-end training or deployment cost.
 
 \FloatBarrier
