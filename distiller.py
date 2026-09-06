@@ -950,6 +950,8 @@ class KnowledgeDistiller:
             }
 
         teacher_topo_list = None
+        lambda_topo = 0.0
+        lambda_gram = 0.0
         if cfg.distill_method == "geoode":
             topo_source = getattr(cfg, "topo_teacher_source", "original")
             if topo_source not in ("original", "projected"):
@@ -957,13 +959,12 @@ class KnowledgeDistiller:
                     "topo_teacher_source must be 'original' or 'projected', got "
                     f"{topo_source!r}"
                 )
-            if (
-                float(getattr(cfg, "lambda_topo", 0.0) or 0.0) > 0.0
-                and topo_source == "original"
-            ):
+            lambda_topo = float(getattr(cfg, "lambda_topo", 0.0) or 0.0)
+            lambda_gram = float(getattr(cfg, "lambda_gram", 0.0) or 0.0)
+            if (lambda_topo > 0.0 or lambda_gram > 0.0) and topo_source == "original":
                 # The topological terms compare point-cloud shapes, so they need no
-                # shared basis and read the teacher *before* P_T narrows it to d_S --
-                # the one supervision signal in the run that P_T cannot colour.
+                # shared basis; the Gram control is dimension-free for the same
+                # reason. Both read the teacher *before* P_T narrows it to d_S.
                 teacher_topo_list = (
                     teacher_cls_list.clone().contiguous().share_memory_()
                 )
@@ -1004,13 +1005,16 @@ class KnowledgeDistiller:
             need_special_tokens_mask=False,
             topo_metric=(
                 getattr(cfg, "topo_metric", "chord")
-                if teacher_topo_list is not None
+                if teacher_topo_list is not None and lambda_topo > 0.0
                 else None
             ),
             need_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0) > 0.0,
             topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
             structural_loss=getattr(cfg, "structural_loss", "h0"),
             structural_knn_k=int(getattr(cfg, "structural_knn_k", 1)),
+            need_native_gram=(
+                teacher_topo_list is not None and lambda_gram > 0.0
+            ),
         )
 
     def _probe_rows(self, texts: list[str]) -> torch.Tensor | None:
@@ -1957,6 +1961,7 @@ class KnowledgeDistiller:
             extra=(
                 "teacher_cls",
                 "teacher_topo",
+                "teacher_gram",
                 "teacher_deaths",
                 "teacher_h1",
                 "teacher_structural_values",
@@ -1995,6 +2000,7 @@ class KnowledgeDistiller:
                 attention_mask=attention_mask,
                 second_view=second_view,
                 teacher_topo=batch_s.get("teacher_topo"),
+                teacher_gram=batch_s.get("teacher_gram"),
                 teacher_deaths=batch_s.get("teacher_deaths"),
                 teacher_h1=batch_s.get("teacher_h1"),
                 teacher_structural_values=batch_s.get("teacher_structural_values"),

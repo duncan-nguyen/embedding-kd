@@ -142,7 +142,8 @@ def parse_args():
         choices=["h0", "sorted_pairwise", "teacher_mst", "knn_distribution"],
         default=None,
         help="GATE-KD: structural statistic weighted by --lambda_topo. h0 is the "
-        "persistence loss; the other choices are matched-compute controls",
+        "persistence loss; the other choices are approximately constraint-count-"
+        "matched controls",
     )
     parser.add_argument(
         "--structural_knn_k",
@@ -172,8 +173,8 @@ def parse_args():
         "--topo_teacher_source",
         choices=["original", "projected"],
         default=None,
-        help="GATE-KD: teacher cloud for H0. 'original' uses the native d_T "
-        "cache; 'projected' uses the frozen d_S endpoint targets",
+        help="GATE-KD: teacher cloud for structural and Gram losses. 'original' "
+        "uses the native d_T cache; 'projected' uses the frozen d_S endpoint targets",
     )
     parser.add_argument(
         "--projection_type",

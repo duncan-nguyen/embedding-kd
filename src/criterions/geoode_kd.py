@@ -98,7 +98,7 @@ class GeoODEKD(nn.Module):
             *shape* of the batch rather than its coordinates, so it is invariant to
             space width and reads the teacher's native geometry when
             ``teacher_topo`` is given. 0 is the recipe.
-        structural_loss: ``"h0"`` or one of its matched-compute controls:
+        structural_loss: ``"h0"`` or one of its constraint-count-matched controls:
             ``"sorted_pairwise"``, ``"teacher_mst"``, ``"knn_distribution"``.
         structural_knn_k: neighbour count for ``knn_distribution``; ignored by the
             other structural losses.
@@ -321,11 +321,28 @@ class GeoODEKD(nn.Module):
     @staticmethod
     def gram_loss(final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
         """Pairwise-similarity matching (SP-KD / RKD family) on the batch: squared
-        error between the student's and the target's off-diagonal Gram entries.
-        The control for Prop. 3 -- with a fixed orthonormal interface it should be
-        redundant with the endpoint term."""
-        gram_s = final_state @ final_state.transpose(0, 1)
+        error between cosine Gram matrices.  The two embeddings may have different
+        widths, which lets the reviewer control compare the student directly with
+        the native, pre-projection teacher."""
+        teacher = F.normalize(teacher.float(), p=2, dim=-1)
         gram_t = teacher @ teacher.transpose(0, 1)
+        return GeoODEKD.gram_loss_against_target(final_state, gram_t)
+
+    @staticmethod
+    def gram_loss_against_target(
+        final_state: torch.Tensor, teacher_gram: torch.Tensor
+    ) -> torch.Tensor:
+        """Gram MSE against a teacher cosine matrix precomputed by the collate."""
+        final_state = F.normalize(final_state.float(), p=2, dim=-1)
+        gram_s = final_state @ final_state.transpose(0, 1)
+        gram_t = teacher_gram.to(device=gram_s.device, dtype=gram_s.dtype)
+        if gram_t.shape != gram_s.shape:
+            raise ValueError(
+                f"teacher Gram has shape {tuple(gram_t.shape)} but student Gram has "
+                f"shape {tuple(gram_s.shape)}"
+            )
+        if gram_s.shape[0] < 2:
+            return gram_s.new_zeros(())
         mask = ~torch.eye(gram_s.shape[0], dtype=torch.bool, device=gram_s.device)
         return ((gram_s - gram_t)[mask] ** 2).mean()
 
@@ -395,7 +412,7 @@ class GeoODEKD(nn.Module):
         teacher_values: torch.Tensor | None = None,
         teacher_edges: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """One of the three matched-compute non-topological H0 controls."""
+        """One of the three constraint-count-matched non-topological H0 controls."""
         if self.structural_loss_form == "h0":
             raise ValueError("the H0 path is handled by topological_loss")
         if teacher_values is not None:
@@ -433,6 +450,7 @@ class GeoODEKD(nn.Module):
         attention_mask: torch.Tensor | None = None,
         second_view: torch.Tensor | None = None,
         teacher_topo: torch.Tensor | None = None,
+        teacher_gram: torch.Tensor | None = None,
         teacher_deaths: torch.Tensor | None = None,
         teacher_h1: torch.Tensor | None = None,
         teacher_structural_values: torch.Tensor | None = None,
@@ -449,9 +467,11 @@ class GeoODEKD(nn.Module):
             second_view: pooled (unnormalised) final representation of a second
                 dropout view, used only for the contrastive term.
             teacher_topo: optional cached teacher embeddings in the teacher's *own*
-                dimension ``[B, d_T]``, read only by the topological terms. ``None``
-                falls back to the projected targets, which makes them a statement
-                about the shape P_T left behind rather than the teacher's own.
+                dimension ``[B, d_T]``, read by the structural and Gram terms.
+                ``None`` falls back to the projected targets.
+            teacher_gram: optional native-teacher cosine Gram matrix precomputed by
+                the collate. It avoids copying ``teacher_topo`` to the GPU and
+                supersedes it for the Gram term.
             teacher_deaths: the same H0 term's teacher side, already reduced to its
                 ``[B - 1]`` sorted death times by the collate. It supersedes
                 ``teacher_topo`` when given -- it is what ``teacher_topo`` would have
@@ -502,8 +522,14 @@ class GeoODEKD(nn.Module):
         else:
             loss_end = self.endpoint_loss(states[-1], teacher)
 
-        if self.lambda_gram > 0.0:
-            loss_gram = self.gram_loss(states[-1], teacher)
+        # All structural controls read the same teacher object.  With
+        # topo_teacher_source=original the collate supplies the native Gram directly;
+        # direct criterion callers may instead supply the native embeddings.
+        topo_target = teacher if teacher_topo is None else teacher_topo.float()
+        if self.lambda_gram > 0.0 and teacher_gram is not None:
+            loss_gram = self.gram_loss_against_target(states[-1], teacher_gram)
+        elif self.lambda_gram > 0.0:
+            loss_gram = self.gram_loss(states[-1], topo_target)
         else:
             loss_gram = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
@@ -511,7 +537,6 @@ class GeoODEKD(nn.Module):
         # ``teacher_topo`` is the teacher cache in its *own* d_T; falling back to the
         # projected target would supervise the run through P_T twice over. Both
         # halves of L_topo read the same cloud.
-        topo_target = teacher if teacher_topo is None else teacher_topo.float()
 
         # A single-sample tail batch has no MST, so the term is simply absent there.
         # A zero in the log is otherwise three different things -- the weight is 0,

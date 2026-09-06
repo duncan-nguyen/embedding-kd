@@ -16,11 +16,13 @@ $1024\rightarrow384$, respectively. The Qwen teachers use last-token pooling,
 whereas BGE-M3 uses CLS pooling.
 
 \paragraph{Distillation corpus.}
-We construct the distillation corpus by sampling approximately 5K raw texts
-from each of the Emotion, WiC, and STS-B training sets. No labels or task
-annotations are used during distillation. We regard these three benchmarks as
-in-domain (IOD) and the remaining six evaluation benchmarks as out-of-domain
-(OOD). Every method uses the same corpus.
+We construct a shared distillation corpus by sampling approximately 5K
+unlabeled training texts from each of Emotion, WiC, and STS-B. No labels or task
+annotations are used during distillation, and every method uses the same corpus.
+We refer to these three benchmarks as source tasks and the remaining six as
+non-source tasks. Tables retain the compact labels IOD and OOD, respectively;
+here OOD means only that a benchmark did not supply distillation text, not an
+unrestricted distribution shift or corpus-disjoint pretraining regime.
 
 \paragraph{Baselines.}
 We compare GATE-KD with methods covering complementary transfer mechanisms.
@@ -52,7 +54,7 @@ standard deviations over three seeds.
 
 Table~\ref{tab:main-results} compares GATE-KD with six distillation baselines
 across nine benchmarks and three teacher--student configurations. GATE-KD
-achieves the highest overall average in all three configurations, improving
+obtains the numerically highest overall average in all three configurations, improving
 over the next-best baseline by 0.38, 0.48, and 1.59 points in configurations
 (a), (b), and (c), respectively. The advantage is largest for the 22M-parameter
 student and therefore does not diminish in the most capacity-constrained
@@ -98,7 +100,7 @@ overall scores. The improvement is primarily in throughput rather than peak
 memory allocation, for which TALAS remains lower across the three
 configurations. A controlled end-to-end comparison would additionally require
 isolated runs that separately time teacher encoding, cache I/O, PCA and gauge
-updates, preprocessing, and evaluation; the present measurements do not support
-such a claim.
+updates, preprocessing, and evaluation; the present measurements support only
+the stated optimization-loop comparison, not an end-to-end efficiency claim.
 
 \FloatBarrier

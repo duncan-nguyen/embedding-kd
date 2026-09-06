@@ -6,6 +6,7 @@ import torch
 from src.criterions.geoode_kd import GeoODEKD
 from src.criterions.h0_topological_loss import h0_topological_loss
 from src.criterions.structural_losses import (
+    _sampled_pair_indices,
     structural_distribution_loss,
     structural_loss_against_target,
     structural_target,
@@ -22,6 +23,17 @@ class _Tokenizer:
             "input_ids": torch.ones(rows, 3, dtype=torch.long),
             "attention_mask": torch.ones(rows, 3, dtype=torch.long),
         }
+
+
+def test_sorted_pairwise_path_has_b_minus_one_edges_and_covers_every_row():
+    rows = 128
+    pairs = _sampled_pair_indices(rows, torch.device("cpu"))
+    degrees = torch.bincount(pairs.flatten(), minlength=rows)
+
+    assert pairs.shape == (rows - 1, 2)
+    assert torch.equal(pairs[:, 0], torch.arange(rows - 1))
+    assert torch.equal(pairs[:, 1], torch.arange(1, rows))
+    assert torch.all(degrees > 0)
 
 
 @pytest.mark.parametrize("kind", KINDS)

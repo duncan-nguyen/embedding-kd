@@ -1,18 +1,17 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Cross-dimensional embedding distillation is not only a compression problem but
-also requires a well-defined interface between teacher and student coordinates.
-GATE-KD addresses this issue by combining a fixed PCA subspace with closed-form
-gauge alignment and native-space $H_0$ matching, using only final embeddings.
-Across three teacher--student configurations, this terminal-only formulation
-achieves the highest aggregate scores among the evaluated distilled students
-while substantially reducing measured optimization time relative to a strong
-hierarchy-based baseline. Controlled analyses show that coordinate alignment
-matters beyond retained variance and that topology complements pointwise
-endpoint supervision without requiring a shared ambient space. These results
-support treating coordinate-dependent correspondence and coordinate-invariant
-structure as separate design problems in embedding distillation.
+GATE-KD treats cross-dimensional embedding distillation as an interface problem,
+using a fixed PCA subspace and closed-form gauge alignment with native-space
+$H_0$ regularization. Across three teacher--student configurations, this
+final-embedding-only formulation obtains the numerically highest aggregate
+scores among the evaluated distilled students while reducing measured
+optimization-loop time relative
+to TALAS. The analyses identify coordinate comparability as the primary source
+of improvement and $H_0$ as a complementary regularizer.
 The current sentence-level objective does not fully preserve the teacher's
 zero-shot retrieval capability, leaving broader retrieval transfer for future
-work.
+work. In addition, the current corpus uses training text from three downstream
+source benchmarks, so its source-task results measure label-free task adaptation
+rather than corpus-disjoint transfer. The conclusions are therefore limited to
+the task-adapted sentence-level regime evaluated here.

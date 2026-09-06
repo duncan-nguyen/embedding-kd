@@ -1,34 +1,89 @@
 \section{Training Details}
 \label{app:training-hyperparameters}
 
-All runs use a maximum sequence length of 256 and seeds 42, 43, and 44. For
-GATE-KD, $\lambda_{\mathrm{topo}}=0.5$, the $H_0$ cloud is the current training
-batch, and the gauge is refitted after each non-final epoch. Gauge calibration
-uses the full distillation corpus. Table~\ref{tab:training-hyperparameters}
-lists the method-specific training hyperparameters.
+All main-comparison runs use a maximum sequence length of 256 and seeds 42, 43,
+and 44. We fix the batch size at 128 and the total training duration at five
+epochs for every method; Stella's two stages comprise two and three epochs.
+Learning rate is the only tuned optimization hyperparameter and is selected for
+every method using validation data. The selected rate is then fixed for the
+three reported seeds, and we evaluate the final-epoch checkpoint once on the
+test splits. No test score is used for learning-rate or checkpoint selection.
+For GATE-KD,
+$\lambda_{\mathrm{topo}}=0.5$, the $H_0$
+cloud is the current training batch, the gauge is refitted after each non-final
+epoch, and calibration uses the full distillation corpus. These settings are
+fixed before test evaluation; the sensitivity sweeps are diagnostic rather than
+part of model selection. Table~\ref{tab:training-hyperparameters} lists the
+selected learning rates.
 
 \input{tables/training_hyperparameters}
 
+\section{Complete Endpoint-Interface Controls}
+\label{app:full-interface-controls}
+
+Table~\ref{tab:interface-families} complements the gauge-schedule analysis in
+Table~\ref{tab:gauge-mechanism} by varying the broader endpoint interface. All
+rows use endpoint-only supervision in configuration (c). The learned controls
+use a single bias-free linear map, either from teacher to student width or from
+student to teacher width, followed by row normalization. The map is trained
+jointly with the student under the same AdamW schedule and is discarded at
+inference. Thus these rows compare supervision interfaces rather than deployed
+model capacities.
+
+\input{tables/interface_families}
+
+Within the fixed PCA subspace, fitted Procrustes alignment improves over both
+unaligned and randomly oriented targets. Under the matched recipe evaluated
+here, the fixed PCA--Procrustes interface also exceeds learned linear maps in
+both directions. This comparison is specific to the stated map architecture and
+optimization protocol; it does not establish that every learned projector is
+inferior. Subspace selection is isolated separately in
+Appendix~\ref{app:pca-controls}, where every PCA and random-subspace target is
+paired with the same fitted gauge.
+
+\FloatBarrier
+\section{Endpoint and Topology Signal Decomposition}
+\label{app:signal-decomposition}
+
+Table~\ref{tab:signal-decomposition} separates the endpoint and topology
+signals. The endpoint-only objective supplies most of the downstream gain,
+whereas $H_0$-only training reduces the connectivity residual without reaching
+the endpoint-supervised score. The combined objective treats native-space
+connectivity as an auxiliary constraint rather than as a substitute for
+sample-wise correspondence. The projected-space and fixed-gauge rows test two
+secondary design choices. This controlled suite uses
+$\lambda_{\mathrm{topo}}=1$ for every $H_0$-active row; its purpose is
+decomposition rather than reproducing the $\lambda_{\mathrm{topo}}=0.5$ main
+recipe.
+
+\input{tables/signal_decomposition}
+
+\FloatBarrier
 \section{Detailed Sensitivity Results}
 \label{app:sensitivity-15k}
 
-Table~\ref{tab:sensitivity-15k} reports the numerical results underlying
-Figure~\ref{fig:sensitivity-15k}. Settings not varied within each block remain
-at the main recipe. The $H_0$ cloud is always the current training batch. The
-batch sweep fixes the number of epochs and is therefore not compute matched.
+Table~\ref{tab:sensitivity-15k} varies the topology weight and gauge-calibration
+size in configuration (c); settings not varied within each block remain at the
+main recipe. Every tested nonzero topology weight improves over the endpoint-only
+setting, while the values from 0.5 to 1.0 differ by at most 0.24 points. Reducing
+the calibration set from the full corpus to 2{,}048 sentences changes Avg. by
+0.28 points, indicating that the gauge can be estimated from a relatively small
+sample. We omit the earlier epoch-matched batch-size sweep because changing the
+batch size also changed the number of optimizer updates and therefore did not
+isolate batch size.
 
 \input{tables/sensitivity_15k}
 
 \FloatBarrier
-\clearpage
-\section{Results at a Larger Distillation Scale}
+\section{Results with a Broader 100K Distillation Corpus}
 \label{app:results-100k}
 
 We repeat the complete method sweep on approximately 100K unlabeled texts drawn
 from the training splits of all nine sentence-level benchmarks. No labels or
 task annotations are used. Relative to the main comparison, this setting
-changes both corpus size and dataset coverage, so it evaluates robustness to
-broader distillation data rather than isolating data scale alone.
+changes both corpus size and dataset coverage. It therefore evaluates robustness
+in a broader task-adapted setting rather than isolating the effect of corpus
+size alone.
 
 \input{tables/main_results}
 
@@ -39,7 +94,6 @@ margin is narrow for the two larger students and remains largest for the
 compact student.
 
 \FloatBarrier
-\clearpage
 \section{Zero-Shot Retrieval}
 \label{app:retrieval-15k}
 
@@ -61,8 +115,7 @@ that the sentence-level distillation objectives do not fully preserve the
 teachers' zero-shot retrieval capability.
 
 \FloatBarrier
-\clearpage
-\section{Layerwise Representation Changes}
+\section{Representation Diagnostics}
 \label{app:layerwise-cka}
 
 We examine whether final-embedding supervision changes the internal
@@ -82,7 +135,7 @@ induced by distillation.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{figures/layerwise_raw_cka_all_pairs}
+    \includegraphics[width=0.82\textwidth]{figures/layerwise_raw_cka_all_pairs}
     \caption{Layerwise linear CKA for the pretrained student, GATE-KD, and
     TALAS across three configurations. Trained results are averaged over three
     seeds.}
@@ -101,7 +154,7 @@ the three configurations and ranges from 0.051 to 0.055 CKA.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{figures/layerwise_delta_cka_all_pairs}
+    \includegraphics[width=0.82\textwidth]{figures/layerwise_delta_cka_all_pairs}
     \caption{Change in layerwise linear CKA relative to the pretrained
     student. Red and blue denote increased and decreased similarity,
     respectively.}
@@ -117,7 +170,36 @@ alignment at every depth. Moreover, CKA is descriptive and does not establish
 that the observed internal changes cause the downstream improvements.
 
 \FloatBarrier
-\clearpage
+\section{PCA Centering, Whitening, and Random-Subspace Controls}
+\label{app:pca-controls}
+
+We isolate preprocessing of the fixed endpoint interface in configuration (c).
+Every row uses the endpoint-only objective, the same student, corpus, optimizer,
+training schedule, and epoch-wise Procrustes updates. These are endpoint-only
+controls, so the reference row is not labeled as GATE-KD or Ours; those names
+refer to the full endpoint-plus-$H_0$ method in the main tables. The reference
+estimates its principal directions from the centered cache but applies the
+resulting linear map without subtracting the cache mean. ``Mean-subtracted
+PCA'' applies that
+mean subtraction as in the textbook affine PCA transform, while ``PCA
+whitening'' additionally rescales each retained coordinate by the inverse square
+root of its fitted eigenvalue. The random controls replace the PCA subspace with
+three independent Haar-random subspaces of the same rank. Results are averaged
+over the same three training seeds within each row; random-map draws remain
+separate rather than being treated as additional training seeds.
+
+\input{tables/pca_preprocessing}
+
+Mean subtraction causes the largest degradation, particularly on the six OOD
+benchmarks. Whitening recovers part of that loss and improves Avg.~IOD over the
+reference, but remains lower on Avg.~OOD and overall Avg. The PCA reference
+exceeds all three random draws despite retaining the same rank. Uncentered SVD
+attains a numerically indistinguishable overall score, differing from the
+Table~\ref{tab:interface-families} reference by 0.01 points. We
+therefore retain the evaluated interface, while interpreting this control as
+evidence for preserving the mean component at application time rather than as
+evidence that fit-time centering is uniquely optimal.
+
 \section{Target-Rank Sensitivity at Fixed Student Width}
 \label{app:target-rank}
 
@@ -150,20 +232,16 @@ recovered by rank 256, with the final increase to rank 384 contributing only
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{figures/width_bottleneck}
+    \includegraphics[width=0.85\textwidth]{figures/width_bottleneck}
     \caption{Sensitivity to retained PCA rank at fixed student width in
     configuration (c). Downstream scores show mean $\pm$ sample standard
     deviation over three seeds.}
     \label{fig:target-rank}
 \end{figure}
 
-The observed PCA distortion remains roughly 21--25 times above the rank floor.
-This difference is expected because the bound applies to the optimal rank-$k$
-Gram approximation, whereas PCA maximizes retained variance before row
-normalization and does not directly optimize the normalized Gram matrix. The
-floor certifies irreducible error rather than predicting the distortion of the
-chosen interface. Overall, the sweep links the retained teacher subspace to
-both geometric fidelity and downstream utility, while its saturation indicates
-diminishing returns from additional principal directions. Because the student
-architecture remains fixed, this result is a target-rank sensitivity analysis
-rather than an ablation of student width.
+PCA distortion remains roughly 21--25 times above the rank floor because its
+objective differs from normalized Gram approximation; the floor bounds
+irreducible error rather than predicting this interface's distortion.
+Increasing rank improves geometry and utility with diminishing returns. With
+the student architecture fixed, this is target-rank sensitivity, not a width
+ablation.

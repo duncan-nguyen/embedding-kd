@@ -1,86 +1,48 @@
-\section{Analysis}
+\section{Controlled Analysis}
 \label{sec:analysis}
 
-\subsection{Coordinate Comparability at the Bottleneck}
+We ask whether the endpoint gain comes from coordinate alignment rather than
+subspace selection, and whether the auxiliary $H_0$ gain is specific to its
+connectivity statistic. Unless stated otherwise, controls use configuration
+(c), whose 384-dimensional student has the strongest width bottleneck. Extended
+controls appear in Appendix~\ref{app:full-interface-controls}--\ref{app:target-rank}.
+
+\subsection{Coordinate Comparability Drives Endpoint Transfer}
 \label{sec:analysis-interface}
 
-Table~\ref{tab:interface-families} isolates the endpoint interface in
-configuration (c) by holding the endpoint-only objective and training protocol
-fixed. Within the same PCA subspace, the unaligned coordinates reach 69.35
-Avg., a random orthogonal orientation reaches 70.37, and the fitted Procrustes
-gauge reaches 74.28. Procrustes alignment therefore improves the unaligned PCA
-interface by 4.93 points without changing either the retained subspace or its
-pairwise geometry. The fitted gauge also exceeds the random orientation by 3.91
-points, indicating that its benefit comes from alignment with the student rather
-than from rotating the target coordinates alone.
+Table~\ref{tab:gauge-mechanism} holds the PCA subspace and endpoint objective
+fixed. In configuration (c), no alignment, a random orientation, and epoch-wise
+Procrustes reach 69.35, 70.37, and 74.28 Avg. Because these variants retain the
+same teacher geometry, the 4.93-point gain over no alignment comes from
+coordinate comparability rather than retained variance; the 3.91-point gap to a
+random rotation shows that rotation alone is insufficient.
 
-The fixed PCA--Procrustes interface also outperforms learned maps in both
-directions, which reach 61.46 for teacher-to-student mapping and 69.33 for
-student-to-teacher mapping. This result is consistent with avoiding a mapping
-that is updated jointly with the student by gradient descent. Retained energy alone does not
-explain downstream performance. The random subspace retains 0.381 of the
-teacher energy, compared with 0.928 for PCA, yet exceeds unaligned PCA by 1.57
-points. Together, these controls show that a high-energy subspace is not an
-effective pointwise target unless its coordinates are made comparable to the
-student. The random controls use a single map draw, so they do not establish a
-general ranking between PCA and randomly selected subspaces.
+\input{tables/gauge_mechanism}
 
-\input{tables/interface_families}
+Fixed-$R^{(0)}$ and one-refit controls separate initial comparability from
+tracking the evolving student; configuration (a) tests whether the mechanism
+persists beyond the compact setting. Learned-map and subspace controls appear in
+Appendix~\ref{app:full-interface-controls}.
 
 \FloatBarrier
 
-\subsection{Complementary Endpoint and Topology Signals}
-\label{sec:analysis-decomposition}
+\subsection{What Does the Topological Term Add?}
+\label{sec:analysis-structural}
 
-Table~\ref{tab:signal-decomposition} separates coordinate-dependent endpoint
-supervision from coordinate-invariant topology transfer. The endpoint-only
-objective provides most of the downstream improvement, raising Avg. from 52.62
-for the base student to 74.28. In contrast, $H_0$-only supervision reaches
-64.22 while reducing the topology residual from 0.3595 to 0.1240. The low
-residual but substantially lower downstream score shows that matching
-connectivity alone does not determine semantic correspondence. Combining the
-two signals improves the endpoint-only result by 0.51 points to 74.79 and lowers
-its topology residual from 0.2122 to 0.1281. Endpoint correspondence and
-topological structure therefore provide complementary supervision.
+Within the topology-weight sweep, endpoint-only supervision reaches 74.21 Avg.;
+native-space $H_0$ at $\lambda_{\mathrm{topo}}=0.5$ reaches 74.79, a 0.58-point
+refinement. Table~\ref{tab:structural-controls} compares it with matched
+pairwise, local-scale, teacher-MST, and Gram objectives while holding the
+endpoint interface and optimization protocol fixed.
 
-The remaining comparisons evaluate two refinements within the combined
-objective. Computing $H_0$ from the original teacher space improves Avg. from
-74.57 to 74.79 relative to projected teacher targets and produces a lower
-topology residual, 0.1281 versus 0.1355. Refitting the gauge after each epoch
-improves Avg. from 74.48 to 74.79 over retaining the alignment fitted at
-initialization. Both gains are concentrated more strongly in IOD performance
-and are modest relative to the contribution of the endpoint interface. These
-results support native-space topology and epoch-wise refitting as refinements
-of the complete objective rather than its primary source of improvement.
+\input{tables/structural_controls}
 
-\input{tables/signal_decomposition}
-
-\FloatBarrier
-
-\subsection{Sensitivity to Training Choices}
-\label{sec:analysis-sensitivity}
-
-Figure~\ref{fig:sensitivity-15k} examines sensitivity to the topology weight,
-training batch size, and gauge-calibration size in configuration (c).
-Performance remains stable across moderate topology weights, with
-$\lambda_{\mathrm{topo}}=0.5$ attaining the highest average and settings from
-$0.5$ to $1.0$ differing by at most 0.24 points. Reducing the
-gauge-calibration set from the full corpus to 2{,}048 examples changes Avg. by
-only 0.28 points, indicating that the alignment can be estimated from a
-relatively small sample. Smaller batches obtain higher scores, but this sweep
-fixes the number of epochs rather than optimizer updates. The batch comparison
-is therefore not compute matched and does not establish that smaller batches
-are intrinsically better. Complete numerical results are reported in
-Appendix~\ref{app:sensitivity-15k}.
-
-\begin{figure}[!htbp]
-    \centering
-    \includegraphics[width=\textwidth]{figures/sensitivity_15k.pdf}
-    \caption{Sensitivity to topology weight, training batch size, and
-    gauge-calibration size in configuration (c). Points and error bars show
-    mean $\pm$ sample standard deviation over three seeds. The batch sweep fixes
-    the number of epochs and is not compute matched.}
-    \label{fig:sensitivity-15k}
-\end{figure}
+The sorted spanning-path and kNN rows test whether any distance distribution suffices;
+teacher-MST and Gram rows restore sample correspondence; $H_0$ retains only
+sorted connectivity scales. A topology-specific interpretation therefore
+requires $H_0$ to improve over these controls. In a separate suite,
+Appendix~\ref{app:signal-decomposition} shows that $H_0$ alone reaches 64.22,
+so connectivity does not replace pointwise correspondence. Weight and
+calibration sensitivity appear in Appendix~\ref{app:sensitivity-15k}.
 
 \FloatBarrier

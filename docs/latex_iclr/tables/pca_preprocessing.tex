@@ -1,0 +1,37 @@
+% Sources: PCA + Procrustes reference from Table 3; remaining rows from
+% review_h0_pca_controls_20260906-104859, PCA-family rows only.
+\begin{table}[!htbp]
+  \centering
+  \caption{PCA preprocessing and subspace controls with endpoint-only
+  supervision and Procrustes alignment in configuration (c). Scores are mean
+  $\pm$ sample standard deviation over three seeds; random-subspace draws are
+  shown separately. Best values are bold.}
+  \label{tab:pca-preprocessing}
+  \small
+  \newcommand{\pcell}[2]{#1{\tiny $\pm$ #2}}
+  \setlength{\tabcolsep}{4.5pt}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Interface & Retained energy $\uparrow$ & Avg. IOD $\uparrow$
+    & Avg. OOD $\uparrow$ & Avg. $\uparrow$ \\
+    \midrule
+    PCA $+$ Procrustes (reference)
+      & 0.928 & \pcell{67.76}{0.05} & \pcell{77.54}{0.07}
+      & \pcell{\textbf{74.28}}{0.03} \\
+    Mean-subtracted PCA
+      & 0.928 & \pcell{66.85}{0.15} & \pcell{74.95}{0.02} & \pcell{72.25}{0.06} \\
+    PCA whitening
+      & 0.928 & \pcell{\textbf{68.14}}{0.33} & \pcell{75.83}{0.08}
+      & \pcell{73.26}{0.16} \\
+    Random subspace (draw 0)
+      & 0.381 & \pcell{67.38}{0.07} & \pcell{77.28}{0.06} & \pcell{73.98}{0.06} \\
+    Random subspace (draw 1)
+      & 0.376 & \pcell{67.41}{0.17} & \pcell{77.47}{0.05} & \pcell{74.12}{0.04} \\
+    Random subspace (draw 2)
+      & 0.374 & \pcell{67.48}{0.07} & \pcell{76.95}{0.08} & \pcell{73.79}{0.03} \\
+    Uncentered SVD
+      & \textbf{0.945} & \pcell{67.59}{0.22}
+      & \pcell{\textbf{77.61}}{0.01} & \pcell{74.27}{0.08} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

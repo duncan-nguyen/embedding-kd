@@ -83,6 +83,29 @@ def test_negative_objective_weights_are_rejected():
         GeoODEKD(lambda_ctr=-1.0)
 
 
+def test_gram_control_reads_native_teacher_geometry_when_supplied():
+    generator = torch.Generator().manual_seed(91)
+    student = torch.nn.functional.normalize(
+        torch.randn(6, 8, generator=generator), dim=-1
+    )
+    projected_teacher = student.clone()
+    native_teacher = torch.randn(6, 19, generator=generator)
+    criterion = _criterion(lambda_end=0.0, lambda_ctr=0.0, lambda_gram=1.0)
+
+    total, metrics = criterion(
+        hidden_states=[student[:, None, :]],
+        teacher=projected_teacher,
+        teacher_topo=native_teacher,
+    )
+
+    native_loss = criterion.gram_loss(student, native_teacher)
+    projected_loss = criterion.gram_loss(student, projected_teacher)
+    assert projected_loss == pytest.approx(0.0, abs=1e-10)
+    assert metrics["loss_gram"] == pytest.approx(float(native_loss), rel=1e-6)
+    assert float(total) == pytest.approx(float(native_loss), rel=1e-6)
+    assert metrics["loss_gram"] > 0.0
+
+
 def test_contrastive_term_is_skipped_without_a_second_view():
     criterion = _criterion(lambda_ctr=0.5)
     hidden_states = [torch.randn(4, 5, 8) for _ in range(4)]

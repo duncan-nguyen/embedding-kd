@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 from src.criterions.h0_topological_loss import chunk_count, h0_death_times
@@ -33,7 +34,7 @@ class TextPairWithTeacher(Dataset):
         teacher_topo: torch.Tensor | None = None,
     ):
         self.task = task
-        self.teacher_cls = teacher_cls    # [N, d_t]
+        self.teacher_cls = teacher_cls  # [N, d_t]
         self.teacher_topo = teacher_topo  # [N, d_T] unprojected, or None
 
         if task == "single_cls":
@@ -85,8 +86,12 @@ class DualTokenizerCollateWithTeacher:
         ``[B // b, b - 1]`` tensor instead of a ``[B - 1]`` vector. The training step
         cuts the student's rows by the same rule, so the two sides stay aligned.
     ``structural_loss`` / ``structural_knn_k``
-        Select the H0 statistic or one of its matched-compute controls and configure
+        Select the H0 statistic or a constraint-count-matched control and configure
         the kNN control. The corresponding frozen teacher statistic is built here.
+    ``need_native_gram``
+        Build the cosine Gram matrix from the native teacher cache.  This lets the
+        Gram control read the same pre-projection teacher object as H0 without
+        copying the full ``[B, d_T]`` tensor to the GPU.
     """
 
     def __init__(
@@ -102,6 +107,7 @@ class DualTokenizerCollateWithTeacher:
         topo_batch_size: int = 0,
         structural_loss: str = "h0",
         structural_knn_k: int = 1,
+        need_native_gram: bool = False,
     ):
         self.ts = tok_student
         self.task = task
@@ -113,6 +119,7 @@ class DualTokenizerCollateWithTeacher:
         self.topo_batch_size = int(topo_batch_size or 0)
         self.structural_loss = structural_loss
         self.structural_knn_k = int(structural_knn_k)
+        self.need_native_gram = bool(need_native_gram)
 
     def _encode(self, texts, side: int, out: dict) -> None:
         encoding = self.ts(
@@ -134,8 +141,12 @@ class DualTokenizerCollateWithTeacher:
 
     def _teacher_topo(self, topo: torch.Tensor, out: dict) -> None:
         """Either the raw teacher cache, or the diagrams that are all anyone reads."""
+        if self.need_native_gram:
+            unit = F.normalize(topo.float(), p=2, dim=-1)
+            out["teacher_gram"] = unit @ unit.transpose(0, 1)
         if self.topo_metric is None:
-            out["teacher_topo"] = topo
+            if not self.need_native_gram:
+                out["teacher_topo"] = topo
             return
         with torch.no_grad():
             topo = topo.float()

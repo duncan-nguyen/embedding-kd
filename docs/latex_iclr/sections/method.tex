@@ -12,10 +12,11 @@ normalized final sentence embeddings
 where $\operatorname{norm}(\mathbf{x})=\mathbf{x}/\lVert\mathbf{x}\rVert_2$.
 The corresponding student embedding is
 $\mathbf{z}_i=\operatorname{norm}(\operatorname{Pool}(h_i^{(L)}))\in
-\mathbb{S}^{d_S-1}$. GATE-KD transfers teacher knowledge through two terminal
-channels. An extrinsic interface expresses each teacher endpoint in coordinates
-that the student can match pointwise, while an intrinsic objective transfers
-structure that does not require shared coordinates or equal ambient dimension.
+\mathbb{S}^{d_S-1}$. GATE-KD primarily transfers teacher knowledge through an
+extrinsic interface that expresses each teacher endpoint in coordinates the
+student can match pointwise. It augments this interface with an intrinsic
+regularizer that requires neither shared coordinates nor equal ambient
+dimension.
 
 \subsection{Extrinsic Endpoint Interface}
 \label{sec:method-targets}
@@ -35,7 +36,12 @@ before gauge alignment are
     \label{eq:pca-target}
 \end{equation}
 The PCA subspace is fitted once on the full teacher cache and remains fixed
-throughout training.
+throughout training. Centering the cache to estimate covariance directions and
+subtracting the mean when applying the interface are distinct operations: the
+former selects a subspace, whereas the latter would make the target transform
+affine and alter its angular geometry after row normalization. We use only the
+former, preserving a linear endpoint interface. Appendix~\ref{app:pca-controls}
+evaluates both choices together with whitening and random-subspace controls.
 
 \paragraph{Gauge alignment.}
 The basis used to express the retained subspace affects a pointwise loss even
@@ -94,16 +100,16 @@ student.
 
 \begin{corollary}[Monotone gauge refit]
 With the student fixed, every gauge refit weakly decreases the calibration
-endpoint loss, while leaving the topology term unchanged.
+endpoint loss, while leaving the $H_0$ regularizer unchanged.
 \end{corollary}
 \begin{proof}
 Equation~\ref{eq:gauge-alignment} minimizes the endpoint loss over all
 $R\in O(d_S)$, so its value cannot exceed that obtained with the previous
-gauge. The topology term depends only on the fixed native teacher and student
-embeddings and is independent of $R$.
+gauge. The $H_0$ regularizer depends only on the fixed native teacher and
+student embeddings and is independent of $R$.
 \end{proof}
 
-\subsection{Intrinsic Topology Transfer}
+\subsection{Native-Space Topological Regularization}
 \label{sec:method-topology}
 
 The endpoint interface can reproduce only the geometry retained after
@@ -111,12 +117,12 @@ projection. Although $P_{\mathrm{PCA}}$ has orthonormal columns,
 $P_{\mathrm{PCA}}P_{\mathrm{PCA}}^\top$ is a rank-$d_S$ projector, so the
 cosine Gram matrix of the normalized coordinates in
 Equation~\ref{eq:pca-target} need not equal that of the original teacher
-embeddings. We therefore transfer an additional structural signal directly
-from the teacher's native space.
+embeddings. We therefore add a structural regularizer defined directly in the
+teacher's native space.
 
 This loss of geometry is unavoidable whenever the normalized teacher cache has
 rank above the student width.
-\begin{proposition}[Irreducible Gram distortion]
+\begin{proposition}[Rank-relaxed lower bound on Gram distortion]
 Let $T\in\mathbb{R}^{N\times d_T}$ collect the normalized teacher cache
 embeddings, with singular values
 $\sigma_1(T)\geq\cdots\geq\sigma_r(T)>0$. For every $Z\in
@@ -128,7 +134,9 @@ sentences,
     \label{eq:gram-lower-bound}
 \end{equation}
 Thus exact preservation of the teacher cosine Gram matrix is impossible when
-$\operatorname{rank}(T)>d_S$.
+$\operatorname{rank}(T)>d_S$. This relaxation ranges over arbitrary
+rank-$d_S$ Gram approximations and need not be tight under the student's
+positive-semidefinite and unit-diagonal constraints.
 \end{proposition}
 \begin{proof}
 The eigenvalues of $TT^\top$ are $\sigma_j(T)^2$, whereas
@@ -145,22 +153,22 @@ For a minibatch of $B$ normalized vectors, we use the chord distance
 The $B-1$ finite death times of degree-zero Vietoris--Rips persistence are the
 edge weights of the point cloud's minimum spanning tree
 \citep{hofer2020topologically}. Let
-$\delta^S_{(1)}\leq\cdots\leq\delta^S_{(B-1)}$ and
-$\delta^T_{(1)}\leq\cdots\leq\delta^T_{(B-1)}$ denote the sorted death times
+$q^S_{(1)}\leq\cdots\leq q^S_{(B-1)}$ and
+$q^T_{(1)}\leq\cdots\leq q^T_{(B-1)}$ denote the sorted death times
 of the student embeddings $\{\mathbf{z}_i\}$ and the original teacher
 embeddings $\{\mathbf{t}_i\}$. We define
 \begin{equation}
     \mathcal{L}_{H_0}
     =\frac{1}{B-1}\sum_{j=1}^{B-1}
-      \left(\delta^S_{(j)}-\delta^T_{(j)}\right)^2.
+      \left(q^S_{(j)}-q^T_{(j)}\right)^2.
     \label{eq:topological-loss}
 \end{equation}
 For a precise interpretation, define the empirical distributions of finite
 connectivity scales
 \begin{equation}
-    \nu_S=\frac{1}{B-1}\sum_{j=1}^{B-1}\delta_{\delta_{(j)}^S},
+    \nu_S=\frac{1}{B-1}\sum_{j=1}^{B-1}\delta_{q_{(j)}^S},
     \qquad
-    \nu_T=\frac{1}{B-1}\sum_{j=1}^{B-1}\delta_{\delta_{(j)}^T},
+    \nu_T=\frac{1}{B-1}\sum_{j=1}^{B-1}\delta_{q_{(j)}^T},
 \end{equation}
 where $\delta_a$ denotes a Dirac mass at $a$.
 \begin{proposition}[Transport interpretation and stability]
@@ -185,7 +193,7 @@ order, which gives Equation~\ref{eq:topological-wasserstein}
 $\epsilon$, every threshold graph at scale $a$ in either metric is contained
 in the other at scale $a+\epsilon$. Kruskal's characterization of the ordered
 minimum-spanning-tree edges then gives
-$|\delta^S_{(j)}-\delta^T_{(j)}|\leq\epsilon$ for every $j$, and averaging their
+$|q^S_{(j)}-q^T_{(j)}|\leq\epsilon$ for every $j$, and averaging their
 squared differences proves the bound. This is the degree-zero finite-space
 case of Vietoris--Rips persistence stability \citep{chazal2014persistence}.
 \end{proof}

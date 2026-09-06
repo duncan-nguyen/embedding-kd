@@ -1,0 +1,27 @@
+% All rows require the matched full-base rerun from
+% notebooks/08_h0_pca_review_controls.ipynb. Earlier endpoint-only target-map
+% runs are not comparable because they set lambda_topo=0.
+\begin{table}[t]
+    \centering
+    \caption{\textbf{Gauge mechanism under the full base objective.}
+    Every row uses the same PCA subspace, student, corpus, optimizer, and
+    training schedule, including the same $H_0$ term; only the orientation and
+    its update schedule change.
+    Values are mean $\pm$ sample standard deviation over three seeds.}
+    \label{tab:gauge-mechanism}
+    \small
+    \newcommand{\gcell}[2]{#1{\tiny $\pm$ #2}}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{@{}lccccc@{}}
+        \toprule
+        Gauge & Data fitted & Updates & Config. (a) & Config. (c) \\
+        \midrule
+        None & No & 0 & \ph{run} & \ph{run} \\
+        Random orthogonal & No & 0 & \ph{run} & \ph{run} \\
+        Fixed $R^{(0)}$ & Calibration set & 0 & \ph{run} & \ph{run} \\
+        One refit & Calibration set & 1 & \ph{run} & \ph{run} \\
+        Epoch-wise Procrustes & Calibration set & 4 & \ph{run}
+        & \ph{run} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

@@ -1,13 +1,12 @@
 % Source:
 % runs/aux_sweeps_20260904-113834/decomposition/decomposition_mean_std.csv
-% The Ours row's downstream aggregates are synchronized with configuration
-% (c) in Table~\ref{tab:main-results}; its H_0 residual remains from the sweep.
-\begin{table}[!htbp]
+% Every cell in a row is taken from the same three runs. This suite uses
+% lambda_topo=1 for all H0-active rows and is not the lambda_topo=0.5 main run.
+\begin{table}[H]
     \centering
-    \caption{Decomposition of endpoint supervision, topology transfer, and
-    gauge refitting in configuration (c). Scores are mean $\pm$ sample standard
-    deviation over three seeds. The $H_0$ residual is measured in the original
-    teacher space.}
+    \caption{Endpoint, topology, and gauge-refit decomposition in configuration
+    (c). Values are mean $\pm$ sample standard deviation over three seeds;
+    $H_0$ residuals use the native teacher space. Best values are bold.}
     \label{tab:signal-decomposition}
     \small
     \newcommand{\deccell}[2]{#1{\tiny $\pm$ #2}}
@@ -18,20 +17,20 @@
         & $H_0$ residual $\downarrow$ & Avg.~IOD $\uparrow$
         & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
         \midrule
-        Student base & --- & --- & \deccell{0.3595}{0.0000}
-        & \deccell{41.52}{0.00} & \deccell{58.16}{0.00} & \deccell{52.62}{0.00} \\
+        No-teacher control & --- & --- & \deccell{0.3595}{0.0000}
+        & \deccell{41.61}{0.00} & \deccell{58.10}{0.00} & \deccell{52.60}{0.00} \\
         $H_0$ only & Original & --- & \deccell{\textbf{0.1240}}{0.0012}
         & \deccell{58.00}{1.01} & \deccell{67.33}{0.62} & \deccell{64.22}{0.73} \\
         \midrule
         Endpoint only & --- & On & \deccell{0.2122}{0.0004}
-        & \deccell{67.76}{0.05} & \deccell{77.54}{0.07} & \deccell{74.28}{0.03} \\
+        & \deccell{67.68}{0.19} & \deccell{77.55}{0.07} & \deccell{74.26}{0.02} \\
         Endpoint $+H_0$ & Projected & On & \deccell{0.1355}{0.0003}
         & \deccell{68.27}{0.12} & \deccell{77.72}{0.00} & \deccell{74.57}{0.04} \\
         Endpoint $+H_0$ & Original & Off & \deccell{0.1309}{0.0001}
         & \deccell{68.03}{0.10} & \deccell{77.71}{0.03} & \deccell{74.48}{0.01} \\
-        Endpoint $+H_0$ (\textbf{Ours}) & Original & On
-        & \deccell{0.1281}{0.0003} & \deccell{\textbf{68.62}}{0.21}
-        & \deccell{\textbf{77.87}}{0.02} & \deccell{\textbf{74.79}}{0.06} \\
+        Endpoint $+H_0$ & Original & On
+        & \deccell{0.1281}{0.0003} & \deccell{\textbf{68.38}}{0.18}
+        & \deccell{\textbf{77.77}}{0.03} & \deccell{\textbf{74.64}}{0.04} \\
         \bottomrule
     \end{tabular}
 \end{table}

@@ -1,10 +1,11 @@
-"""Matched-compute structural controls for the H0 persistence loss.
+"""Constraint-count-matched structural controls for the H0 persistence loss.
 
 Each control reduces a point cloud to a small collection of scalar distances and
 matches that collection with mean squared error.  The default sample counts are
 chosen to stay close to H0's ``B - 1`` finite death times:
 
-* ``sorted_pairwise`` samples ``B - 1`` fixed pairwise distances and compares
+* ``sorted_pairwise`` uses a geometry-independent spanning path over the
+  shuffled batch, giving ``B - 1`` distances that cover every row, and compares
   their independently sorted distributions;
 * ``teacher_mst`` selects the teacher's ``B - 1`` MST edges and compares the
   student's distances on those same sample pairs;
@@ -34,15 +35,19 @@ STRUCTURAL_LOSSES = ("h0", "sorted_pairwise", "teacher_mst", "knn_distribution")
 
 
 def _sampled_pair_indices(rows: int, device: torch.device) -> torch.Tensor:
-    """Deterministic, well-spread ``B - 1`` entries of the upper triangle."""
+    """A geometry-independent spanning path with exactly ``B - 1`` edges.
+
+    The DataLoader already shuffles corpus rows, so consecutive positions are a
+    random set of sample pairs for each minibatch.  Connecting those positions as
+    a path covers every row (endpoints once, internal vertices twice) without
+    looking at either teacher or student geometry.  This is a cleaner
+    cardinality-matched control than subsampling flattened upper-triangle entries,
+    which could leave some rows completely unsupervised.
+    """
     if rows < 2:
         raise ValueError("structural distances require at least two points")
-    pairs = torch.triu_indices(rows, rows, offset=1, device=device).transpose(0, 1)
-    count = rows - 1
-    positions = torch.linspace(
-        0, pairs.shape[0] - 1, count, device=device
-    ).round().long()
-    return pairs[positions]
+    positions = torch.arange(rows, device=device)
+    return torch.stack([positions[:-1], positions[1:]], dim=-1)
 
 
 def _knn_values(dist: torch.Tensor, k: int) -> torch.Tensor:
