@@ -1,20 +1,19 @@
 \begin{abstract}
-Knowledge distillation can compress text embedding models, but directly
-matching teacher and student vectors is difficult when their dimensions and
-coordinate systems differ. We propose GATE-KD, a final-embedding method that
-first reduces teacher embeddings to the student dimension with a fixed PCA
-projection and then fits their orientation to the student using closed-form
-orthogonal Procrustes alignment. This produces pointwise training targets from
-cached teacher embeddings without a trainable alignment module or intermediate
-teacher states. As an auxiliary signal, GATE-KD also matches degree-zero
-persistence summaries, namely distributions of connectivity scales, in the
-original teacher and student spaces; this signal remains well-defined across
-different dimensions. Under a label-free but task-adapted protocol spanning
-three teacher--student configurations and nine sentence-level benchmarks,
-GATE-KD achieves the highest numerical average among the evaluated distillation
-methods, improving over the strongest baseline by 0.38--1.59 points. Controlled
-experiments show that a per-minibatch rotation-invariant baseline trails
-GATE-KD by 2.05 points; separate schedule controls associate most of this gap
-with a corpus-level fitted gauge rather than repeated refitting, while $H_0$
-adds 0.53 points over endpoint-only training.
+Distilling text embeddings across architectures involves two mismatches:
+teacher and student may have different widths and different coordinate systems.
+Projection resolves the first, but leaves the second: rotating every projected
+target preserves all pairwise similarities while changing the gradients of a
+pointwise loss. GATE-KD turns this ambiguity into an interface. It projects
+cached teacher endpoints, uses a corpus-level Procrustes fit to express them in
+coordinates aligned with the pretrained student, and supervises the student's
+deployed embedding directly, without a learned cross-space map or teacher hidden
+states. Under a label-free, task-adapted protocol, the full recipe obtains the
+highest numerical average in three teacher--student configurations, with the
+clearest gain for a 22M student (+1.59 points). In a matched endpoint-only test,
+the fixed interface scores 74.28, versus 69.35 without alignment and 69.33 for
+the stronger learned linear map. Re-estimating the alignment every epoch adds
+only 0.16 points, while aligned random subspaces remain within 0.34 points of
+PCA despite retaining far less teacher energy. These results support
+student-aligned target presentation as the core design choice in the evaluated
+regime; an optional native-space $H_0$ term provides a smaller auxiliary gain.
 \end{abstract}

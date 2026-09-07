@@ -1,42 +1,32 @@
-\section{Proofs of Supporting Results}
-\label{app:supporting-proofs}
-
-\begin{proof}[Proof of Proposition~\ref{prop:gauge-optimality}]
-For unit-norm rows,
-$1-\langle\mathbf{z}_i^{(e)},\mathbf{y}_iR\rangle
-=\tfrac{1}{2}\lVert\mathbf{z}_i^{(e)}-\mathbf{y}_iR\rVert_2^2$.
-Summing over $\mathcal{C}$ gives Equation~\ref{eq:endpoint-procrustes}.
-Expanding the Frobenius norm shows that minimizing it over $R\in O(d_S)$ is
-equivalent to maximizing
-$\operatorname{tr}(R^\top Y_{\mathcal{C}}^\top Z_{\mathcal{C}}^{(e)})$.
-If $Y_{\mathcal{C}}^\top Z_{\mathcal{C}}^{(e)}=U\Sigma V^\top$, the orthogonal
-Procrustes solution is $R=UV^\top$, proving optimality. Finally,
-$(YR)(YR)^\top=YRR^\top Y^\top=YY^\top$ for every orthogonal $R$. The same
-global transformation is applied rowwise, so sentence--target correspondence
-is also unchanged.
-\end{proof}
-
-\begin{proof}[Proof of Proposition~\ref{prop:gram-lower-bound}]
-The eigenvalues of $TT^\top$ are $\sigma_j(T)^2$, whereas
-$\operatorname{rank}(ZZ^\top)\leq d_S$. The Eckart--Young theorem therefore
-lower-bounds the squared error of any such rank-$d_S$ approximation by the
-squared tail eigenvalues \citep{eckart1936approximation}.
-\end{proof}
-
-\begin{proof}[Proof of Proposition~\ref{prop:h0-transport-stability}]
-Optimal transport on the real line pairs equally weighted samples in sorted
-order, which gives Equation~\ref{eq:topological-wasserstein}
-\citep{peyre2019computational}. Under a uniform edge perturbation of at most
-$\epsilon$, every threshold graph at scale $a$ in either metric is contained
-in the other at scale $a+\epsilon$. Kruskal's characterization of the ordered
-minimum-spanning-tree edges then gives
-$|q^S_{(j)}-q^T_{(j)}|\leq\epsilon$ for every $j$, and averaging their
-squared differences proves the bound. This is the degree-zero finite-space
-case of Vietoris--Rips persistence stability \citep{chazal2014persistence}.
-\end{proof}
-
 \section{Training Details}
 \label{app:training-hyperparameters}
+
+\paragraph{Baseline implementation policy.}
+We use an author-released public implementation whenever one is available. For
+methods without public code, we reimplement the objective and training
+procedure described in the corresponding paper. All implementations are
+integrated into the same training and evaluation framework so that the
+distillation corpus, teacher--student checkpoints, batch construction, and
+downstream evaluators are shared. We retain method-specific components, such as
+Stella's two-stage schedule and TALAS's adaptive SAM optimizer, rather than
+replacing them with GATE-KD's recipe.
+
+The retained objective settings are as follows. RKD uses distance and angle
+weights 25 and 50, with its in-batch task term weighted 0.1; this task weight is
+the one deliberate departure from the published value of 1 under our five-epoch
+budget. Stella retains its $2+3$-epoch two-stage schedule and stage weights
+$(0.5,2.0,0.5)$ for cosine, similarity, and triplet terms. CDM uses
+$\alpha_{\mathrm{DTW}}=0.5$ and unit CLS weight; DSKD uses
+$\alpha_{\mathrm{DTW}}=1$ with bidirectional cross-attention; EMO uses two
+student layers, unit attention and optimal-transport weights, and
+$\alpha_{\mathrm{OT}}=0.1$. TALAS retains its final-two-layer structural term,
+teacher anchor, adaptive SAM with $\rho=0.05$, and weights
+$(w_{\mathrm{task}},w_{\mathrm{KD}},w_{\mathrm{struct}})=(0.001,0.75,1)$.
+GATE-KD uses only its endpoint and $H_0$ terms in the main comparison. These
+choices preserve each baseline's defining mechanism, but the common budget
+below changes published batch sizes or durations where they differ. We
+therefore evaluate controlled implementations under one budget, not the best
+performance attainable after method- and model-pair-specific tuning.
 
 All main-comparison runs use a maximum sequence length of 256 and seeds 42, 43,
 and 44. We fix the batch size at 128 and the total training duration at five
@@ -44,13 +34,10 @@ epochs for every method; Stella's two stages comprise two and three epochs.
 Learning rate is the only optimization hyperparameter selected separately for
 each method. Selection is performed on validation data before the three-seed
 test sweep; the selected rate is then held fixed across all three
-teacher--student configurations and seeds. The final-epoch checkpoint is
-evaluated once on the test splits. No test score is used for learning-rate or
-checkpoint selection. Table~\ref{tab:training-hyperparameters} reports every
-selected rate and the method-specific optimizer settings. For every method,
-the learning rate was tuned over the common grid
-$\{1,2,3,5,7\}\times10^{-5}$; no other optimizer hyperparameter was tuned
-per method.
+teacher--student configurations and seeds, and the final-epoch checkpoint is
+evaluated once on the test splits, so no test score enters learning-rate or
+checkpoint selection. Every method used the common grid
+$\{1,2,3,5,7\}\times10^{-5}$ and no other per-method tuning.
 All methods use AdamW with weight decay $0.01$ and a cosine schedule ending at
 $2\times10^{-6}$. TALAS wraps AdamW in adaptive SAM.
 For GATE-KD,
@@ -73,35 +60,28 @@ fall outside this timed region. The archived sweep includes co-located
 processes, so the reported values characterize the measured optimization
 environment rather than isolated-process or end-to-end efficiency.
 
+\input{tables/training_efficiency}
+
+Within this boundary, GATE-KD records the lowest mean update time and
+cumulative optimization time and the highest throughput in all three
+configurations. Two GATE-KD-specific costs fall outside it. The PCA fit is one
+SVD of the 14{,}760-row cache, and the teacher cache itself is shared with
+TALAS, RKD, and Stella. Each of the four epoch-boundary refits re-encodes the
+gauge-fit corpus with the student; charging those forward passes at the
+training-step throughput of Table~\ref{tab:training-efficiency}, an upper bound
+because it does not subtract the backward pass, adds at most 0.64, 0.43, and
+0.49 minutes in configurations (a), (b), and (c). We report this accounting to
+bound a method-specific omission, not as a directly measured end-to-end time.
+Teacher caching, PCA, refit I/O, model loading, evaluation, and
+baseline-specific preprocessing are not jointly timed; consequently we make no
+claim that Table~\ref{tab:training-efficiency} establishes lower end-to-end
+training cost.
+
+\FloatBarrier
+
 \section{Endpoint-Interface Analysis}
 \label{app:endpoint-analysis}
 
-\subsection{Comparison with Learned Endpoint Maps}
-\label{app:full-interface-controls}
-
-Table~\ref{tab:interface-families} complements the gauge-schedule analysis in
-Table~\ref{tab:gauge-mechanism} by varying the broader endpoint interface. All
-rows use endpoint-only supervision in configuration (c). The learned controls
-use a single bias-free linear map, either from teacher to student width or from
-student to teacher width, followed by row normalization. The map is trained
-jointly with the student under the same AdamW schedule and is discarded at
-inference. Thus these rows compare supervision interfaces rather than deployed
-model capacities.
-
-\input{tables/interface_families}
-
-Under the matched endpoint-only recipe evaluated here, the fixed
-PCA--Procrustes interface exceeds learned linear maps in both directions. The
-unaligned PCA row is the endpoint-only counterpart of the fixed-PCA (TCS-style)
-target in Table~\ref{tab:gauge-mechanism}; without a fitted gauge it trails
-the Procrustes row by 4.93 points and is within 1.6 points of a random
-subspace of the same rank. This
-comparison is specific to the stated single-layer maps and optimization
-protocol; it does not establish that every learned projector is inferior.
-Table~\ref{tab:gauge-mechanism} isolates the role of the fitted gauge, while
-Appendix~\ref{app:pca-controls} holds that gauge fixed across subspace choices.
-
-\FloatBarrier
 \subsection{Robustness to Fixed-Subspace Construction}
 \label{app:pca-controls}
 
@@ -118,15 +98,24 @@ kept separate.
 \input{tables/pca_preprocessing}
 
 Mean subtraction lowers Avg. from 74.79 to 72.09 ($-2.70$), and whitening to
-71.59 ($-3.20$), with both IOD and OOD declining. Aligned random subspaces reach
+71.59 ($-3.20$), with both source and non-source averages declining. Aligned random subspaces reach
 74.45--74.66, only 0.13--0.34 below PCA despite retaining 0.374--0.381 rather
 than 0.928 of the teacher energy. The updated uncentered-SVD run reaches 74.60,
-0.19 points below PCA overall. Thus
-preserving the mean component
-at application time is important, whereas retained energy and the exact fitted
-subspace appear less decisive once the gauge is aligned. PCA is numerically best
-here, but the proximity of both SVD and aligned random subspaces does not
-establish fit-time centering as uniquely optimal.
+0.19 points below PCA overall. Preserving the mean component at application
+time therefore matters, whereas once the gauge is aligned neither retained
+energy nor the exact fitted subspace is decisive; PCA is numerically best, but
+not established as uniquely optimal.
+
+Retained energy and the endpoint objective measure different quantities. The
+former is raw coordinate reconstruction before row normalization, whereas the
+latter acts on normalized directions after projection and alignment. A random
+subspace can therefore discard substantial total variance without necessarily
+discarding angular distinctions useful to the student. Concentration in a
+high-dimensional projection and redundancy in the teacher representation are
+plausible explanations, but we did not measure normalized Gram distortion for
+the random projections. The result consequently narrows our claim: PCA is a
+stable deterministic default, while the evidence attributes more importance to
+student-conditioned orientation than to maximum retained energy.
 
 \FloatBarrier
 \subsection{Endpoint-Interface Rank at Fixed Student Width}
@@ -136,18 +125,18 @@ We isolate the subspace selected by the endpoint interface in configuration
 (c). The student architecture, 384-dimensional output, distillation corpus,
 optimizer, training schedule, and Procrustes updates remain fixed, while the
 retained PCA rank varies over $k\in\{64,128,256,384\}$. This experiment uses
-the endpoint-only objective. Targets with $k<384$ are embedded in the native
-student space by appending zero coordinates before Procrustes alignment. This
-padding preserves their Gram matrix and active rank, and does not change the
-capacity or width of the student.
+the endpoint-only objective. Targets with $k<384$ are zero-padded to the
+student width before Procrustes alignment, which preserves their Gram matrix
+and active rank.
 
 Retained energy is measured on the complete teacher cache. On a fixed sample
 of 2{,}048 normalized teacher embeddings $T$, we measure the normalized
 squared Gram distortion
 $\lVert TT^\top-Y_kY_k^\top\rVert_F^2/\lVert TT^\top\rVert_F^2$, where $Y_k$
-is the normalized rank-$k$ PCA target. We also report the normalized rank
-floor $\sum_{j>k}\sigma_j(T)^4/\sum_j\sigma_j(T)^4$ from
-Equation~\ref{eq:gram-lower-bound}. The Gram quantities are independent of
+is the normalized rank-$k$ PCA target. We also report the normalized
+Eckart--Young rank floor
+$\sum_{j>k}\sigma_j(T)^4/\sum_j\sigma_j(T)^4$
+\citep{eckart1936approximation}. The Gram quantities are independent of
 the orthogonal gauge and are therefore computed once, while downstream scores
 are averaged over three seeds.
 
@@ -185,9 +174,7 @@ output coordinates toward zero rather than leaving them free, so for $k<384$
 the student effectively operates at rank $k$ despite its 384-dimensional
 output. Second, the sweep is endpoint-only, in configuration (c), on one
 corpus; we have not repeated it with the $H_0$ term or in configurations (a)
-and (b). Within these limits, increasing rank improves geometry and utility
-with diminishing returns. With the student architecture fixed, this is
-target-rank sensitivity, not a width ablation.
+and (b).
 
 \FloatBarrier
 \subsection{Gauge-Fit-Set Size}
@@ -215,9 +202,8 @@ whereas $H_0$-only training reduces the connectivity residual without reaching
 the endpoint-supervised score. Relative to the no-teacher control, endpoint-only
 training gains 21.66 points, compared with 11.62 points for $H_0$ alone. Adding
 native-space $H_0$ to the endpoint objective yields a further 0.53 points and
-reduces the $H_0$ residual from 0.2122 to 0.1281. The combined objective
-therefore treats native-space connectivity as an auxiliary constraint rather
-than as a substitute for sample-wise correspondence. The $H_0$-only row uses
+reduces the native-space $H_0$ residual from 0.2122 to 0.1281. The $H_0$-only
+row uses
 $\lambda_{\mathrm{topo}}=1$, whereas the combined row repeats the
 $\lambda_{\mathrm{topo}}=0.5$ main reference; their difference should therefore
 be read as a signal decomposition rather than a matched weight ablation.
@@ -227,6 +213,13 @@ be read as a signal decomposition rather than a matched weight ablation.
 \FloatBarrier
 \subsection{Structural-Control Definitions}
 \label{app:structural-control-definitions}
+
+Table~\ref{tab:structural-controls} compares the optional native-space $H_0$
+term with structural alternatives under the same endpoint interface and
+optimization protocol. The ``None'' row repeats the endpoint-only reference;
+the $H_0$ row repeats configuration (c) from the main comparison.
+
+\input{tables/structural_controls}
 
 The sorted spanning-path control constructs a geometry-independent path through
 the shuffled batch and matches the independently sorted student and teacher
@@ -239,6 +232,48 @@ student and teacher MST edge weights and discards edge correspondence. The
 path, Teacher-MST, and $H_0$ controls expose $B-1$ scalar constraints per batch,
 kNN exposes $B$, and Gram matching is deliberately denser.
 
+Among the evaluated controls and weights, $H_0$ produces the largest positive
+change. The comparison rules out several simple alternatives but does not
+isolate MST sorting or persistence-specific information: the objectives also
+differ in graph construction, correspondence, density, and gradient behavior.
+
+\FloatBarrier
+\subsection{Implementation of the \texorpdfstring{$H_0$}{H0} Loss}
+\label{app:h0-implementation}
+
+Algorithm~\ref{alg:h0-loss} makes the nonsmooth implementation explicit. The
+teacher branch is evaluated without gradients. On the student branch, the MST
+edge selection and sorting permutation are detached, while the selected edge
+weights remain differentiable. Exact distance ties are passed to SciPy in
+row-major upper-triangular order. Although the selected active tree can depend
+on this library tie-break, every valid MST has the same sorted multiset of edge
+weights; the backward pass follows the particular active tree returned in that
+forward pass. All reported runs use chord distance, FP32 Gram computation,
+$\varepsilon=10^{-7}$ inside the square root, one 128-example cloud per full
+training batch (and the complete smaller tail batch), and
+$\lambda_{\mathrm{topo}}=0.5$ for the combined objective.
+
+\begin{algorithm}[H]
+\caption{Native-space $H_0$ connectivity-scale loss for one minibatch}
+\label{alg:h0-loss}
+\begin{algorithmic}[1]
+\Require Row-normalized teacher and student batches $T_{\mathcal B}$ and
+$Z_{\mathcal B}$; numerical floor $\varepsilon$.
+\For{$A\in\{T_{\mathcal B},Z_{\mathcal B}\}$}
+    \State Compute $G\gets AA^\top$ in FP32 and symmetrize
+    $G\gets(G+G^\top)/2$.
+    \State Compute $D_{ij}\gets\sqrt{\max(2-2G_{ij},\varepsilon)}$ and set
+    $D_{ii}\gets0$.
+    \State On a detached CPU float64 copy, add the same positive constant to
+    every off-diagonal edge and select an undirected MST with SciPy from the
+    upper triangle.
+    \State Gather the selected weights from the unshifted $D$ and sort them to
+    obtain $q^A_{(1:B-1)}$.
+\EndFor
+\State \Return $(B-1)^{-1}\sum_{j=1}^{B-1}(q^Z_{(j)}-q^T_{(j)})^2$.
+\end{algorithmic}
+\end{algorithm}
+
 \FloatBarrier
 \subsection{Topology-Weight Sensitivity}
 \label{app:topology-sensitivity}
@@ -246,15 +281,29 @@ kNN exposes $B$, and Gram matching is deliberately denser.
 Table~\ref{tab:sensitivity-15k} varies the topology weight in configuration
 (c), with all other settings fixed to the main recipe. Every tested nonzero
 weight improves over the endpoint-only setting, while values from 0.5 to 1.0
-differ by at most 0.24 points. We omit the earlier epoch-matched batch-size
-sweep because changing batch size also changed the number of optimizer updates
-and therefore did not isolate batch size.
+differ by at most 0.24 points.
 
 \input{tables/sensitivity_15k}
 
 \FloatBarrier
 \section{Additional Evaluation}
 \label{app:additional-evaluation}
+
+\subsection{Task-Level Mean Differences from TALAS}
+\label{app:task-mean-differences}
+
+Table~\ref{tab:task-mean-differences} expands the aggregate comparison into
+differences of the reported task means. Configuration (a) is mixed: GATE-KD is
+higher on five tasks, and the overall gain is influenced strongly by STS12.
+Configuration (b) is higher on six tasks. The compact configuration (c) is the
+most consistent, with positive differences on eight of nine tasks and the only
+negative difference being $-0.05$ on MRPC. These are descriptive differences
+of three-seed means, not paired confidence intervals or per-task significance
+tests.
+
+\input{tables/task_mean_differences}
+
+\FloatBarrier
 
 \subsection{Broader 100K Task-Adapted Corpus}
 \label{app:results-100k}
@@ -284,7 +333,11 @@ uses no instruction prefix or task-specific retrieval training and reports
 nDCG@10. Retrieval scores are not included in the sentence-level averages of
 Table~\ref{tab:main-results}. Teacher and student-base scores are deterministic,
 while distilled-student scores are mean $\pm$ sample standard deviation over
-three seeds.
+three seeds. None of these five retrieval corpora contributes text to the
+distillation set, making this evaluation corpus-disjoint from distillation;
+however, the models are still trained on the task-adapted sentence corpus, so
+this is a transfer guardrail rather than a benchmark-disjoint training
+protocol.
 
 \input{tables/retrieval_results_15k}
 \FloatBarrier
@@ -298,7 +351,7 @@ the sentence-level distillation objectives do not fully preserve the teachers'
 zero-shot retrieval capability.
 
 \FloatBarrier
-\section{Representation Diagnostics}
+\section{Exploratory Representation Diagnostics}
 \label{app:layerwise-cka}
 
 We examine whether final-embedding supervision changes the internal
@@ -327,15 +380,11 @@ induced by distillation.
 
 To contextualize representation similarity relative to initialization,
 Figure~\ref{fig:layerwise-delta-cka} subtracts the pretrained-student CKA matrix
-from the mean matrix after distillation. GATE-KD produces higher
-final-to-final CKA than TALAS in all
-three configurations. The raw values are 0.8266, 0.8447, and 0.7845 for
-GATE-KD, compared with 0.7741, 0.7901, and 0.7333 for TALAS in configurations
-(a), (b), and (c), respectively. The corresponding changes from initialization
-are 0.2992, 0.2773, and 0.2781 for GATE-KD, compared with 0.2468, 0.2227, and
-0.2269 for TALAS. GATE-KD consequently exhibits consistently higher
-final-to-final CKA across the three configurations, with differences ranging
-from 0.051 to 0.055.
+from the mean matrix after distillation. Final-to-final CKA is higher for
+GATE-KD than for TALAS in every configuration: 0.8266, 0.8447, and 0.7845
+versus 0.7741, 0.7901, and 0.7333 in configurations (a), (b), and (c), a
+difference of 0.051 to 0.055 that is also present in the change from
+initialization.
 
 \begin{figure}[H]
     \centering
@@ -346,17 +395,17 @@ from 0.051 to 0.055.
     \label{fig:layerwise-delta-cka}
 \end{figure}
 
-The changes are distributed across multiple later student layers rather than
-being confined to a single teacher--student layer pair. Thus final-embedding
-supervision co-occurs with measurable changes in later student representations
-despite the absence of explicit intermediate-layer matching. Some layer pairs
-decrease in CKA, so the result does not imply uniformly stronger alignment at
-every depth. CKA is descriptive: it does not establish that the observed
+The changes spread over several later student layers rather than one
+teacher--student pair, and some layer pairs decrease, so final-embedding
+supervision co-occurs with changes in later layers without uniformly stronger
+alignment at every depth. CKA is descriptive: it does not establish that the observed
 changes cause downstream improvements or that endpoint supervision
 mechanistically substitutes for intermediate-layer distillation. It is also
 invariant to orthogonal transformations and isotropic scaling, so higher CKA
 measures representational similarity rather than transferred task
-information. The figures report seed means only; we have not measured
+information; in particular it is blind to the orthogonal gauge itself, so
+nothing in these figures bears on the coordinate-alignment claims of
+Section~\ref{sec:analysis-gauge}. The figures report seed means only; we have not measured
 seed-level variance of the CKA matrices, included a fixed-PCA control without
 a fitted gauge, or tested whether per-layer CKA changes correlate with
 downstream differences. We therefore use these probes to document that

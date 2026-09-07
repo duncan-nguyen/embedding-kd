@@ -5,10 +5,8 @@
 % its H0 residual remains the decomposition-suite diagnostic.
 \begin{table}[H]
     \centering
-    \caption{Primary endpoint and topology signal decomposition in
-    configuration (c). Values are mean $\pm$ sample standard deviation over
-    three seeds; $H_0$ residuals use the native teacher space. Best values are
-    bold.}
+    \caption{Endpoint and topology signal decomposition in configuration (c).
+    Mean $\pm$ sample standard deviation over three seeds; best values are bold.}
     \label{tab:signal-decomposition}
     \small
     \newcommand{\deccell}[2]{#1{\tiny $\pm$ #2}}
@@ -16,8 +14,8 @@
     \begin{tabular}{@{}lccccc@{}}
         \toprule
         Objective & $\lambda_{\mathrm{topo}}$
-        & $H_0$ residual $\downarrow$ & Avg.~IOD $\uparrow$
-        & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
+        & $H_0$ residual $\downarrow$ & Avg.~Src $\uparrow$
+        & Avg.~Non-src $\uparrow$ & Avg. $\uparrow$ \\
         \midrule
         No-teacher control & --- & \deccell{0.3595}{0.0000}
         & \deccell{41.61}{0.00} & \deccell{58.10}{0.00} & \deccell{52.60}{0.00} \\

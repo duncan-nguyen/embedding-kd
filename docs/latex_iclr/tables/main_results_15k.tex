@@ -1,7 +1,7 @@
-\begin{table}[!tp]
-    \caption{Results across nine sentence-level benchmarks. Distilled-student
-    scores are mean $\pm$ sample standard deviation over three seeds; best and
-    second-best results are bold and underlined.}
+\begin{table}[!t]
+    \caption{Nine-task results (mean $\pm$ sample standard deviation, three
+    seeds). Full GATE-KD uses $\lambda_{\mathrm{topo}}=0.5$; $\dagger$ is the
+    compact endpoint-only aggregate (excluded from task-cell ranking).}
     \label{tab:main-results}
     \centering
     \scriptsize
@@ -16,7 +16,7 @@
         & \multicolumn{3}{c}{Averages} \\
         \cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}\cmidrule(lr){11-13}
         Method & Banking77 & Tweet & Emotion & MRPC & SciTail & WiC
-        & SICK & STS12 & STS-B & IOD & OOD & All \\
+        & SICK & STS12 & STS-B & Src & Non-src & All \\
         \midrule
         \multicolumn{13}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
         \midrule
@@ -155,6 +155,10 @@
         & \resultcell{\underline{84.20}}{0.06} & \resultcell{\textbf{81.60}}{0.05} & \resultcell{68.07}{0.12}
         & \resultcell{\textbf{72.48}}{0.08} & \resultcell{\textbf{68.96}}{0.18} & \resultcell{\textbf{74.76}}{0.14}
         & \resultcell{\textbf{68.62}}{0.21} & \resultcell{\textbf{77.87}}{0.02} & \resultcell{\textbf{74.79}}{0.06} \\
+        GATE-KD endpoint only$^{\dagger}$
+        & \multicolumn{9}{c}{---}
+        & \resultcell{67.68}{0.19} & \resultcell{77.55}{0.07}
+        & \resultcell{74.26}{0.02} \\
         \bottomrule
     \end{tabular}%
     }

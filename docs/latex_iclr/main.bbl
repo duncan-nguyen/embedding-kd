@@ -1,4 +1,4 @@
-\begin{thebibliography}{50}
+\begin{thebibliography}{48}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -28,13 +28,6 @@ A.~I. Burykina, D.~R. Ledneva, and D.~P. Kuznetsov.
   in task-oriented dialogue systems.
 \newblock \emph{Doklady Mathematics}, 112:\penalty0 319--331, 2025.
 \newblock \doi{10.1134/S1064562425700243}.
-
-\bibitem[Chazal et~al.(2014)Chazal, de~Silva, and Oudot]{chazal2014persistence}
-Fr{\'e}d{\'e}ric Chazal, Vin de~Silva, and Steve Oudot.
-\newblock Persistence stability for geometric complexes.
-\newblock \emph{Geometriae Dedicata}, 173:\penalty0 193--214, 2014.
-\newblock \doi{10.1007/s10711-013-9937-z}.
-\newblock URL \url{https://arxiv.org/abs/1207.3885}.
 
 \bibitem[Chen et~al.(2024)Chen, Xiao, Zhang, Luo, Lian, and Liu]{chen2024m3}
 Jianlyu Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu Lian, and Zheng Liu.
@@ -73,6 +66,12 @@ Quoc~Phong Dao, Hoang~Son Nguyen, Khanh~Chi Pham, Linh Ngo~Van, Diep Thi-Ngoc
   2026.
 \newblock \doi{10.18653/v1/2026.acl-long.1509}.
 \newblock URL \url{https://aclanthology.org/2026.acl-long.1509/}.
+
+\bibitem[Das et~al.(2021)Das, Haque, and Tanveer]{das2021tedtalk}
+Shouman Das, Syed~A. Haque, and Md.~Iftekhar Tanveer.
+\newblock Persistence homology of {TEDtalk}: Do sentence embeddings have a
+  topological shape?
+\newblock \emph{arXiv preprint arXiv:2103.14131}, 2021.
 
 \bibitem[Devlin et~al.(2019)Devlin, Chang, Lee, and Toutanova]{devlin2019bert}
 Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
@@ -114,16 +113,6 @@ Edith Heiter, Robin Vandaele, Tijl De~Bie, Yvan Saeys, and Jefrey Lijffijt.
 Geoffrey Hinton, Oriol Vinyals, and Jeff Dean.
 \newblock Distilling the knowledge in a neural network.
 \newblock \emph{arXiv preprint arXiv:1503.02531}, 2015.
-
-\bibitem[Hofer et~al.(2019)Hofer, Kwitt, Niethammer, and
-  Dixit]{hofer2019connectivity}
-Christoph Hofer, Roland Kwitt, Marc Niethammer, and Mandar Dixit.
-\newblock Connectivity-optimized representation learning via persistent
-  homology.
-\newblock In \emph{Proceedings of the 36th International Conference on Machine
-  Learning}, volume~97 of \emph{Proceedings of Machine Learning Research}, pp.\
-   2751--2760, 2019.
-\newblock URL \url{https://proceedings.mlr.press/v97/hofer19a.html}.
 
 \bibitem[Hofer et~al.(2020)Hofer, Graf, Rieck, Niethammer, and
   Kwitt]{hofer2020topologically}
@@ -244,14 +233,6 @@ Wonpyo Park, Dongju Kim, Yan Lu, and Minsu Cho.
 \newblock Relational knowledge distillation.
 \newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
   and Pattern Recognition}, 2019.
-
-\bibitem[Peyr{\'e} \& Cuturi(2019)Peyr{\'e} and Cuturi]{peyre2019computational}
-Gabriel Peyr{\'e} and Marco Cuturi.
-\newblock Computational optimal transport.
-\newblock \emph{Foundations and Trends in Machine Learning}, 11\penalty0
-  (5--6):\penalty0 355--607, 2019.
-\newblock \doi{10.1561/2200000073}.
-\newblock URL \url{https://arxiv.org/abs/1803.00567}.
 
 \bibitem[Reimers \& Gurevych(2020)Reimers and
   Gurevych]{reimers2020multilingual}

@@ -1,0 +1,25 @@
+\begin{table}[H]
+    \centering
+    \caption{Task-level differences of reported means, GATE-KD minus TALAS.
+    Positive values favor GATE-KD. The final column counts positive task-level
+    differences. These are descriptive differences of means over three seeds,
+    not seed-paired uncertainty estimates.}
+    \label{tab:task-mean-differences}
+    \scriptsize
+    \setlength{\tabcolsep}{3.2pt}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}lrrrrrrrrrrr@{}}
+        \toprule
+        Config. & Banking77 & Tweet & Emotion & MRPC & SciTail & WiC
+        & SICK & STS12 & STS-B & Avg. & Positive \\
+        \midrule
+        (a) & +0.07 & +0.09 & +1.01 & $-0.07$ & $-1.60$ & $-1.40$
+            & +1.01 & +4.36 & $-0.06$ & +0.38 & 5/9 \\
+        (b) & +0.34 & $-0.96$ & +3.18 & $-0.20$ & +0.12 & $-1.25$
+            & +1.37 & +1.19 & +0.55 & +0.48 & 6/9 \\
+        (c) & +1.26 & +0.51 & +4.64 & $-0.05$ & +2.31 & +1.25
+            & +2.06 & +0.88 & +1.42 & +1.59 & 8/9 \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}

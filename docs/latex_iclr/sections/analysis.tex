@@ -1,101 +1,50 @@
-\section{What Drives GATE-KD?}
+\subsection{What Makes the Interface Work?}
 \label{sec:analysis}
 
-We organize the analysis around two empirical observations. First, within the
-evaluated controls, the endpoint interface obtains most of its numerical gain
-after establishing fitted coordinate comparability;
-the particular fixed subspace and repeated gauge updates are secondary design
-choices. Second, native-space $H_0$ provides a smaller complementary signal
-rather than replacing sample-wise endpoint supervision. Unless stated
-otherwise, controls use configuration (c), whose 384-dimensional student has
-the strongest width bottleneck. The variants come from matched rerun suites;
-their GATE-KD reference rows repeat configuration (c) from the main sweep for
-consistency. Extended controls are grouped by claim in
-Appendices~\ref{app:endpoint-analysis} and~\ref{app:structural-analysis}.
+We use the compact configuration (c) to compare fixed versus learned
+interfaces, persistent versus stepwise alignment, and fixed versus refreshed
+targets. Additional controls appear in Appendix~\ref{app:endpoint-analysis}.
 
-\subsection{Fitted Coordinate Comparability Explains Most of the Endpoint Gain}
+\subsubsection{Does the Interface Need to Be Learned?}
 \label{sec:analysis-interface}
 
-Table~\ref{tab:gauge-mechanism} holds the PCA subspace and full GATE-KD
-objective (endpoint supervision plus native-space $H_0$) fixed while varying
-how the endpoint coordinates are treated. The unaligned row trains directly
-against the fixed PCA coordinates and therefore doubles as the matched
-PCA-only endpoint baseline, the sentence-embedding analogue of the TCS target
-construction \citep{tcs}. In configuration (c), no alignment,
-a random orientation, a fixed fitted gauge, one refit, and epoch-wise
-Procrustes reach 72.51, 73.02, 74.63, 74.64, and 74.79 Avg., respectively. The
-additional invariant control directly minimizes the endpoint loss over an
-orthogonal rotation on every minibatch and reaches $72.74\pm0.07$. It improves
-only marginally over the unaligned controls and trails epoch-wise Procrustes by
-2.05 points. Separately, within the gauge-schedule controls, the fixed fitted
-gauge gains 2.12 points over no alignment and retains all but 0.16 points of the
-epoch-wise result. Taken together, these results argue against explaining the
-gain by merely weakening pointwise matching through a student-adaptive
-rotation. They are instead consistent with the benefit coming from one fitted
-orientation, shared across minibatches, that is consistent with the student's
-initial coordinates. We note what these controls do not isolate: because
-$R^{(0)}$ is fitted to the initialized student, the schedule controls cannot
-separate a resolved cross-model coordinate mismatch from a target orientation
-that merely makes early optimization easier for that particular
-initialization. A control that fits $R^{(0)}$ on one initialization and trains
-independently initialized students against that fixed orientation would
-separate the two readings; we leave it to future work and interpret the gauge
-here as an empirically useful optimization device rather than as a
-transferable coordinate system.
+All rows in Table~\ref{tab:interface-families} use endpoint-only supervision.
+The learned controls train one bias-free linear map in either direction under
+the same AdamW schedule; the fixed controls construct targets before training.
+
+\input{tables/interface_families}
+
+PCA--Procrustes reaches 74.28 Avg., versus 69.33 for the stronger learned map
+and 69.35 for unaligned PCA. A fixed target is therefore not enough; its fitted
+orientation matters. This result is limited to two bias-free linear maps and
+does not rank stronger learned projector families.
+
+\subsubsection{Persistent Corpus-Level Targets versus Stepwise Invariant Matching}
+\label{sec:analysis-gauge}
+
+Table~\ref{tab:gauge-mechanism} varies the orientation treatment under the full
+objective. Its invariant row re-solves Procrustes in every minibatch; unlike the
+fixed rows, it couples local estimation, a moving target, and potentially
+rank-deficient cross-covariance. It is therefore an interface comparison, not a
+single-factor test of locality.
 
 \input{tables/gauge_mechanism}
 
-Within these controls, most of the observed benefit therefore accompanies an
-initially fitted gauge: the one-refit and fixed-gauge means differ by only 0.01
-points, while epoch-wise refitting adds a modest 0.16 points over the
-fixed-gauge result. We interpret refitting as a secondary optimization
-refinement, not as an independently established generalization mechanism. The
-invariant control uses batches of 128 in a 384-dimensional student space, so
-its rotation is underdetermined outside the current batch span. It tests the
-reviewed local invariant relaxation but does not rule out every possible global
-rotation-invariant objective. Matched subspace controls further show that
-aligned random projections remain within 0.13--0.34 points of PCA despite
-retaining substantially less teacher energy, while the updated uncentered-SVD
-run is 0.19 points below PCA. Within these controls, the proximity of the
-subspace constructions is more consistent with fitted coordinate comparability
-than with retained variance or a uniquely optimal PCA basis being the primary
-driver. Comparisons with learned endpoint maps, subspace-construction controls,
-target-rank sensitivity, and gauge-fit-set size appear in
-Appendix~\ref{app:endpoint-analysis}.
+Raw PCA, a random fixed orientation, and fitted $R^{(0)}$ score 72.51, 73.02,
+and 74.63. Fitting the orientation therefore adds 1.61 points over a random
+fixed gauge and 2.12 over raw coordinates. This supports checkpoint-conditioned
+presentation, not information in the rotation itself.
 
-\FloatBarrier
+The stepwise invariant control scores $72.74\pm0.07$, 1.89 below fixed
+$R^{(0)}$. Proposition~\ref{prop:local-global-gap} characterizes its extra
+batchwise freedom for fixed representations but does not predict this downstream
+gap; moving targets and minibatch rank remain confounds. A memory-bank or
+periodic full-corpus invariant control is needed to separate them.
 
-\subsection{\texorpdfstring{$H_0$}{H0} Provides a Complementary
-Connectivity-Scale Signal}
-\label{sec:analysis-structural}
-
-In the structural-control comparison, endpoint-only supervision reaches
-74.26 Avg., while native-space $H_0$ at
-$\lambda_{\mathrm{topo}}=0.5$ reaches 74.79, a 0.53-point refinement.
-Table~\ref{tab:structural-controls} compares it with pairwise, local-scale,
-teacher-MST, and Gram objectives while holding the endpoint interface and
-optimization protocol fixed. The ``None'' row repeats the endpoint-only
-reference from Table~\ref{tab:signal-decomposition}, while the $H_0$ row repeats
-configuration (c) from the main comparison.
-
-``None'' denotes endpoint-only supervision. The alternatives test a sorted
-spanning path, directed nearest-neighbor distances, teacher-MST edge
-correspondence, and dense native-space Gram matching. The $H_0$ objective
-instead matches the sorted MST edge-weight distributions without edge
-correspondence. Appendix~\ref{app:structural-control-definitions} gives the
-complete definitions and constraint counts.
-
-\input{tables/structural_controls}
-
-Among the evaluated controls and weights, the $H_0$ objective is the strongest
-auxiliary, exceeding kNN
-distribution matching by 0.32 points and teacher-MST matching by 0.46 points;
-sorted spanning-path and native Gram matching instead reduce Avg. by 0.60 and
-0.69 points. Thus the gain is not explained by adding an arbitrary structural
-objective and is consistent with connectivity-scale matching providing a
-distinct complementary signal under the evaluated weights. Appendix
-\ref{app:signal-decomposition} shows that $H_0$ alone reaches 64.22, so
-connectivity does not replace pointwise correspondence. Topology-weight
-sensitivity appears in Appendix~\ref{app:topology-sensitivity}.
+One refit scores 74.64 and four refits 74.79, only 0.01 and 0.16 above
+$R^{(0)}$. Representative selection matters more than repeated alignment here.
+Aligned random subspaces also remain within 0.34 points of PCA
+(Appendix~\ref{app:pca-controls}), so the evidence favors a stable,
+student-aligned target over a particular high-energy subspace.
 
 \FloatBarrier

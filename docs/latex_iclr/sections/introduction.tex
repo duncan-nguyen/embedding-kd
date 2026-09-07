@@ -1,72 +1,52 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Text embedding models support retrieval, semantic similarity, clustering, and
-classification, but the strongest encoders are often too costly for
-latency- or memory-constrained deployment. Knowledge distillation offers a
-natural route to compact embedding models by transferring supervision from a
-frozen teacher to a smaller student
+Text embeddings support retrieval, similarity, clustering, and classification,
+but large encoders can be costly to deploy. Knowledge distillation transfers
+their behavior to compact students using unlabeled text
 \citep{hinton2015distilling,reimers2020multilingual}. Unlike class logits,
-however, embedding coordinates have no shared semantics across models. Teacher
-and student representations may differ in dimension, orientation, and
-architecture. Existing methods address this mismatch with learned projectors,
-relational or contrastive objectives, and intermediate-layer supervision
+embeddings from independently pretrained models need not share a width or a
+coordinate system. Prior methods bridge this mismatch with learned projectors,
+relational losses, or selected hidden layers
 \citep{park2019rkd,tian2020crd,xu2023distillcse,zhang2024jasper,truong2025emo,talas}.
-Hierarchy-based transfer can be effective, but it requires access to internal
-teacher representations and assumptions about cross-model layer
-correspondence \citep{ko2023revisiting,kim2025layerselection}. This machinery
-can obscure a more basic question: whether teacher and student endpoints have
-first been expressed in comparable coordinates. We therefore study the endpoint
-interface as a potential bottleneck in cross-dimensional distillation.
+We ask whether final teacher endpoints alone can provide a direct target for the
+embedding that the student will deploy.
 
-We test this hypothesis by centering the transfer mechanism on an
-\emph{extrinsic interface} that expresses teacher representations in coordinates
-the student can match pointwise. We augment this primary mechanism with an
-\emph{intrinsic regularizer} defined on properties of the representation cloud
-that do not depend on its coordinates or ambient dimension. This decomposition
-leads to \textbf{GATE-KD}, Gauge Alignment and Topology for Embedding
-Distillation. GATE-KD fits a fixed principal-component subspace to cached teacher
-endpoints to provide a non-trainable reduction at the student width. Within the
-retained subspace, orthogonal Procrustes alignment fits the orientation of the
-teacher targets to the student's initial coordinates in closed form, without
-changing sample correspondence or pairwise geometry.
-Because projection cannot preserve all teacher geometry, GATE-KD adds a
-degree-zero persistent-homology ($H_0$) summary regularizer that matches
-distributions of connectivity scales in the native teacher and student spaces.
-This coarse auxiliary summary is invariant to coordinates and ambient dimension;
-it does not preserve sample-level neighborhoods or the full metric geometry. The resulting objective
-supervises only the final student embedding, trains no alignment module, and
-requires no online teacher forward pass during ordinary training.
+Dimensional reduction and coordinate alignment solve different problems.
+Projection chooses which teacher variation survives at student width; the
+remaining axes can still be rotated. Imagine a map on a transparent sheet:
+rotating it changes no distance between cities, but changes every $(x,y)$
+coordinate. Likewise, an orthogonal rotation preserves all target similarities
+yet changes the gradients of pointwise distillation. We call choosing one such
+student-relative orientation \emph{gauge fixing}. It selects a presentation for
+optimization, not canonical teacher coordinates.
 
-Experiments across three teacher--student configurations and nine sentence-level
-benchmarks under a label-free task-adapted protocol provide evidence consistent
-with this endpoint-centered view. A per-minibatch rotation-invariant control
-trails GATE-KD by 2.05 points; separate schedule controls suggest that
-consistent corpus-level targets matter beyond allowing an adaptive rotation,
-while periodic refitting provides only a smaller additional gain. Native-space
-$H_0$ adds 0.53 points over endpoint-only training and performs best among the
-evaluated structural controls and weights. Overall, GATE-KD obtains the
-numerically highest aggregate score among the evaluated distilled students in
-all three configurations, exceeding the next-best baseline by 0.38, 0.48, and
-1.59 points. Within the measured minibatch optimization loop, it also records
-the lowest update time and cumulative optimization time among the evaluated
-methods in all three configurations. These results show that
-final-embedding-only distillation can be competitive with the evaluated
-hierarchy-based alternatives in the task-adapted sentence-level settings
-studied here.
+This view leads to \textbf{GATE-KD}, Gauge-Aligned Target Embeddings for
+Knowledge Distillation. GATE-KD caches final teacher embeddings, projects them
+to student width, and uses closed-form orthogonal Procrustes alignment to orient
+the targets toward the pretrained student. Only the student is trained; the
+target map is fixed within each epoch and absent at inference. Procrustes is
+classical---the design choice is to apply it on the target side instead of
+learning a projector or re-solving the orientation inside every minibatch loss.
+An optional native-space $H_0$ term transfers coarse connectivity scales.
 
-We make three contributions.
+Across three teacher--student pairs and nine sentence benchmarks, GATE-KD has
+the highest numerical average under a label-free, task-adapted protocol. The
+clearest margin is 1.59 points for the 22M student; the 0.38 and 0.48 margins for
+larger students are descriptive three-seed comparisons. In compact matched
+controls, the endpoint-only fixed interface exceeds the stronger of two learned
+linear maps by 4.95 points. A fitted initial orientation is within 0.16 points
+of epoch-wise refitting, and aligned random subspaces are within 0.34 points of
+PCA despite much lower retained energy. Thus the main empirical story is the
+student-aligned presentation of a fixed endpoint target, rather than frequent
+alignment or PCA-specific variance retention.
+
+We make three contributions:
 \begin{itemize}
-    \item We formulate cross-dimensional embedding distillation around a
-    comparable final-embedding interface, separating pointwise coordinate
-    comparability from auxiliary coordinate-invariant structure.
-    \item We introduce a fixed-reduction, closed-form gauge interface using only
-    cached teacher endpoints, together with native-space $H_0$ regularization as
-    a complementary signal and epoch-wise gauge refresh as a secondary
-    optimization refinement.
-    \item We provide a matched evaluation and controlled analyses that isolate
-    gauge fitting, subspace construction, refitting, and $H_0$ connectivity-scale
-    matching, clarifying
-    which components account for the observed gains and the regime in which the
-    conclusions apply.
+    \item We separate cross-dimensional endpoint distillation into subspace
+    selection and student-relative target orientation.
+    \item We introduce a closed-form target-side alignment for direct endpoint
+    supervision, with no trainable cross-space map or layer correspondence.
+    \item We evaluate three model pairs and matched compact-student controls
+    that isolate target construction, orientation, and refit frequency.
 \end{itemize}

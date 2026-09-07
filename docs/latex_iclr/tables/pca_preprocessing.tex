@@ -2,19 +2,16 @@
 % PCA + Procrustes reference: main-results configuration (c).
 \begin{table}[!htbp]
   \centering
-  \caption{PCA preprocessing and subspace controls under the full GATE-KD
-  objective in configuration (c). All rows retain native-space $H_0$
-  ($\lambda_{\mathrm{topo}}=0.5$) and epoch-wise Procrustes; only the teacher
-  projection changes. Mean $\pm$ sample standard deviation over three seeds;
-  random draws remain separate; best values are bold.}
+  \caption{PCA preprocessing and subspace controls in configuration (c).
+    Mean $\pm$ sample standard deviation over three seeds; best values are bold.}
   \label{tab:pca-preprocessing}
   \small
   \newcommand{\pcell}[2]{#1{\tiny $\pm$ #2}}
   \setlength{\tabcolsep}{4.5pt}
   \begin{tabular}{@{}lcccc@{}}
     \toprule
-    Interface & Retained energy $\uparrow$ & Avg. IOD $\uparrow$
-    & Avg. OOD $\uparrow$ & Avg. $\uparrow$ \\
+    Interface & Retained energy $\uparrow$ & Avg.~Src $\uparrow$
+    & Avg.~Non-src $\uparrow$ & Avg. $\uparrow$ \\
     \midrule
     PCA $+$ Procrustes
       & 0.928 & \pcell{68.62}{0.21} & \pcell{\textbf{77.87}}{0.02}

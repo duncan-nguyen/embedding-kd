@@ -1,9 +1,8 @@
 % Source: runs/aux_sweeps_20260904-113834/target_map/target_map_ablation.csv
-\begin{table}[H]
+\begin{table}[!t]
     \centering
-    \caption{Endpoint-interface ablation with endpoint-only supervision in
-    configuration (c). Scores are mean $\pm$ sample standard deviation over
-    three seeds; random controls share one map draw. Best values are bold.}
+    \caption{Compact endpoint-interface ablation (mean $\pm$ sample standard
+    deviation, three seeds).}
     \label{tab:interface-families}
     \small
     \newcommand{\abcell}[2]{#1{\tiny $\pm$ #2}}
@@ -11,7 +10,7 @@
     \begin{tabular}{@{}llcccc@{}}
         \toprule
         Target map & Gauge & Retained energy $\uparrow$
-        & Avg.~IOD $\uparrow$ & Avg.~OOD $\uparrow$ & Avg. $\uparrow$ \\
+        & Avg.~Src $\uparrow$ & Avg.~Non-src $\uparrow$ & Avg. $\uparrow$ \\
         \midrule
         Learned $T\!\to\!S$ & --- & N/A
         & \abcell{54.34}{0.68} & \abcell{65.02}{0.25} & \abcell{61.46}{0.39} \\

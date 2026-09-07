@@ -1,64 +1,57 @@
 \section{Related Work}
 \label{sec:related-work}
 
-Early text-embedding distillation regressed student sentence vectors directly
-onto teacher outputs, demonstrating dense supervision from unlabeled text
-\citep{reimers2020multilingual}; later methods combine endpoint transfer with
-contrastive, relative-geometric, multilingual, or specialized objectives
+Prior work addresses three pieces of the problem: what representation to
+transfer, how to bridge different widths, and whether to compare coordinates
+or coordinate-free structure. We organize the literature along these axes.
+
+\paragraph{Embedding and intermediate-layer distillation.}
+Early text-embedding distillation directly regressed student sentence vectors
+onto teacher outputs \citep{reimers2020multilingual}. Later methods augment
+endpoint transfer with contrastive, relative-geometric, multilingual, or
+task-specific objectives
 \citep{gao2021distilcse,xu2023distillcse,simtde2023,lealla2023,kim2023embeddistill,zhang2024jasper,li2025ese,leaf}
-and with generated or task-targeted data \citep{lee2024gecko,akram2026jina}. A
-separate family exploits the representation hierarchy: EMO aligns token-level
-relations and hidden states, TALAS combines a teacher endpoint anchor with
-lower-layer self-distillation, and others transfer mixtures of layers,
-intermediate states, or attention
-\citep{truong2025emo,talas,vu2026mol,wang2024feature}. Such supervision relies
-on access to internal representations and on cross-model layer correspondence,
-whose robustness has been questioned
-\citep{ko2023revisiting,kim2025layerselection}. GATE-KD studies the
-complementary terminal-only regime using cached final teacher embeddings.
-Because evaluation settings differ across these systems, with EMO using
-task-specific supervised training and TALAS a label-free task-adapted corpus,
-we follow the TALAS data and evaluation protocol for a like-for-like comparison;
-this controls corpus and task coverage but does not turn source-task results
-into corpus-disjoint transfer.
+and with generated or targeted data \citep{lee2024gecko,akram2026jina}. Another
+family transfers intermediate representations: EMO aligns token relations and
+hidden states, TALAS combines an endpoint anchor with lower-layer
+self-distillation, and other methods transfer mixtures of layers or attention
+\citep{truong2025emo,talas,vu2026mol,wang2024feature}. Such objectives require
+internal access or choices about which layers to supervise, and cross-model
+layer correspondence can be fragile
+\citep{ko2023revisiting,kim2025layerselection}. GATE-KD instead isolates the
+terminal-only setting, using cached final teacher embeddings under the TALAS
+data and evaluation protocol (Section~\ref{sec:exp-setup}).
 
-Cross-dimensional endpoint supervision additionally requires a common output
-space. Learned projection layers are widely used, but their parameterization
-and normalization can materially alter student optimization
-\citep{hpd,miles2024projector,chen2023projector}. TCS instead constructs reduced
-coordinates from cached teacher features using PCA \citep{tcs}; the unaligned
-row of Table~\ref{tab:gauge-mechanism} plays the role of this fixed-PCA target
-in our matched comparison. After reduction, orthogonal changes of basis
-preserve the retained inner products, so representation-similarity work treats
-them as natural equivalences
-\citep{kornblith2019cka,williams2021shape,maystre2025procrustes,han2026equivalence},
-and \citet{bhattarai2025shortcut} show that unconstrained projected matching
-can reach zero feature loss without preserving teacher Gram geometry, a
-shortcut Procrustes avoids. Dimension consistency is also studied within a
-single model: Matryoshka representation learning trains nested prefixes of one
-embedding to remain useful at several truncation ranks \citep{kusupati2022mrl},
-and MIPIC adds self-distillation between full and truncated embeddings with
-intra-relational objectives \citep{huy2026mipic}. There the full embedding is
-its own teacher; GATE-KD instead transfers a frozen external teacher of a
-different width, where no shared parameterization links the two spaces and a
-coordinate interface must be constructed. It combines a fixed PCA bottleneck
-with a fitted, closed-form Procrustes gauge rather than a trainable projector;
-the target-rank sensitivity in Appendix~\ref{app:target-rank} can be read as
-treating the student width as a nested target rank of the teacher subspace.
+\paragraph{Cross-dimensional representation alignment.}
+Learned projectors provide a common space for teacher and student embeddings,
+but their parameterization and normalization affect optimization
+\citep{hpd,miles2024projector,chen2023projector}. TCS instead obtains fixed
+lower-dimensional targets using PCA \citep{tcs}. After reduction, orthogonal
+changes of basis preserve inner products, so a representation belongs to an
+equivalence class rather than a unique coordinate system
+\citep{kornblith2019cka,williams2021shape,maystre2025procrustes}.
+\citet{han2026equivalence} formalizes this principle and argues that absolute
+coordinates are not teacher content. We begin from the same premise but ask an
+optimization question left after rank reduction: which student-relative member
+of the equivalence class should serve as the fixed pointwise target?
+\citet{bhattarai2025shortcut} remove orientation by minimizing a Procrustes
+distance inside the distillation loss. GATE-KD instead selects one corpus-level
+representative relative to the initial student and exposes it persistently
+during training; Table~\ref{tab:gauge-mechanism} compares the two interfaces.
+Unlike Matryoshka learning and MIPIC, which train nested widths within one model
+\citep{kusupati2022mrl,huy2026mipic}, our setting transfers an external teacher
+whose coordinates and width are unrelated to the student's.
 
-Coordinate-free objectives offer a complementary route to transferring
-structure. Relational, similarity-preserving, and contrastive distillation
-match pairwise distances, Gram matrices, or positive--negative relations
-\citep{park2019rkd,tung2019similarity,tian2020crd}; related methods impose
-graph- or geometry-aware constraints in graph, dialogue, and diffusion settings
+\paragraph{Coordinate-free structural objectives.}
+Relational, similarity-preserving, and contrastive distillation transfer
+pairwise distances, Gram matrices, or positive--negative relations
+\citep{park2019rkd,tung2019similarity,tian2020crd}; related work also imposes
+graph- or geometry-aware constraints
 \citep{joshi2024representation,burykina2025jdcemb,zhou2026dice}. Persistent
-homology extends this view to multiscale point-cloud structure: TopKD transfers
-topology through approximate persistence images, topological-guidance
-distillation uses persistence features from multiple teachers, and
-topologically regularized embeddings impose prior topology on learned
-low-dimensional representations
-\citep{topkd2024,jeon2024topological,heiter2023topological}. GATE-KD uses
-topology only as a dimension- and coordinate-invariant auxiliary, matching
-sorted degree-zero persistence death times in the native teacher and student
-spaces, while the explicit endpoint interface supplies the primary
-correspondence signal.
+homology provides multiscale summaries of point-cloud structure and has been
+used for topological distillation or regularization
+\citep{topkd2024,jeon2024topological,heiter2023topological}. For sentence
+embeddings, it has primarily been an analysis tool
+\citep{das2021tedtalk}. GATE-KD uses sorted degree-zero persistence death times
+only as an optional native-space auxiliary; the gauge-fixed endpoint target
+provides the primary sample-level supervision.

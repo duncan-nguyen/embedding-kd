@@ -1,21 +1,23 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-GATE-KD treats cross-dimensional embedding distillation as an interface problem,
-using a fixed PCA subspace and closed-form gauge alignment with native-space
-$H_0$ regularization. Across three teacher--student configurations, this
-final-embedding-only formulation obtains the numerically highest aggregate
-scores among the evaluated distilled students while recording the lowest
-update time and cumulative optimization time within the measured minibatch
-loop. Controlled analyses show that fitted coordinate comparability provides
-the dominant gain: a per-minibatch rotation-invariant control trails GATE-KD by
-2.05 points, while separate schedule controls identify repeated refitting as a
-secondary optimization refinement with a smaller numerical increment.
-Native-space $H_0$ adds 0.53 points in the compact comparison and performs
-best among the evaluated structural auxiliaries.
-The current sentence-level objective does not fully preserve the teacher's
-zero-shot retrieval capability, leaving broader retrieval transfer for future
-work. In addition, the current corpus uses training text from three downstream
-source benchmarks, so its source-task results measure label-free task adaptation
-rather than corpus-disjoint transfer. The conclusions are therefore limited to
-the task-adapted sentence-level regime evaluated here.
+GATE-KD exposes a hidden choice in cross-dimensional distillation: projection
+selects what teacher variation remains, but not how its coordinates are
+presented to the student. A corpus-level Procrustes fit resolves this ambiguity
+before optimization, enabling direct supervision of the deployed embedding
+without a trainable map or layer correspondence.
+
+The compact controls provide the clearest evidence. The fixed endpoint
+interface exceeds two learned linear maps by at least 4.95 points; one fitted
+orientation is within 0.16 points of four refits; and aligned random subspaces
+approach PCA despite much lower retained energy. Across three model pairs, the
+full recipe has the highest numerical nine-task average, while endpoint
+supervision supplies most of its gain and $H_0$ remains auxiliary.
+
+The scope is deliberately narrower than universal embedding transfer. Results
+use three seeds and task-adapted text; projector controls cover only two linear
+maps; and the minibatch-invariant comparison also changes target stationarity
+and fit rank. Proposition~\ref{prop:local-global-gap} explains the static
+objective relaxation, not the downstream gap. Paired multi-seed analysis, a
+stronger global-invariant control, general-text distillation, and end-to-end
+timing remain the highest-priority tests.

@@ -16,77 +16,52 @@ $1024\rightarrow384$, respectively. The Qwen teachers use last-token pooling,
 whereas BGE-M3 uses CLS pooling.
 
 \paragraph{Distillation corpus.}
-Following the data-construction protocol of TALAS \citep{talas}, we form a
-shared distillation corpus by sampling approximately 5K unlabeled training
-texts from each of Emotion, WiC, and STS-B. We retain this protocol to enable a
-controlled, like-for-like comparison with TALAS and the reproduced baselines.
-No labels or task annotations are used during distillation, and every method
-uses the same corpus.
-We refer to these three benchmarks as source tasks and the remaining six as
-non-source tasks. Tables retain the compact labels IOD and OOD, respectively;
-here OOD means only that a benchmark did not supply distillation text, not an
-unrestricted distribution shift or corpus-disjoint pretraining regime.
+Following TALAS \citep{talas}, every method uses the same corpus of about 5K
+unlabeled training texts from each of Emotion, WiC, and STS-B; no labels are
+used. We call these three benchmarks source tasks and the other six non-source
+tasks. ``Non-source'' denotes only absence from this corpus, not unrestricted
+domain shift.
 
 \paragraph{Baselines.}
-We compare GATE-KD with methods covering complementary transfer mechanisms.
-RKD matches inter-example relations \citep{park2019rkd}, while Stella uses a
-multi-stage embedding-distillation recipe \citep{zhang2024jasper}. CDM and DSKD
-address cross-tokenizer alignment and dual-space transfer, respectively
-\citep{chen2025cdm,zhang2024dskd}. EMO combines token-level relations with
-hidden-state alignment \citep{truong2025emo}, and TALAS combines teacher
-    anchoring with hierarchy-based self-distillation \citep{talas}. Method-specific
-training hyperparameters are reported in
-Appendix~\ref{app:training-hyperparameters}.
+The baselines span relational transfer (RKD), multi-stage endpoint distillation
+(Stella), cross-tokenizer or dual-space transfer (CDM, DSKD), and hidden-state
+alignment (EMO, TALAS)
+\citep{park2019rkd,zhang2024jasper,chen2025cdm,zhang2024dskd,truong2025emo,talas}.
+All share the corpus, model pairs, evaluator, five-epoch budget, batch size 128,
+and learning-rate grid while retaining method-specific components. This is a
+controlled-budget comparison, not an upper bound after per-pair tuning; full
+implementation choices appear in Appendix~\ref{app:training-hyperparameters}.
 
 \paragraph{Evaluation protocol.}
-We evaluate frozen student embeddings on nine benchmarks from three task
-families. For classification on Banking77, Emotion, and Tweet, we fit a
-logistic-regression probe on each benchmark's training split and report
-macro-F1. For pair classification on MRPC, SciTail, and WiC, we map cosine
-similarity to $[0,1]$ and report average precision. For semantic textual
-similarity on SICK, STS12, and STS-B, we report Spearman correlation with the
-gold scores. All metrics are multiplied by 100. Avg. is the unweighted mean of
-the nine primary scores, while Avg. IOD and Avg. OOD average the three in-domain
-and six out-of-domain benchmarks, respectively. We report means and sample
-standard deviations over three seeds.
+We evaluate frozen embeddings on classification (Banking77, Emotion, Tweet;
+macro-F1), pair classification (MRPC, SciTail, WiC; average precision from
+cosine similarity), and semantic similarity (SICK, STS12, STS-B; Spearman
+correlation). Metrics are multiplied by 100 and averaged over three seeds.
+Avg. is the unweighted mean of nine heterogeneous task metrics and is therefore
+a descriptive index; Src and Non-src separately average the three source and
+six non-source tasks.
 
 \subsection{Main Results}
 \label{sec:main-results}
 
 \input{tables/main_results_15k}
 
-Table~\ref{tab:main-results} compares GATE-KD with six distillation baselines
-across nine benchmarks and three teacher--student configurations. GATE-KD
-obtains the numerically highest overall average in all three configurations, improving
-over the next-best baseline by 0.38, 0.48, and 1.59 points in configurations
-(a), (b), and (c), respectively. The largest margin occurs in the evaluated
-configuration with the compact 22M-parameter student.
+GATE-KD has the highest numerical Avg. in all three configurations, exceeding
+the next-best baseline by 0.38, 0.48, and 1.59 points. The first two are small
+three-seed differences; the compact result is both larger and broader. Relative
+to TALAS, GATE-KD is higher on 5/9, 6/9, and 8/9 task means, respectively
+(Appendix~\ref{app:task-mean-differences}), and ranks first in 18 of 27
+task--configuration comparisons overall. Pair classification remains mixed.
 
-The task-level results show that this advantage is broad but not uniform.
-GATE-KD ranks first on 18 of the 27 individual benchmark comparisons, with its
-most consistent results on classification and semantic textual similarity.
-Other methods remain stronger on some pair-classification benchmarks,
-including MRPC and WiC. Relative to TALAS, GATE-KD improves Avg. OOD by 0.64,
-0.31, and 1.16 points across configurations (a), (b), and (c), respectively. In
-configuration (a), it essentially matches TALAS on the source benchmarks, with
-72.04 versus 72.19 Avg. IOD, so its aggregate gain there is driven by the six
-non-source benchmarks. In configurations (b) and (c), GATE-KD improves both
-Avg. IOD and Avg. OOD, with the largest gains for the compact 22M student.
+In configuration (c), endpoint-only GATE-KD reaches $74.26\pm0.02$, already
+1.06 points above TALAS; $H_0$ adds 0.53 points. Thus the endpoint interface,
+not the auxiliary, supplies most of the compact gain. The result also shows
+that intermediate teacher states were not required in this comparison, without
+implying that intermediate supervision is generally inferior.
 
-\subsection{Student Optimization Efficiency}
-\label{sec:training-efficiency}
-
-Table~\ref{tab:training-efficiency} isolates the repeated minibatch optimization
-path, reporting update latency, throughput, cumulative optimization time, and
-peak allocated memory. Exact measurement scope is given in
-Appendix~\ref{app:training-hyperparameters}.
-
-\input{tables/training_efficiency}
-
-GATE-KD records the lowest mean update time and cumulative optimization time,
-and the highest throughput, among the evaluated methods in all three
-configurations. It does so while attaining the highest aggregate score in each
-configuration. The comparison characterizes the repeatedly executed
-optimization loop rather than end-to-end training or deployment cost.
+On five corpus-disjoint BEIR retrieval benchmarks, GATE-KD ranks first on
+average in (b) and (c) and second in (a), although all students remain below
+their teachers (Appendix~\ref{app:retrieval-15k}). This is a transfer guardrail,
+not a substitute for benchmark-disjoint general-text distillation.
 
 \FloatBarrier
