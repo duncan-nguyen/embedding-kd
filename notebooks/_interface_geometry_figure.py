@@ -7,6 +7,7 @@ this module owns only layout, visual semantics, and paper-safe export.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -242,7 +243,19 @@ def render_interface_geometry(
 
         # (b) A single coloured realization sits above monochrome orbit samples.
         ghosts = [np.asarray(cloud) for cloud in view["ghosts"]]
-        reduced = np.asarray(view["Y_orbit"])
+        legacy_view = "Y_orbit" not in view or "Y_before" not in view
+        if legacy_view:
+            if "Y" not in view:
+                raise KeyError(
+                    "VIEW thiếu 'Y_orbit'/'Y_before'. Hãy chạy lại cell 6 trước cell 7."
+                )
+            warnings.warn(
+                "Đang dùng VIEW cũ qua key 'Y'. Cell 7 vẫn render được, nhưng hãy "
+                "chạy lại cell 6 để dùng framing mới tối ưu cho paper.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        reduced = np.asarray(view["Y_orbit"] if "Y_orbit" in view else view["Y"])
         for ghost in ghosts:
             ax_b.scatter(
                 *ghost.T,
@@ -287,7 +300,7 @@ def render_interface_geometry(
         # (c) Marker shape separates student x from target dots even in grayscale.
         student = np.asarray(view["Z"])
         selected = np.asarray(view["YR"])
-        before = np.asarray(view["Y_before"])
+        before = np.asarray(view["Y_before"] if "Y_before" in view else view["Y"])
         n_links = min(18, len(student))
         link_indices = np.linspace(0, len(student) - 1, n_links, dtype=int)
         segments = np.stack((selected[link_indices], student[link_indices]), axis=1)
