@@ -123,20 +123,24 @@ def parse_args():
         "--lambda_topo",
         type=float,
         default=None,
-        help="GATE-KD: weight of the topological term L_topo = L_H0 + "
-        "lambda_h1 * L_H1, comparing the student batch's persistence diagrams to "
-        'those of the *unprojected* teacher batch. 0 is the recipe; > 0 is the "+ '
-        'topo" control. Death times are O(1), so sweep the weight over decades',
+        help="GATE-KD: weight of the structural term chosen by --structural_loss. "
+        "The default is L_H0 against the unprojected teacher; "
+        "0 is the recipe and positive values enable the reviewer-control arm",
     )
     parser.add_argument(
-        "--lambda_h1",
-        type=float,
+        "--structural_loss",
+        choices=["h0", "sorted_pairwise", "teacher_mst", "knn_distribution"],
         default=None,
-        help="GATE-KD: weight lambda_1 of the H1 half of L_topo -- W_2^2 between "
-        "the teacher's and the student's 1-dimensional persistence diagrams, "
-        "low-persistence cycles matched to the diagonal. 0 leaves L_topo the pure "
-        "H0 term. Requires the optional 'gudhi' package and costs O(B^3) simplices "
-        "per batch on both sides",
+        help="GATE-KD: structural statistic weighted by --lambda_topo. h0 is the "
+        "persistence loss; the other choices are approximately constraint-count-"
+        "matched controls",
+    )
+    parser.add_argument(
+        "--structural_knn_k",
+        type=int,
+        default=None,
+        help="GATE-KD: neighbours per row for structural_loss=knn_distribution "
+        "(default 1, giving B scalar distances versus H0's B-1)",
     )
     parser.add_argument(
         "--topo_batch_size",
@@ -159,13 +163,14 @@ def parse_args():
         "--topo_teacher_source",
         choices=["original", "projected"],
         default=None,
-        help="GATE-KD: teacher cloud for H0. 'original' uses the native d_T "
-        "cache; 'projected' uses the frozen d_S endpoint targets",
+        help="GATE-KD: teacher cloud for structural and Gram losses. 'original' "
+        "uses the native d_T cache; 'projected' uses the frozen d_S endpoint targets",
     )
     parser.add_argument(
         "--projection_type",
         choices=[
             "pca",
+            "pca_whiten",
             "random",
             "random_gaussian",
             "mrl_prefix",
@@ -174,7 +179,8 @@ def parse_args():
         ],
         default=None,
         help='GATE-KD: how the teacher targets reach the student dimension. "pca" '
-        'is the paper\'s frozen spectral map; "random" draws a Haar-random '
+        'is the paper\'s frozen spectral map; "pca_whiten" additionally flattens '
+        'the retained PCA spectrum; "random" draws a Haar-random '
         'orthonormal subspace and "random_gaussian" an unnormalised '
         "Johnson-Lindenstrauss map -- the two data-independent controls for the "
         'Eckart-Young claim; "mrl_prefix" keeps the teacher\'s leading '
@@ -190,6 +196,14 @@ def parse_args():
         help="GATE-KD: draw index of the random teacher projection. Different "
         "seeds are different draws of the same control, so their spread is the "
         "null band the PCA map has to clear",
+    )
+    parser.add_argument(
+        "--projection_rank",
+        type=int,
+        default=None,
+        help="GATE-KD: active rank of a fixed teacher interface before zero-padding "
+        "to the student width (0 = min(teacher width, student width)). This changes the "
+        "retained teacher subspace without changing the student architecture",
     )
     parser.add_argument(
         "--learned_projector_lr_scale",
@@ -224,12 +238,22 @@ def parse_args():
     )
     parser.add_argument(
         "--gauge_rotation",
-        choices=["procrustes", "random", "interpolate", "rank_one"],
+        choices=[
+            "procrustes",
+            "random",
+            "shuffled",
+            "unrelated",
+            "interpolate",
+            "rank_one",
+        ],
         default=None,
         help='GATE-KD: which rotation --gauge_align applies. "procrustes" is the '
         'informative gauge fitted to the student init; "random" is a '
         "Haar-random rotation of identical cost, the control that separates "
-        '"the right orientation" from "an orientation"; "interpolate" is the '
+        '"the right orientation" from "an orientation"; "shuffled" and '
+        '"unrelated" run the same Procrustes solve against the student with its '
+        "rows permuted, and against an isotropic random cloud, so they say whether "
+        'the fit reads the per-sentence correspondence; "interpolate" is the '
         "geodesic point --gauge_theta of the way from the Procrustes gauge to the "
         'random one; "rank_one" is the Householder map aligning only the two '
         "mean directions",
@@ -400,8 +424,8 @@ def parse_args():
         default=None,
         help="Stride of the expensive training diagnostics: per-term gradient norms "
         "(weighted, so they say which term is actually driving the student), batch "
-        "effective ranks, the signed H0 death-time residual and the student's own H1 "
-        "diagram. 0 disables them; the cheap per-step diagnostics stay on either way. "
+        "effective ranks and the signed H0 death-time residual. "
+        "0 disables them; the cheap per-step diagnostics stay on either way. "
         "Nothing it computes is differentiated through, so a seeded run is unchanged",
     )
     parser.add_argument(
@@ -513,12 +537,14 @@ METHOD_FLAGS = (
             "endpoint_loss",
             "lambda_gram",
             "lambda_topo",
-            "lambda_h1",
+            "structural_loss",
+            "structural_knn_k",
             "topo_batch_size",
             "topo_metric",
             "topo_teacher_source",
             "projection_type",
             "projection_seed",
+            "projection_rank",
             "learned_projector_lr_scale",
             "pca_center_fit",
             "pca_subtract_mean",
@@ -579,6 +605,10 @@ def get_config(method: str, args):
         raise ValueError(
             "--topo_batch_size must be 0 (one diagram per training batch) or >= 2"
         )
+    if args.projection_rank is not None and args.projection_rank < 0:
+        raise ValueError("--projection_rank must be 0 (full student width) or positive")
+    if args.structural_knn_k is not None and args.structural_knn_k <= 0:
+        raise ValueError("--structural_knn_k must be positive")
 
     for flag, attribute in COMMON_FLAGS.items():
         value = getattr(args, flag)

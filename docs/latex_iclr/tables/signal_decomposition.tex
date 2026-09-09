@@ -1,24 +1,32 @@
-\begin{table}[!h]
+% Source:
+% runs/aux_sweeps_20260904-113834/decomposition/decomposition_mean_std.csv
+% H0-only uses lambda_topo=1. The downstream scores in the final Endpoint+H0
+% row repeat the main-results configuration (c), which uses lambda_topo=0.5;
+% its H0 residual remains the decomposition-suite diagnostic.
+\begin{table}[H]
     \centering
-    \caption{\textbf{Endpoint and topology decomposition.} Rows containing the
-    endpoint objective use the fixed PCA interface with epoch-wise Procrustes.
-    The $H_0$-only variant operates directly in the original teacher space. All
-    results use the 100K corpus and teacher--student configuration (c) from
-    Appendix Table~\ref{tab:main-results-100k}.}
+    \caption{Endpoint and topology signal decomposition in configuration (c).
+    Mean $\pm$ sample standard deviation over three seeds; best values are bold.}
     \label{tab:signal-decomposition}
     \small
+    \newcommand{\deccell}[2]{#1{\tiny $\pm$ #2}}
     \setlength{\tabcolsep}{5pt}
-    \begin{tabular}{@{}lc cc@{}}
+    \begin{tabular}{@{}lccccc@{}}
         \toprule
-        Configuration & $H_0$ source
-        & $H_0$ residual $\downarrow$ & Avg. $\uparrow$ \\
+        Objective & $\lambda_{\mathrm{topo}}$
+        & $H_0$ residual $\downarrow$ & Avg.~Src $\uparrow$
+        & Avg.~Non-src $\uparrow$ & Avg. $\uparrow$ \\
         \midrule
-        Student                      & ---       & 0.3885 & 52.60 \\
-        $H_0$ only                   & Original  & 0.1114 & 65.87 \\
+        No-teacher control & --- & \deccell{0.3595}{0.0000}
+        & \deccell{41.61}{0.00} & \deccell{58.10}{0.00} & \deccell{52.60}{0.00} \\
+        $H_0$ only & 1.0 & \deccell{\textbf{0.1240}}{0.0012}
+        & \deccell{58.00}{1.01} & \deccell{67.33}{0.62} & \deccell{64.22}{0.73} \\
         \midrule
-        Endpoint only                & ---       & 0.1906 & 77.09 \\
-        \quad $+\,H_0$               & Projected & 0.1268 & 77.11 \\
-        \quad $+\,H_0$ (\textbf{Ours}) & Original  & 0.1182 & \textbf{77.48} \\
+        Endpoint only & 0 & \deccell{0.2122}{0.0004}
+        & \deccell{67.68}{0.19} & \deccell{77.55}{0.07} & \deccell{74.26}{0.02} \\
+        Endpoint $+$ native-space $H_0$ & 0.5
+        & \deccell{0.1281}{0.0003} & \deccell{\textbf{68.62}}{0.21}
+        & \deccell{\textbf{77.87}}{0.02} & \deccell{\textbf{74.79}}{0.06} \\
         \bottomrule
     \end{tabular}
 \end{table}

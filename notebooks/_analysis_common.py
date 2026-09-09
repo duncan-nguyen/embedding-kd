@@ -100,6 +100,7 @@ def projection_stats(run_dir: str | Path) -> dict:
     gauge = saved.get("gauge_stats") or {}
     return {
         "projection_type": saved.get("projection_type"),
+        "projection_rank": saved.get("projection_rank", saved.get("student_dim")),
         "explained_energy": saved.get("explained_energy"),
         "gauge_rotation": saved.get("gauge_rotation")
         if saved.get("gauge_align")

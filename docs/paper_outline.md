@@ -1,179 +1,177 @@
-# Paper Outline
+Đúng. Nếu mục tiêu là **ngắn, không lặp, mỗi section có một chức năng riêng**, tôi sẽ chốt outline như này.
 
-## 1. Motivation: The Endpoint Is the Bottleneck
+# 1. Introduction
 
-Embedding distillation faces two coupled problems: teacher and student endpoint
-spaces are not directly comparable, while many existing methods introduce learned
-projectors, intermediate-layer supervision, or self-distillation to manage transfer
-through the representation hierarchy.
+Chỉ **4 đoạn ngắn**.
 
-**Hypothesis.** The primary bottleneck is the formulation of a comparable endpoint,
-not the path the student takes through its intermediate layers.
+* **P1 — Problem:** cross-architecture embedding KD có width mismatch và coordinate ambiguity.
+* **P2 — Gap:** projection tạo một equivalence class \(\{YR\}\); các representative giữ cùng geometry nhưng không nhất thiết là cùng optimization target.
+* **P3 — Solution:** GATE-KD chọn một **student-conditioned global representative**, rồi dùng \(H_0\) để support native-space structure.
+* **P4 — Contributions/results:** 3 contributions + 2–3 headline numbers.
 
-## 2. Core Idea: Intrinsic--Extrinsic Decomposition
+Không giải thích theory, invariant loss, projector, PCA ở Introduction. Chỉ đặt problem và answer.
 
-We decompose teacher knowledge into two complementary transfer channels:
+---
 
-- **Extrinsic interface:** how teacher representations are expressed in coordinates
-  that the student can match pointwise.
-- **Intrinsic structure:** coordinate-invariant properties of the representation,
-  such as its persistent connectivity signature.
+# 2. Related Work
 
-Coordinate-dependent knowledge must pass through a shared endpoint interface;
-coordinate-invariant structure can be transferred directly between the native
-teacher and student spaces.
+Không cần subsection nếu muốn cực gọn. Ba paragraph:
 
-## 3. Extrinsic Interface
+1. **Embedding distillation:** endpoint, projector, hidden-state/layer alignment.
+2. **Representation equivalence & invariant alignment:** TCS, Procrustes/invariant KD, equivalence-class work.
+3. **Structural distillation:** relational / geometric / topology.
 
-Let the endpoint target used in epoch $e$ be
+Kết section bằng đúng gap:
 
-$$
-\tau_i^{(e)}=\operatorname{norm}(t_i P_{\mathrm{PCA}}R^{(e)}).
-$$
+> Prior work studies how to align or quotient equivalent representations; we study **which equivalent representative should be used as a persistent optimization target for a particular student**.
 
-- PCA is fitted once on the full cached teacher corpus and remains fixed. It selects
-  the teacher subspace that can pass through the dimensional bottleneck.
-- Before training, orthogonal Procrustes fits $R^{(0)}$ against the initialized
-  student using a fixed calibration subset of at most 16,384 corpus sentences.
-  After every epoch, $R^{(e)}$ is refitted in closed form against the current
-  student on that same subset.
-- Every refit changes only the coordinate orientation of the endpoint targets:
-  because $R^{(e)}$ is orthogonal, their pairwise geometry and topology remain
-  unchanged.
-- The endpoint loss $L_{\mathrm{end}}^{(e)}$ anchors each student representation to
-  the currently aligned teacher target.
+Sau câu này không nhắc lại literature gap nữa trong paper.
 
-The PCA subspace is frozen, while Procrustes maintains endpoint comparability by
-alternating with student optimization once per epoch. The refit is an exact
-closed-form coordinate update, not a learned projector, and adds no parameters at
-training or inference.
+---
 
-## 4. Intrinsic Structure Transfer
+# 3. GATE-KD
 
-The topological term $L_{H_0}$ matches the zero-dimensional persistent signatures
-of student batches and the original, unprojected teacher batches. Because these
-signatures depend on pairwise distances rather than coordinates, teacher and
-student need neither the same dimensionality nor a shared orientation.
+## 3.1 Student-space target and gauge ambiguity
 
-This transfers multiscale connectivity structure directly in the native spaces,
-without intermediate-layer guidance or layer-wise propagation.
+Làm hai việc cùng lúc:
 
-## 5. Minimal Distillation Objective
+* teacher endpoint → student-width projection;
+* formalize orbit:
 
 $$
-L^{(e)}=L_{\mathrm{end}}^{(e)}+\lambda L_{H_0}.
+[Y]=\{YR:R\in O(d)\}.
 $$
 
-The method uses only two terminal objectives: pointwise endpoint matching and
-coordinate-invariant topology matching. It requires no learned projector,
-contrastive or self-distillation objective, intermediate supervision, or
-inference-time parameters. Between epochs, the Procrustes block is updated exactly
-while the PCA subspace and teacher geometry stay fixed.
+Sau đó establish một fact duy nhất:
 
-## 6. Analysis
+> same Gram geometry, different pointwise optimization objective.
 
-### 6.1 Is the Bottleneck Compression or Comparability?
+Không cần riêng một “problem formulation section”.
 
-Use **Table A1** to compare learned teacher-to-student and student-to-teacher
-maps, random projection with and without epoch-wise Procrustes, and PCA with and
-without epoch-wise Procrustes. All rows use endpoint supervision only. Random
-subspaces use three independent draws in addition to the three training seeds.
-Retained energy, Gram error, and $k$-NN overlap describe only fixed target maps;
-they are undefined for the two jointly learned interfaces.
+---
 
-**Takeaway:** Compression is not the dominant bottleneck; endpoint comparability is.
+## 3.2 Student-conditioned gauge fixing
 
-### 6.2 Same Geometry, Different Optimization
+Đây là **core subsection**.
 
-Apply different fixed orthogonal rotations to the same PCA targets. Their pairwise
-geometry and topology are identical, yet they can induce different optimization
-trajectories and downstream performance. Compare no rotation, random rotations,
-one-off Procrustes, and the method's epoch-wise Procrustes refit to isolate the
-benefit of continually restoring endpoint comparability.
+$$
+R^\star=\arg\min_{R\in O(d)}\|YR-Z_0\|_F^2.
+$$
 
-- **Figure 2:** one standalone distribution plot of downstream scores across Haar
-  rotations, with point estimates for the PCA gauge, one-off Procrustes, and
-  epoch-wise refitting. Report CKA and Gram error as numeric invariance controls.
-- **Figure 3:** one standalone pre/post-refit curve on the frozen calibration
-  subset, showing the instantaneous change at each epoch boundary.
+Bao gồm luôn theory chính:
 
-**Takeaway:** Intrinsic equivalence does not imply extrinsic trainability; periodic
-closed-form realignment maintains a usable extrinsic interface as the student
-changes.
+* Procrustes = minimum-displacement representative;
+* global gauge tạo một coherent representation;
+* batchwise invariant matching cho phép independent local gauges và không identify cross-batch geometry;
+* learned map có thể absorb deformation thay vì constrain deployed representation.
 
-### 6.3 Which Signals Require an Interface?
+Tức **theory nằm cùng chỗ với mechanism mà nó giải thích**, không tạo Theory section riêng.
 
-Compare no-teacher, endpoint-only, $H_0$-only, and combined supervision, then
-compare $H_0$ computed from the original teacher with $H_0$ computed from its PCA
-image. Pointwise correspondence requires shared coordinates, whereas persistent
-structural information can be matched directly across different dimensions. Then
-test whether intermediate-layer or self-distillation supervision adds value once
-both terminal signals are properly specified.
+Nếu có gauge-stability proposition thì để cuối subsection này.
 
-- **Figure 4:** two absolute death-time residual maps, endpoint-only versus
-  endpoint+$H_0$, evaluated on the same fixed mini-batches with one shared scale.
-- **Table 2:** the five-arm quantitative decomposition: no teacher,
-  endpoint-only, $H_0$-only, endpoint+$H_0$ from the PCA teacher image, and
-  endpoint+$H_0$ from the original teacher. Report the native-teacher $H_0$
-  residual and downstream AVG as point estimates; omit endpoint error and
-  uncertainty columns from this compact analysis table.
+---
 
-**Takeaway:** Pointwise knowledge requires an interface; coordinate-invariant
-structure bypasses it; neither requires intermediate-layer coordination.
+## 3.3 Native-space structural support
 
-## 7. Main Results and Takeaway
+Giải thích \(H_0\) và joint loss:
 
-Compare against state-of-the-art embedding-distillation methods under matched data,
-optimization, and caching protocols.
+$$
+L=L_{\text{end}}+\lambda L_{H_0}.
+$$
 
-- **Table 1:** full downstream results over all benchmark tasks.
-- **Table 3:** efficiency for every learned baseline in Table 1 and our method,
-  measured from the same runs. Report mean step latency and samples/second after
-  ten warm-up steps, total GPU training minutes, and peak allocated memory on the
-  busiest GPU, each as mean $\pm$ sample standard deviation over three seeds.
+Hierarchy rõ:
 
-The target result is a simpler method that reaches state-of-the-art performance
-while training approximately $2\times$ faster than TALAS.
+* aligned endpoint = sample-level supervision;
+* \(H_0\) = native-space structural support.
 
-## 8. Appendix Plan
+Paper hiện tại đã cho thấy endpoint mang phần lớn gain và \(H_0\) bổ sung thêm improvement, nên framing này phù hợp evidence. 
 
-The appendix keeps two required visual artifacts, one optional diagnostic, and one
-supporting ablation table. Exact per-seed and per-draw values remain available as
-CSV artifacts rather than occupying additional paper tables.
+Kết section bằng algorithm.
 
-### Figure A1: Qualitative $H_0$ Visualization
+---
 
-Show three MSTs on one held-out batch: teacher, endpoint-only, and
-endpoint+$H_0$. Use one fixed teacher-derived two-dimensional layout for display,
-but recompute each edge set from distances in its native embedding space. State
-explicitly that $L_{H_0}$ matches sorted death times, not corresponding MST edge
-identities. This figure is illustrative; Figure 4 is the quantitative evidence.
+# 4. Experiments
 
-### Figure A2: Sensitivity
+Chỉ **3 subsections**.
 
-Use one compact row of three ordered curves with mean $\pm$ sample standard
-deviation over three seeds: topology weight $\lambda$, training/$H_0$ batch size, and the
-fixed gauge-calibration sample size. Mark the default recipe. PCA remains fitted
-once on the full teacher cache and only one factor changes at a time.
+## 4.1 Experimental Setup
 
-### Figure A3 (Optional): Ours vs. TALAS Layerwise CKA
+Models, corpus, metrics, baselines, training fairness.
 
-If the pattern is stable across seeds and at least two teacher--student pairs, show
-only endpoint+$H_0$ and TALAS heatmaps on the same held-out probe set and shared
-color scale. Otherwise omit this descriptive figure. Downstream results, rather
-than CKA, carry the claim that intermediate supervision is unnecessary.
+Không analysis ở đây.
 
-### Supporting Tables
+---
 
-- **Table A1:** six-row projection/interface ablation: learned $T\!\to\!S$,
-  learned $S\!\to\!T$, random-only, random+epoch-wise Procrustes, PCA-only, and
-  PCA+epoch-wise Procrustes. Include retained energy, Gram error, $k$-NN overlap,
-  downstream AVG, and the number of completed run instances.
+## 4.2 What Determines a Good Distillation Target?
 
-## Story in One Line
+Gom toàn bộ controlled experiments vào **một scientific sequence**:
 
-**A fixed PCA subspace retains usable teacher structure $\rightarrow$ epoch-wise
-orthogonal refitting keeps the endpoint comparable without changing its intrinsic
-geometry $\rightarrow$ coordinate-invariant topology transfers directly from the
-native teacher space $\rightarrow$ no need to manage the intermediate hierarchy
-$\rightarrow$ simpler, faster, and better distillation.**
+**Orientation → global coherence → stability → subspace.**
+
+Cụ thể theo thứ tự:
+
+1. **Same geometry, different orientation:** aligned ≫ unaligned/random.
+2. **Global gauge vs invariant matching:** fixed global > per-minibatch invariant.
+3. **Fixed vs refit:** \(R_0\) gần repeated refitting.
+4. **Subspace sensitivity:** aligned random subspace gần PCA.
+
+Không cần 4 subsubsections; dùng 4 bold questions trong prose.
+
+Kết luận duy nhất của subsection:
+
+> **The dominant factor is selecting a stable student-conditioned representative, rather than repeatedly estimating alignment or maximizing retained variance.**
+
+Evidence hiện tại support rất trực tiếp conclusion này.  
+
+---
+
+## 4.3 Distillation Performance
+
+Chỉ practical validation:
+
+* main 3 teacher–student × 9 tasks;
+* endpoint vs endpoint+\(H_0\);
+* structural controls;
+* BEIR retrieval nếu còn space.
+
+Không nhắc lại “why gauge works” ở đây.
+
+Narrative:
+
+> Section 4.2 establishes the mechanism; Section 4.3 asks whether it translates into competitive distillation.
+
+Full method hiện đạt highest numerical average ở cả ba configurations, với margin rõ nhất ở 22M student. 
+
+---
+
+# 5. Discussion & Conclusion
+
+Không subsection.
+
+Chỉ 3 đoạn:
+
+* **Implication:** information equivalence does not imply optimization equivalence.
+* **Scope:** selected gauge là student-relative, không phải canonical coordinates; theory nói về coherence/identifiability, không claim giải thích toàn bộ nonlinear training.
+* **Conclusion:** one-paragraph recap.
+
+Không nhắc lại experiments từng cái một.
+
+---
+
+# Flow cuối cùng
+
+**Introduction:** vấn đề là gì?
+→ **Related Work:** gap nằm đâu?
+→ **Method:** representative được chọn như thế nào và tại sao coherent?
+→ **Experiments:** mechanism có thật không, rồi có giúp performance không?
+→ **Discussion:** principle rộng hơn là gì?
+
+Và mỗi ý chỉ xuất hiện **một nơi chính**:
+
+* **equivalence-class gap:** Intro + positioning cuối Related Work
+* **theory:** chỉ Section 3.2
+* **mechanistic evidence:** chỉ Section 4.2
+* **benchmark performance/H0 gain:** chỉ Section 4.3
+* **broader implication:** chỉ Discussion
+
+Tôi nghĩ đây là bản outline sạch nhất và gần style một ICLR paper mạnh hơn.

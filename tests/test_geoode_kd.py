@@ -56,7 +56,6 @@ def test_forward_combines_the_two_weighted_terms():
         "loss_gram",
         "loss_topo",
         "loss_h0",
-        "loss_h1",
         "cos_first",
         "cos_final",
         "w_end",
@@ -64,7 +63,6 @@ def test_forward_combines_the_two_weighted_terms():
         "w_gram",
         "w_topo",
         "topo_active",
-        "h1_active",
         "spread_student",
         "spread_teacher",
         "gram_rmse_batch",
@@ -81,6 +79,29 @@ def test_negative_objective_weights_are_rejected():
         GeoODEKD(lambda_end=-1.0)
     with pytest.raises(ValueError, match="must be non-negative"):
         GeoODEKD(lambda_ctr=-1.0)
+
+
+def test_gram_control_reads_native_teacher_geometry_when_supplied():
+    generator = torch.Generator().manual_seed(91)
+    student = torch.nn.functional.normalize(
+        torch.randn(6, 8, generator=generator), dim=-1
+    )
+    projected_teacher = student.clone()
+    native_teacher = torch.randn(6, 19, generator=generator)
+    criterion = _criterion(lambda_end=0.0, lambda_ctr=0.0, lambda_gram=1.0)
+
+    total, metrics = criterion(
+        hidden_states=[student[:, None, :]],
+        teacher=projected_teacher,
+        teacher_topo=native_teacher,
+    )
+
+    native_loss = criterion.gram_loss(student, native_teacher)
+    projected_loss = criterion.gram_loss(student, projected_teacher)
+    assert projected_loss == pytest.approx(0.0, abs=1e-10)
+    assert metrics["loss_gram"] == pytest.approx(float(native_loss), rel=1e-6)
+    assert float(total) == pytest.approx(float(native_loss), rel=1e-6)
+    assert metrics["loss_gram"] > 0.0
 
 
 def test_contrastive_term_is_skipped_without_a_second_view():
@@ -587,14 +608,12 @@ def test_active_flags_separate_a_disabled_term_from_a_satisfied_one():
     off = _criterion(lambda_topo=0.0)
     _, metrics = off(hidden_states=hidden_states, teacher=teacher)
     assert metrics["topo_active"] == 0.0
-    assert metrics["h1_active"] == 0.0
 
     on = _criterion(lambda_topo=1.0)
     _, metrics = on(
         hidden_states=hidden_states, teacher=teacher, teacher_topo=torch.randn(6, 32)
     )
     assert metrics["topo_active"] == 1.0
-    assert metrics["h1_active"] == 0.0
 
     # A batch of one has no minimum spanning tree, so the term is not defined even
     # though the weight is on.

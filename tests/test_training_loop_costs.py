@@ -226,6 +226,21 @@ def test_the_collate_builds_the_teacher_diagram_the_step_would_have_built():
     )
 
 
+def test_the_collate_builds_native_teacher_gram_without_shipping_native_vectors():
+    samples, teacher_topo = _batch(rows=8, topo_dim=13)
+    batch = DualTokenizerCollateWithTeacher(
+        _CharTokenizer(),
+        "pair_cls",
+        32,
+        need_native_gram=True,
+    )(samples)
+    unit = torch.nn.functional.normalize(teacher_topo.float(), dim=-1)
+
+    assert torch.allclose(batch["teacher_gram"], unit @ unit.T)
+    assert "teacher_topo" not in batch
+    assert "teacher_deaths" not in batch
+
+
 def test_without_a_metric_the_collate_still_ships_the_raw_cache():
     samples, teacher_topo = _batch()
 
@@ -576,9 +591,26 @@ def test_the_topology_arm_ships_a_diagram_instead_of_the_teacher_cache(
     assert distiller.last_epoch_metrics["loss_topo"] > 0.0
 
 
+def test_the_gram_arm_reads_native_teacher_gram(tmp_path, monkeypatch):
+    distiller = _run_distiller(tmp_path, monkeypatch, lambda_gram=1.0)
+    batch = next(iter(distiller.train_loader))
+    projected = torch.nn.functional.normalize(batch["teacher_cls"].float(), dim=-1)
+    projected_gram = projected @ projected.T
+
+    assert batch["teacher_cls"].shape[1] == 8
+    assert batch["teacher_gram"].shape == (
+        batch["teacher_cls"].shape[0],
+        batch["teacher_cls"].shape[0],
+    )
+    assert "teacher_topo" not in batch
+    assert not torch.allclose(batch["teacher_gram"], projected_gram, atol=1e-5)
+
+    distiller.train_epoch(0)
+    assert distiller.last_epoch_metrics["loss_gram"] > 0.0
+
+
 def test_the_topology_arm_reads_the_teachers_own_dimension(tmp_path, monkeypatch):
-    """The H0 term is the one signal P_T cannot colour, so its diagram has to come
-    from the unprojected d_T cache -- not from the d_S targets."""
+    """Native structural targets must come from d_T, not projected d_S targets."""
     distiller = _run_distiller(tmp_path, monkeypatch, lambda_topo=0.5)
     batch = next(iter(distiller.train_loader))
 
@@ -607,35 +639,6 @@ def test_projected_topology_source_falls_back_to_endpoint_targets(tmp_path, monk
 
     distiller.train_epoch(0)
     assert distiller.last_epoch_metrics["loss_topo"] > 0.0
-
-
-def test_the_h1_arm_ships_a_diagram_too(tmp_path, monkeypatch):
-    """With lambda_h1 on, the collate also reduces the teacher's cache to its H1
-    diagram, and the epoch's L_topo carries both halves."""
-    pytest.importorskip("gudhi")
-    distiller = _run_distiller(
-        tmp_path, monkeypatch, lambda_topo=0.5, lambda_h1=0.25
-    )
-
-    batch = next(iter(distiller.train_loader))
-    assert "teacher_topo" not in batch
-    assert batch["teacher_deaths"].shape == (batch["teacher_cls"].shape[0] - 1,)
-    # An empty diagram is a legitimate outcome for a small batch, so only the shape
-    # is pinned here; the term's own tests cover what it contains.
-    assert batch["teacher_h1"].ndim == 2 and batch["teacher_h1"].shape[1] == 2
-
-    distiller.train_epoch(0)
-    metrics = distiller.last_epoch_metrics
-    assert metrics["loss_topo"] > 0.0
-    assert metrics["loss_topo"] == pytest.approx(
-        metrics["loss_h0"] + 0.25 * metrics["loss_h1"], rel=1e-4
-    )
-
-
-def test_the_h1_arm_stays_off_by_default(tmp_path, monkeypatch):
-    """The H0 arm must not start paying for the 2-skeleton it never asked for."""
-    distiller = _run_distiller(tmp_path, monkeypatch, lambda_topo=0.5)
-    assert "teacher_h1" not in next(iter(distiller.train_loader))
 
 
 def test_turning_fusion_off_changes_nothing_but_the_trajectory(tmp_path, monkeypatch):

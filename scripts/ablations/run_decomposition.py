@@ -118,7 +118,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="default: the 14,760-row 15K corpus",
     )
     parser.add_argument("--seeds", nargs="+", type=int, default=[42, 43, 44])
-    parser.add_argument("--lambda-topo", type=float, default=1.0)
+    parser.add_argument("--lambda-topo", type=float, default=0.5)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--h0-batch-size", type=int, default=128)
     parser.add_argument("--epochs", type=int, default=5)
@@ -214,8 +214,6 @@ def build_command(
         "0.0",
         "--lambda_topo",
         str(args.lambda_topo if arm["uses_h0"] else 0.0),
-        "--lambda_h1",
-        "0.0",
         "--topo_batch_size",
         str(args.h0_batch_size),
         "--topo_metric",

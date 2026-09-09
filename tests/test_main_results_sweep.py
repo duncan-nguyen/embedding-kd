@@ -146,7 +146,7 @@ def test_the_geoode_arm_carries_the_notebooks_extra_flags(sweep):
         args, "qwen3_4b_to_bert_base", "geoode", 42,
         Path("/runs/x"), Path("/cache"), Path("/train.csv"),
     )
-    for flag, value in [("--lambda_topo", "1.0"), ("--lambda_ctr", "0.0"),
+    for flag, value in [("--lambda_topo", "0.5"), ("--lambda_ctr", "0.0"),
                         ("--gauge_refit_every", "1")]:
         assert command[command.index(flag) + 1] == value
     # Cached methods read the shared teacher cache; the online ones never see it.

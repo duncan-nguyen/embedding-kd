@@ -1,9 +1,21 @@
-\begin{thebibliography}{1}
+\begin{thebibliography}{3}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bhattarai et~al.(2025)Bhattarai, Amjad, Zhylko, and Alhanai]{bhattarai2025shortcut}
+Prajjwal Bhattarai, Mohammad Amjad, Dmytro Zhylko, and Tuka Alhanai.
+\newblock Knowledge distillation through geometry-aware representational alignment.
+\newblock arXiv:2509.25253, 2025.
+\newblock URL \url{https://arxiv.org/abs/2509.25253}.
+
+\bibitem[Hofer et~al.(2020)Hofer, Graf, Rieck, Niethammer, and Kwitt]{hofer2020topologically}
+Christoph Hofer, Florian Graf, Bastian Rieck, Marc Niethammer, and Roland Kwitt.
+\newblock Topologically densified distributions.
+\newblock In \emph{Proceedings of the 37th International Conference on Machine Learning}, volume 119 of \emph{Proceedings of Machine Learning Research}, pp.\  4304--4313, 2020.
+\newblock URL \url{https://proceedings.mlr.press/v119/hofer20a.html}.
 
 \bibitem[Sch{\"o}nemann(1966)]{schonemann1966procrustes}
 Peter~H. Sch{\"o}nemann.

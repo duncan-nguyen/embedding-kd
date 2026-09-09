@@ -147,7 +147,7 @@ GEOODE_H0_BATCH_SIZE = 0
 
 GEOODE_EXTRA = [
     "--lambda_topo",
-    "1.0",
+    "0.5",
     "--lambda_ctr",
     "0.0",
     "--gauge_refit_every",

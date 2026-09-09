@@ -6,7 +6,7 @@ Qwen3-Embedding-0.6B -> MiniLMv2-H384, seeds 42/43/44, five epochs, batch 128,
 learning rate 7e-5, and the 14,760-row TALAS corpus.  Three knobs are varied one
 at a time while every other setting stays at the main configuration:
 
-* topology weight:       0, 0.5, 0.75, 1 (default 1)
+* topology weight:       0, 0.5, 0.75, 1 (default 0.5)
 * optimizer batch size:  16, 64, 128, 256 (default 128)
 * gauge calibration:     2,048, 4,096, 8,192, 16,384 (default 16,384; the
   implementation uses all 14,760 corpus rows when the request exceeds it)
@@ -62,7 +62,7 @@ PAIRS = {
 
 DEFAULT_SEEDS = (42, 43, 44)
 DEFAULTS = {
-    "lambda_topo": 1.0,
+    "lambda_topo": 0.5,
     "batch_size": 128,
     "gauge_samples": 16384,
 }
@@ -204,7 +204,6 @@ def build_command(
         "--lambda_end", "1.0",
         "--lambda_ctr", "0.0",
         "--lambda_topo", str(spec["lambda_topo"]),
-        "--lambda_h1", "0.0",
         # Keep the H0 point cloud identical to the optimizer batch in every arm.
         "--topo_batch_size", str(spec["batch_size"]),
         "--topo_teacher_source", "original",

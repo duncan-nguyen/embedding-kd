@@ -1,0 +1,25 @@
+% Control rows: review_h0_pca_controls_20260906-143901, gauge family.
+% Epoch-wise Procrustes reference: main-results configuration (c).
+% Invariant row: invariant_procrustes_c_3seeds_20260906-215912.
+\begin{table}[!t]
+    \centering
+    \caption{Compact orientation treatments under the full objective (mean
+    $\pm$ sample standard deviation, three seeds).}
+    \label{tab:gauge-mechanism}
+    \small
+    \newcommand{\gcell}[2]{#1{\tiny $\pm$ #2}}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Orientation treatment & Updates & Config. (c) Avg. $\uparrow$ \\
+        \midrule
+        None (fixed PCA target) & 0 & \gcell{72.51}{0.05} \\
+        Random orthogonal & 0 & \gcell{73.02}{0.05} \\
+        Per-minibatch invariant & Every step & \gcell{72.74}{0.07} \\
+        Fixed $R^{(0)}$ & 0 & \gcell{74.63}{0.07} \\
+        One refit & 1 & \gcell{74.64}{0.06} \\
+        Epoch-wise Procrustes & 4
+        & \gcell{\textbf{74.79}}{0.06} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

@@ -55,8 +55,32 @@ def test_pca_subtract_mean_flag_is_tri_state():
 
 def test_projection_type_flag_selects_the_subspace_arm():
     assert _config("--method", "geoode").projection_type == "pca"
-    for arm in ("random", "random_gaussian", "mrl_prefix", "learned_t2s", "learned_s2t"):
+    for arm in (
+        "pca_whiten",
+        "random",
+        "random_gaussian",
+        "mrl_prefix",
+        "learned_t2s",
+        "learned_s2t",
+    ):
         assert _config("--method", "geoode", "--projection_type", arm).projection_type == arm
+
+
+def test_structural_control_flags_are_forwarded():
+    default = _config("--method", "geoode")
+    assert default.structural_loss == "h0"
+    assert default.structural_knn_k == 1
+
+    config = _config(
+        "--method",
+        "geoode",
+        "--structural_loss",
+        "knn_distribution",
+        "--structural_knn_k",
+        "3",
+    )
+    assert config.structural_loss == "knn_distribution"
+    assert config.structural_knn_k == 3
 
 
 def test_learned_projector_lr_scale_flag_overrides_the_config():

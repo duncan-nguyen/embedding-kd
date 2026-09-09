@@ -8,13 +8,18 @@
 \usepackage{iclr2027_conference,times}
 \input{template/math_commands.tex}
 
-\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
 \usepackage{booktabs}
 \usepackage{float}
 \usepackage{graphicx}
 \usepackage{multirow}
-\usepackage{hyperref}
+\usepackage{placeins}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\newtheorem{proposition}{Proposition}
+\usepackage[hidelinks]{hyperref}
 \usepackage{url}
+
 
 % Numbers still waiting on a run print in brackets and in bold, so an unfilled
 % cell is impossible to miss in the compiled PDF.
@@ -25,8 +30,8 @@
   {\begingroup\small\itshape\begin{itemize}\setlength{\itemsep}{1pt}}%
   {\end{itemize}\endgroup}
 
-% GATE-KD: Gauge Alignment and Topology for Embedding Distillation
-\title{Gauge-Aligned Endpoints and Cross-Dimensional Topology for Text Embedding Distillation}
+% GATE-KD: Gauge-Aligned Target Embeddings for Knowledge Distillation
+\title{GATE-KD: Aligning Teacher Targets to the Student Space}
 
 % Authors must remain hidden while \iclrfinalcopy is commented out.
 \author{Anonymous Authors}
@@ -50,6 +55,7 @@
 
 \clearpage
 \appendix
+\raggedbottom
 \input{sections/appendix}
 
 \end{document}
