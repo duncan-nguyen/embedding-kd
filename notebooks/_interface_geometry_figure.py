@@ -124,6 +124,14 @@ def _shared_square_window(
     return half
 
 
+def _class_centroids(
+    points: np.ndarray, labels: np.ndarray, label_order: Sequence[str]
+) -> np.ndarray:
+    """Centroids in the displayed coordinates, ordered like the colour palette."""
+
+    return np.stack([points[labels == str(label)].mean(axis=0) for label in label_order])
+
+
 def _flow_arrow(figure, left_ax, right_ax, color: str) -> None:
     """Connect the three conceptual stages in figure coordinates."""
 
@@ -166,7 +174,8 @@ def render_interface_geometry(
         label: CLASS_PALETTE[index % len(CLASS_PALETTE)]
         for index, label in enumerate(label_order)
     }
-    point_colours = np.asarray([colour_of[str(label)] for label in plot_labels])
+    labels = np.asarray(plot_labels, dtype=str)
+    point_colours = np.asarray([colour_of[label] for label in labels])
 
     with plt.rc_context(
         {
@@ -215,6 +224,16 @@ def render_interface_geometry(
             depthshade=False,
             rasterized=True,
         )
+        teacher_centroids = _class_centroids(teacher, labels, label_order)
+        ax_a.scatter(
+            *teacher_centroids.T,
+            s=20,
+            c=[colour_of[str(label)] for label in label_order],
+            edgecolors="white",
+            linewidths=0.55,
+            depthshade=False,
+            zorder=8,
+        )
         ax_a.set_proj_type("ortho")
         ax_a.view_init(elev=17, azim=-57)
         ax_a.set_box_aspect((1, 1, 0.86), zoom=1.18)
@@ -243,11 +262,11 @@ def render_interface_geometry(
 
         # (b) A single coloured realization sits above monochrome orbit samples.
         ghosts = [np.asarray(cloud) for cloud in view["ghosts"]]
-        legacy_view = "Y_orbit" not in view or "Y_before" not in view
+        legacy_view = "Y_orbit" not in view
         if legacy_view:
             if "Y" not in view:
                 raise KeyError(
-                    "VIEW thiếu 'Y_orbit'/'Y_before'. Hãy chạy lại cell 6 trước cell 7."
+                    "VIEW thiếu 'Y_orbit'. Hãy chạy lại cell 6 trước cell 7."
                 )
             warnings.warn(
                 "Đang dùng VIEW cũ qua key 'Y'. Cell 7 vẫn render được, nhưng hãy "
@@ -275,6 +294,15 @@ def render_interface_geometry(
             rasterized=True,
             zorder=4,
         )
+        reduced_centroids = _class_centroids(reduced, labels, label_order)
+        ax_b.scatter(
+            *reduced_centroids.T,
+            s=19,
+            c=[colour_of[str(label)] for label in label_order],
+            edgecolors="white",
+            linewidths=0.55,
+            zorder=7,
+        )
         _flat_panel(ax_b)
         _panel_title(
             ax_b,
@@ -297,50 +325,54 @@ def render_interface_geometry(
             )
         )
 
-        # (c) Marker shape separates student x from target dots even in grayscale.
+        # (c) Faint samples provide texture; centroid pairs carry the comparison.
         student = np.asarray(view["Z"])
         selected = np.asarray(view["YR"])
-        before = np.asarray(view["Y_before"] if "Y_before" in view else view["Y"])
-        n_links = min(18, len(student))
-        link_indices = np.linspace(0, len(student) - 1, n_links, dtype=int)
-        segments = np.stack((selected[link_indices], student[link_indices]), axis=1)
-        ax_c.add_collection(
-            LineCollection(
-                segments,
-                colors=STUDENT,
-                linewidths=0.25,
-                alpha=0.12,
-                zorder=2,
-                rasterized=True,
-            )
-        )
-        ax_c.scatter(
-            *before.T,
-            s=2.2,
-            c=GHOST,
-            alpha=0.16,
-            linewidths=0,
-            rasterized=True,
-            zorder=1,
-        )
         ax_c.scatter(
             *selected.T,
-            s=4.5,
+            s=3.8,
             c=point_colours,
-            alpha=0.88,
+            alpha=0.48,
             linewidths=0,
             rasterized=True,
-            zorder=4,
+            zorder=3,
         )
         ax_c.scatter(
             *student.T,
-            s=6.0,
+            s=4.8,
             marker="x",
             c=STUDENT,
-            alpha=0.42,
-            linewidths=0.42,
+            alpha=0.20,
+            linewidths=0.35,
             rasterized=True,
-            zorder=5,
+            zorder=2,
+        )
+        selected_centroids = _class_centroids(selected, labels, label_order)
+        student_centroids = _class_centroids(student, labels, label_order)
+        ax_c.add_collection(
+            LineCollection(
+                np.stack((selected_centroids, student_centroids), axis=1),
+                colors=GHOST,
+                linewidths=0.65,
+                alpha=0.75,
+                zorder=5,
+            )
+        )
+        ax_c.scatter(
+            *selected_centroids.T,
+            s=23,
+            c=[colour_of[str(label)] for label in label_order],
+            edgecolors="white",
+            linewidths=0.65,
+            zorder=7,
+        )
+        ax_c.scatter(
+            *student_centroids.T,
+            s=22,
+            marker="x",
+            c=STUDENT,
+            linewidths=0.85,
+            zorder=8,
         )
         _flat_panel(ax_c)
         _panel_title(
@@ -353,7 +385,7 @@ def render_interface_geometry(
         # Each visual question gets a readable crop. Every overlay inside that crop
         # still shares one projection and one numerical scale.
         _shared_square_window((ax_b,), [reduced, *ghosts])
-        _shared_square_window((ax_c,), [before, student, selected])
+        _shared_square_window((ax_c,), [student, selected])
         _flow_arrow(figure, ax_a, ax_b, REDUCE)
         _flow_arrow(figure, ax_b, ax_c, SELECTED)
 
