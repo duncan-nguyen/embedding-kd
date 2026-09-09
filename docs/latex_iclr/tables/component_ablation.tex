@@ -1,0 +1,40 @@
+% Sources: runs/table_a4_components.csv and runs/ablations_by_cell.csv.
+% Current-code ablation suite: paper_ablations_15k_h200_gpu0-5_20260909-061547.
+\begin{table}[t]
+    \caption{Ablation of endpoint targets and structural objectives in
+    configuration (c).
+    Results are mean $\pm$ sample standard deviation over three seeds.
+    $\Delta$ is measured against the student-conditioned target without a
+    structural objective; best values are bold.}
+    \label{tab:component-ablation}
+    \tablebody
+    \begin{tabular}{@{}llcccc@{}}
+        \toprule
+        Endpoint target & Structural objective & Source $\uparrow$ & Non-source $\uparrow$
+        & Overall $\uparrow$ & $\Delta$ \\
+        \midrule
+        No endpoint & None
+        & \meanstd{41.61}{0.00} & \meanstd{58.19}{0.03}
+        & \meanstd{52.66}{0.02} & --- \\
+        No endpoint & $H_0$ persistence
+        & \meanstd{57.55}{0.47} & \meanstd{67.53}{0.60}
+        & \meanstd{64.21}{0.48} & --- \\
+        \midrule
+        PCA-reduced & None
+        & \meanstd{62.35}{0.22} & \meanstd{72.76}{0.04}
+        & \meanstd{69.29}{0.07} & --- \\
+        Student-conditioned & None
+        & \meanstd{67.61}{0.09} & \meanstd{77.57}{0.06}
+        & \meanstd{74.25}{0.01} & --- \\
+        Student-conditioned & Gram matching
+        & \meanstd{67.64}{0.15} & \meanstd{76.94}{0.05}
+        & \meanstd{73.84}{0.03} & $-0.41$ \\
+        Student-conditioned & $H_0$ persistence
+        & \meanstd{\tablebest{68.80}}{0.16} & \meanstd{77.89}{0.01}
+        & \meanstd{74.86}{0.06} & $+0.61$ \\
+        Student-conditioned & kNN-distance matching
+        & \meanstd{68.79}{0.14} & \meanstd{\tablebest{78.11}}{0.03}
+        & \meanstd{\tablebest{75.01}}{0.02} & $+0.76$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}

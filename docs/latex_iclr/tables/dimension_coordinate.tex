@@ -1,0 +1,44 @@
+% Source: runs/table_a1_dimension_x_coordinate.csv
+% Current-code ablation suite: paper_ablations_15k_h200_gpu0-5_20260909-061547.
+\begin{table}[t]
+    \caption{Dimension reduction and coordinate selection in configuration (c).
+    Results are mean $\pm$ sample standard deviation over three seeds. Random
+    rows are independent subspace draws. The best coordinate treatment within
+    each reduction is bold.}
+    \label{tab:dimension-coordinate}
+    \tablebody
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        & & \multicolumn{3}{c}{Overall $\uparrow$} \\
+        \cmidrule(lr){3-5}
+        Reduction & Energy $\uparrow$ & As reduced & Haar-random
+        & Student-conditioned \\
+        \midrule
+        PCA-64
+        & 0.593 & \meanstd{71.49}{0.08} & \meanstd{72.39}{0.13}
+        & \meanstd{\tablebest{73.70}}{0.10} \\
+        PCA-128
+        & 0.739 & \meanstd{72.22}{0.04} & \meanstd{73.03}{0.22}
+        & \meanstd{\tablebest{74.52}}{0.01} \\
+        PCA-256
+        & 0.873 & \meanstd{72.48}{0.01} & \meanstd{73.08}{0.30}
+        & \meanstd{\tablebest{74.79}}{0.03} \\
+        PCA-384
+        & 0.928 & \meanstd{72.39}{0.03} & \meanstd{73.01}{0.27}
+        & \meanstd{\tablebest{74.86}}{0.06} \\
+        \midrule
+        Random subspace (1)
+        & 0.381 & \meanstd{73.10}{0.08} & \meanstd{72.79}{0.32}
+        & \meanstd{\tablebest{74.50}}{0.03} \\
+        Random subspace (2)
+        & 0.376 & \meanstd{72.92}{0.11} & \meanstd{72.85}{0.33}
+        & \meanstd{\tablebest{74.64}}{0.04} \\
+        Random subspace (3)
+        & 0.374 & \meanstd{72.65}{0.11} & \meanstd{72.85}{0.16}
+        & \meanstd{\tablebest{74.47}}{0.07} \\
+        SVD (uncentered)
+        & 0.901 & \meanstd{72.54}{0.07} & \meanstd{73.11}{0.15}
+        & \meanstd{\tablebest{74.46}}{0.03} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

@@ -1,0 +1,25 @@
+% Shared table typography for the ICLR manuscript.
+% Keep table-specific content in tables/ and presentation decisions here.
+
+\newcommand{\meanstd}[2]{\mbox{#1\,{\scriptsize $\pm$\,#2}}}
+\newcommand{\meanstdstacked}[2]{%
+  \shortstack{#1\\[-1pt]{\tiny $\pm$\,#2}}%
+}
+\newcommand{\tablebest}[1]{\textbf{#1}}
+\newcommand{\tablesecond}[1]{\underline{#1}}
+
+% Default for compact ablations and diagnostic tables.
+\newcommand{\tablebody}{%
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}%
+  \renewcommand{\arraystretch}{1.08}%
+}
+
+% Use only when a table has many task columns.
+\newcommand{\widetablebody}{%
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{2pt}%
+  \renewcommand{\arraystretch}{1.04}%
+}

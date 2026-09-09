@@ -10,28 +10,18 @@
 
 \usepackage{amsmath,amssymb,amsfonts,amsthm}
 \usepackage{booktabs}
-\usepackage{float}
 \usepackage{graphicx}
 \usepackage{multirow}
-\usepackage{placeins}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \newtheorem{proposition}{Proposition}
 \usepackage[hidelinks]{hyperref}
 \usepackage{url}
+\input{styles/tables.tex}
 
-
-% Numbers still waiting on a run print in brackets and in bold, so an unfilled
-% cell is impossible to miss in the compiled PDF.
-\newcommand{\ph}[1]{\textbf{[#1]}}
-% Sections that are still an outline print their plan as a short italic list, so
-% scaffolding is never mistaken for prose.
-\newenvironment{outline}%
-  {\begingroup\small\itshape\begin{itemize}\setlength{\itemsep}{1pt}}%
-  {\end{itemize}\endgroup}
 
 % GATE-KD: Gauge-Aligned Target Embeddings for Knowledge Distillation
-\title{GATE-KD: Aligning Teacher Targets to the Student Space}
+\title{Equivalent Representations Are Not Equivalent Distillation Targets}
 
 % Authors must remain hidden while \iclrfinalcopy is commented out.
 \author{Anonymous Authors}
@@ -50,12 +40,17 @@
 \input{sections/analysis}
 \input{sections/conclusion}
 
+% Flush manuscript text before the table-only results block.
+\clearpage
+\input{tables/main_tables}
+
+\clearpage
 \bibliography{references/references}
 \bibliographystyle{template/iclr2027_conference}
 
 \clearpage
 \appendix
-\raggedbottom
 \input{sections/appendix}
+\input{tables/appendix_tables}
 
 \end{document}

@@ -1,0 +1,44 @@
+% Sources: runs/sensitivity_s1_lambda_h0.csv, runs/sensitivity_s2_fit_set.csv,
+% and runs/ablations_by_cell.csv for source/non-source aggregates.
+% Current-code ablation suite: paper_ablations_15k_h200_gpu0-5_20260909-061547.
+\begin{table}[t]
+    \caption{Sensitivity analyses for configuration (c). Panel (a) varies the
+    structural weight; panel (b) varies the representative fit-set size.
+    Results are mean $\pm$ sample standard deviation over three seeds; best
+    values in each panel are bold.}
+    \label{tab:sensitivity-controls}
+    \tablebody
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Setting & Source $\uparrow$ & Non-source $\uparrow$ & Overall $\uparrow$ \\
+        \midrule
+        \multicolumn{4}{@{}l}{\textit{(a) Structural weight $\lambda_{H_0}$}} \\
+        \midrule
+        0
+        & \meanstd{67.61}{0.09} & \meanstd{77.57}{0.06} & \meanstd{74.25}{0.01} \\
+        0.1
+        & \meanstd{68.13}{0.17} & \meanstd{77.75}{0.04} & \meanstd{74.54}{0.03} \\
+        0.3
+        & \meanstd{68.72}{0.28} & \meanstd{77.85}{0.06} & \meanstd{74.81}{0.05} \\
+        0.5
+        & \meanstd{\tablebest{68.80}}{0.16}
+        & \meanstd{\tablebest{77.89}}{0.01}
+        & \meanstd{\tablebest{74.86}}{0.06} \\
+        1.0
+        & \meanstd{68.38}{0.17} & \meanstd{77.75}{0.00} & \meanstd{74.63}{0.06} \\
+        \midrule
+        \multicolumn{4}{@{}l}{\textit{(b) Representative fit-set size}} \\
+        \midrule
+        2{,}048
+        & \meanstd{68.69}{0.15} & \meanstd{77.62}{0.10} & \meanstd{74.65}{0.05} \\
+        4{,}096
+        & \meanstd{68.79}{0.07} & \meanstd{77.77}{0.05} & \meanstd{74.78}{0.05} \\
+        8{,}192
+        & \meanstd{68.55}{0.09} & \meanstd{77.84}{0.04} & \meanstd{74.75}{0.01} \\
+        14{,}760
+        & \meanstd{\tablebest{68.80}}{0.16}
+        & \meanstd{\tablebest{77.89}}{0.01}
+        & \meanstd{\tablebest{74.86}}{0.06} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
