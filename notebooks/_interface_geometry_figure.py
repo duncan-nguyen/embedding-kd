@@ -111,10 +111,10 @@ def _flat_panel(ax) -> None:
 def _shared_square_window(
     axes, clouds: Sequence[np.ndarray], pad: float = 0.08
 ) -> float:
-    """Apply one honest coordinate window to every supplied 2-D panel."""
+    """Apply one robust coordinate window within a single visual comparison."""
 
     points = np.vstack(clouds)
-    low, high = points.min(axis=0), points.max(axis=0)
+    low, high = np.quantile(points, (0.005, 0.995), axis=0)
     center = (low + high) / 2
     half = max(float((high - low).max()) * (1 + pad) / 2, 1e-6)
     for ax in axes:
@@ -242,7 +242,7 @@ def render_interface_geometry(
 
         # (b) A single coloured realization sits above monochrome orbit samples.
         ghosts = [np.asarray(cloud) for cloud in view["ghosts"]]
-        reduced = np.asarray(view["Y"])
+        reduced = np.asarray(view["Y_orbit"])
         for ghost in ghosts:
             ax_b.scatter(
                 *ghost.T,
@@ -287,16 +287,16 @@ def render_interface_geometry(
         # (c) Marker shape separates student x from target dots even in grayscale.
         student = np.asarray(view["Z"])
         selected = np.asarray(view["YR"])
-        before = reduced
-        n_links = min(36, len(student))
+        before = np.asarray(view["Y_before"])
+        n_links = min(18, len(student))
         link_indices = np.linspace(0, len(student) - 1, n_links, dtype=int)
         segments = np.stack((selected[link_indices], student[link_indices]), axis=1)
         ax_c.add_collection(
             LineCollection(
                 segments,
                 colors=STUDENT,
-                linewidths=0.28,
-                alpha=0.17,
+                linewidths=0.25,
+                alpha=0.12,
                 zorder=2,
                 rasterized=True,
             )
@@ -321,10 +321,10 @@ def render_interface_geometry(
         )
         ax_c.scatter(
             *student.T,
-            s=7.0,
+            s=6.0,
             marker="x",
             c=STUDENT,
-            alpha=0.50,
+            alpha=0.42,
             linewidths=0.42,
             rasterized=True,
             zorder=5,
@@ -332,13 +332,15 @@ def render_interface_geometry(
         _flat_panel(ax_c)
         _panel_title(
             ax_c,
-            "Student-aligned target",
+            "Student-selected target",
             f"{student_dim}-D",
             SELECTED,
         )
 
-        # The same view and the same numerical scale are mandatory for (b)/(c).
-        _shared_square_window((ax_b, ax_c), [reduced, student, selected, *ghosts])
+        # Each visual question gets a readable crop. Every overlay inside that crop
+        # still shares one projection and one numerical scale.
+        _shared_square_window((ax_b,), [reduced, *ghosts])
+        _shared_square_window((ax_c,), [before, student, selected])
         _flow_arrow(figure, ax_a, ax_b, REDUCE)
         _flow_arrow(figure, ax_b, ax_c, SELECTED)
 
