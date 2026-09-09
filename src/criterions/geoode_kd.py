@@ -31,15 +31,6 @@ from src.criterions.h0_topological_loss import (
     h0_death_times,
     h0_loss_against_deaths,
     h0_topological_loss,
-    split_chunks,
-)
-from src.criterions.h1_topological_loss import (
-    MIN_BATCH as H1_MIN_BATCH,
-)
-from src.criterions.h1_topological_loss import (
-    h1_diagram,
-    h1_loss_against_diagram,
-    h1_topological_loss,
 )
 from src.criterions.structural_losses import (
     STRUCTURAL_LOSSES,
@@ -94,7 +85,7 @@ class GeoODEKD(nn.Module):
             it, and its parameters are trained with the student. ``None`` (the
             default) means the targets arrive already mapped and frozen.
         lambda_topo: weight of the structural term selected by ``structural_loss``.
-            At its default this is ``L_H0 + lambda_h1 * L_H1``. It matches the
+            At its default this is ``L_H0``. It matches the
             *shape* of the batch rather than its coordinates, so it is invariant to
             space width and reads the teacher's native geometry when
             ``teacher_topo`` is given. 0 is the recipe.
@@ -102,14 +93,6 @@ class GeoODEKD(nn.Module):
             ``"sorted_pairwise"``, ``"teacher_mst"``, ``"knn_distribution"``.
         structural_knn_k: neighbour count for ``knn_distribution``; ignored by the
             other structural losses.
-        lambda_h1: weight of the H1 (cycle) half of ``L_topo``: the squared
-            2-Wasserstein distance between the teacher's and the student's
-            1-dimensional persistence diagrams, low-persistence features matched to
-            the diagonal. 0 -- the default -- leaves ``L_topo`` the pure H0 term it
-            was, and the H1 machinery (and its gudhi dependency) is never touched.
-            The two halves are on different scales by construction -- ``L_H0`` is a
-            mean over ``B - 1`` death times, ``W_2^2`` is a sum over matched cycles --
-            so this weight carries that ratio as well as the relative importance.
         topo_batch_size: rows in the point cloud the topological terms read. 0 -- the
             default -- makes that cloud the optimiser's batch, one diagram per step.
             Any other value ``b >= 2`` splits the batch into ``B // b`` disjoint
@@ -129,10 +112,10 @@ class GeoODEKD(nn.Module):
 
     Attributes:
         diagnostics: when true, :meth:`forward` also reports the *tier 1*
-            measurements -- per-term gradient norms, the batch's effective ranks, the
-            H0 death-time bias and the student's own H1 diagram. Each of those costs
-            a backward through the loss head, a small SVD, a second minimum spanning
-            tree or a gudhi call respectively, which is a real fraction of a step on
+            measurements -- per-term gradient norms, the batch's effective ranks and
+            the H0 death-time bias. Each of those costs a backward through the loss
+            head, a small SVD or a second minimum spanning
+            tree respectively, which is a real fraction of a step on
             a 22M-parameter student, so the training loop flips this on a stride
             instead of leaving it on. Nothing it computes is differentiated through:
             switching it on does not move a seeded trajectory. The *tier 0*
@@ -154,7 +137,6 @@ class GeoODEKD(nn.Module):
         endpoint_loss: str = "cosine",
         lambda_gram: float = 0.0,
         lambda_topo: float = 0.0,
-        lambda_h1: float = 0.0,
         topo_metric: Metric = "chord",
         topo_batch_size: int = 0,
         structural_loss: str = "h0",
@@ -162,15 +144,9 @@ class GeoODEKD(nn.Module):
         diagnostics: bool = False,
     ):
         super().__init__()
-        if (
-            lambda_end < 0
-            or lambda_ctr < 0
-            or lambda_gram < 0
-            or lambda_topo < 0
-            or lambda_h1 < 0
-        ):
+        if lambda_end < 0 or lambda_ctr < 0 or lambda_gram < 0 or lambda_topo < 0:
             raise ValueError(
-                "lambda_end, lambda_ctr, lambda_gram, lambda_topo and lambda_h1 "
+                "lambda_end, lambda_ctr, lambda_gram and lambda_topo "
                 "must be non-negative"
             )
         if topo_metric not in ("chord", "angular", "cosine"):
@@ -185,8 +161,6 @@ class GeoODEKD(nn.Module):
         structural_knn_k = int(structural_knn_k)
         if structural_knn_k <= 0:
             raise ValueError("structural_knn_k must be positive")
-        if structural_loss != "h0" and lambda_h1 > 0:
-            raise ValueError("lambda_h1 is only defined with structural_loss='h0'")
         topo_batch_size = int(topo_batch_size or 0)
         if topo_batch_size < 0 or topo_batch_size == 1:
             raise ValueError(
@@ -206,7 +180,6 @@ class GeoODEKD(nn.Module):
         self.endpoint_loss_form = endpoint_loss
         self.lambda_gram = float(lambda_gram)
         self.lambda_topo = float(lambda_topo)
-        self.lambda_h1 = float(lambda_h1)
         self.topo_metric = topo_metric
         self.structural_loss_form = structural_loss
         self.structural_knn_k = structural_knn_k
@@ -380,31 +353,6 @@ class GeoODEKD(nn.Module):
             chunk_size=self.topo_batch_size,
         )
 
-    def h1_loss_against_diagram(
-        self, final_state: torch.Tensor, teacher_diagram: torch.Tensor
-    ) -> torch.Tensor:
-        """The H1 term against a teacher diagram built outside the training step."""
-        return h1_loss_against_diagram(
-            final_state, teacher_diagram, metric=self.topo_metric
-        )
-
-    def h1_loss(self, final_state: torch.Tensor, teacher: torch.Tensor) -> torch.Tensor:
-        """``W_2^2`` between the two batches' 1-dimensional persistence diagrams.
-
-        Where the H0 term reads how the cloud merges, this reads what it encloses:
-        the birth and death of every 1-cycle of the Vietoris-Rips filtration, matched
-        against the teacher's with low-persistence cycles allowed to fall onto the
-        diagonal. Like H0 it is a statement about scalar filtration values only, so it
-        needs no correspondence between the two spaces' axes and ``teacher`` here may
-        be the *unprojected* teacher cache. The teacher side is a constant.
-        """
-        return h1_topological_loss(
-            final_state,
-            teacher,
-            metric=self.topo_metric,
-            chunk_size=self.topo_batch_size,
-        )
-
     def structural_loss(
         self,
         final_state: torch.Tensor,
@@ -452,7 +400,6 @@ class GeoODEKD(nn.Module):
         teacher_topo: torch.Tensor | None = None,
         teacher_gram: torch.Tensor | None = None,
         teacher_deaths: torch.Tensor | None = None,
-        teacher_h1: torch.Tensor | None = None,
         teacher_structural_values: torch.Tensor | None = None,
         teacher_structural_edges: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
@@ -476,9 +423,6 @@ class GeoODEKD(nn.Module):
                 ``[B - 1]`` sorted death times by the collate. It supersedes
                 ``teacher_topo`` when given -- it is what ``teacher_topo`` would have
                 been turned into here, computed off the training step's critical path.
-            teacher_h1: the H1 term's teacher side, already reduced by the collate to
-                its ``[K, 2]`` diagram of ``(birth, death)`` pairs, for the same
-                reason. It supersedes ``teacher_topo`` for that term when given.
             teacher_structural_values: precomputed scalar teacher target for the
                 selected non-H0 structural control.
             teacher_structural_edges: teacher-selected ``[B - 1, 2]`` sample pairs,
@@ -502,7 +446,15 @@ class GeoODEKD(nn.Module):
         teacher = self.normalize(teacher)
         # The contrastive term is a statement about the student's *own* space, so it
         # keeps reading the unmapped final state even when a learned projector moves
-        # the endpoint comparison into a shared space.
+        # the endpoint comparison into a shared space. The structural terms below say
+        # the same thing about the shape of that space -- L_H0 and the Gram control
+        # compare the student's cloud with the teacher's own d_T cloud and never pass
+        # through an interface on either side -- so they read this state too. Under
+        # ``s2t`` the aligned state is the student *after* the learned map, and letting
+        # the structural terms read that would let the map satisfy the shape
+        # constraint on the student's behalf: the arm would then differ from every
+        # other one in two things at once, and the constraint would no longer bind the
+        # d_S embedding that is actually deployed.
         student_view = states[-1]
         if self.target_projector is not None:
             states, teacher = self.target_projector.align(states, teacher)
@@ -527,9 +479,9 @@ class GeoODEKD(nn.Module):
         # direct criterion callers may instead supply the native embeddings.
         topo_target = teacher if teacher_topo is None else teacher_topo.float()
         if self.lambda_gram > 0.0 and teacher_gram is not None:
-            loss_gram = self.gram_loss_against_target(states[-1], teacher_gram)
+            loss_gram = self.gram_loss_against_target(student_view, teacher_gram)
         elif self.lambda_gram > 0.0:
-            loss_gram = self.gram_loss(states[-1], topo_target)
+            loss_gram = self.gram_loss(student_view, topo_target)
         else:
             loss_gram = torch.zeros((), device=teacher.device, dtype=teacher.dtype)
 
@@ -546,7 +498,7 @@ class GeoODEKD(nn.Module):
         # chunk ``topo_batch_size`` asked for. ``chunk_count`` falls back to the batch
         # when the batch is the smaller of the two (an epoch's tail batch), so this is
         # the size that decides whether a diagram exists at all.
-        topo_rows = states[-1].shape[0]
+        topo_rows = student_view.shape[0]
         chunks = chunk_count(topo_rows, self.topo_batch_size)
         if chunks > 1:
             topo_rows = self.topo_batch_size
@@ -554,14 +506,14 @@ class GeoODEKD(nn.Module):
         if topo_active and self.structural_loss_form == "h0":
             if teacher_deaths is not None:
                 loss_structural = self.topological_loss_against_deaths(
-                    states[-1], teacher_deaths
+                    student_view, teacher_deaths
                 )
             else:
-                loss_structural = self.topological_loss(states[-1], topo_target)
+                loss_structural = self.topological_loss(student_view, topo_target)
             loss_h0 = loss_structural
         elif topo_active:
             loss_structural = self.structural_loss(
-                states[-1],
+                student_view,
                 topo_target,
                 teacher_values=teacher_structural_values,
                 teacher_edges=teacher_structural_edges,
@@ -571,28 +523,8 @@ class GeoODEKD(nn.Module):
             loss_structural = zero
             loss_h0 = zero
 
-        # A 1-cycle needs three points, so H1 sits out one batch more than H0 does.
-        h1_active = (
-            self.lambda_topo > 0.0
-            and self.lambda_h1 > 0.0
-            and self.structural_loss_form == "h0"
-            and topo_rows >= H1_MIN_BATCH
-        )
-        if h1_active:
-            # A pre-built ``teacher_h1`` is one diagram of the whole batch, so it is
-            # only the teacher side when the batch *is* the cloud. Under chunking the
-            # collate hands over the raw cache instead and the per-chunk diagrams are
-            # built here -- they are ragged ``[K_k, 2]`` tensors that no collate could
-            # have stacked into the batch dict anyway.
-            if teacher_h1 is not None and chunks == 1:
-                loss_h1 = self.h1_loss_against_diagram(states[-1], teacher_h1)
-            else:
-                loss_h1 = self.h1_loss(states[-1], topo_target)
-        else:
-            loss_h1 = zero
-
-        # L_topo = L_H0 + lambda_1 L_H1; lambda_topo below weights the pair.
-        loss_topo = loss_structural + self.lambda_h1 * loss_h1
+        # L_topo is the structural term alone; lambda_topo below weights it.
+        loss_topo = loss_structural
 
         if self.lambda_ctr > 0.0 and second_view is not None:
             loss_ctr = self.contrastive_loss(
@@ -615,7 +547,6 @@ class GeoODEKD(nn.Module):
             "loss_gram": loss_gram,
             "loss_topo": loss_topo,
             "loss_h0": loss_h0,
-            "loss_h1": loss_h1,
         }
         if self.structural_loss_form != "h0":
             reported.update(
@@ -652,7 +583,6 @@ class GeoODEKD(nn.Module):
                     "w_gram": self.lambda_gram * loss_gram,
                     "w_topo": self.lambda_topo * loss_topo,
                     "topo_active": float(topo_active),
-                    "h1_active": float(h1_active),
                 }
             )
             if self.structural_loss_form != "h0":
@@ -669,9 +599,7 @@ class GeoODEKD(nn.Module):
                     states[-1],
                     topo_target,
                     teacher_deaths=teacher_deaths,
-                    teacher_h1=teacher_h1,
                     topo_active=topo_active,
-                    h1_active=h1_active,
                 )
             )
             if self.diagnostics:
@@ -734,30 +662,18 @@ class GeoODEKD(nn.Module):
         topo_target: torch.Tensor,
         *,
         teacher_deaths: torch.Tensor | None,
-        teacher_h1: torch.Tensor | None,
         topo_active: bool,
-        h1_active: bool,
     ) -> dict[str, torch.Tensor]:
-        """The signed residual of L_H0, and how much of a diagram H1 even sees.
+        """The signed residual of L_H0.
 
         ``L_H0`` is a squared error, so it throws away the one directional thing it
         knows: ``death_bias = mean(d_student - d_teacher)`` is negative while the
         student's cloud is more tightly connected than the teacher's and positive
-        while it is looser. ``h1_n_*`` and ``h1_pers_max_*`` say whether the H1 term
-        has anything to match at this batch size at all -- a ``loss_h1`` of zero next
-        to two empty diagrams is not the same result as one next to two full ones.
+        while it is looser.
         """
         out: dict[str, torch.Tensor] = {}
         if teacher_deaths is not None:
             out["death_mean_t"] = teacher_deaths.float().mean()
-        if teacher_h1 is not None:
-            out["h1_n_t"] = torch.tensor(
-                float(teacher_h1.shape[0]), device=final_state.device
-            )
-            if teacher_h1.shape[0]:
-                out["h1_pers_max_t"] = (
-                    (teacher_h1[:, 1] - teacher_h1[:, 0]).float().max()
-                )
 
         if not self.diagnostics:
             return out
@@ -784,21 +700,6 @@ class GeoODEKD(nn.Module):
             out.setdefault("death_mean_t", reference.mean())
             if reference.shape == student_deaths.shape:
                 out["death_bias"] = (student_deaths - reference).mean()
-
-        if h1_active:
-            # Under chunking the loss never sees a batch-sized diagram, so report the
-            # first chunk's -- the same cloud size the term was computed on.
-            student_diagram = h1_diagram(
-                split_chunks(final_state, self.topo_batch_size)[0],
-                metric=self.topo_metric,
-            )
-            out["h1_n_s"] = torch.tensor(
-                float(student_diagram.shape[0]), device=final_state.device
-            )
-            if student_diagram.shape[0]:
-                out["h1_pers_max_s"] = (
-                    (student_diagram[:, 1] - student_diagram[:, 0]).float().max()
-                )
 
         out["erank_student"] = effective_rank(final_state)
         out["erank_teacher"] = effective_rank(topo_target)

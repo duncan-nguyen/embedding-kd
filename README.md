@@ -225,9 +225,7 @@ their losses, and leaves the `B mod b` trailing rows out of this term only; a
 batch smaller than `b` (an epoch's tail) is read whole. The teacher's side is
 still built in the collate — one `[B // b, b - 1]` tensor instead of a `[B - 1]`
 vector — and the step cuts the student's rows by the same rule, so the two sides
-always describe the same clouds. It is also the way to make `--lambda_h1`
-affordable: the 2-skeleton is `O(b^3)` per chunk, so chunking a batch of 128 into
-four clouds of 32 is roughly `(B/b)^2 = 16` times cheaper.
+always describe the same clouds.
 
 Training is single-process. Two visible CUDA devices place the student on
 `cuda:0` and the teacher on `cuda:1`; one device puts both on `cuda:0`.
@@ -327,8 +325,8 @@ into one `--save_dir` stay separable.
 
 `step_metrics.jsonl` carries the objective's terms (`loss_*`), the weighted
 contribution each one made to the number that was differentiated (`w_*`), and
-flags saying which terms were defined on that batch at all (`topo_active`,
-`h1_active`) — a `loss_topo` of zero is otherwise indistinguishable from a term
+a flag saying whether the structural term was defined on that batch at all
+(`topo_active`) — a `loss_topo` of zero is otherwise indistinguishable from a term
 that was switched off. Next to them are the readings a loss value cannot give:
 the batch's spread and Gram agreement with the teacher, and the InfoNCE
 alignment/uniformity pair.
@@ -337,8 +335,8 @@ alignment/uniformity pair.
 weighted **gradient norm of each term** at the student's final hidden state
 (`g_end`, `g_ctr`, `g_topo`, `g_gram`, and `g_total` for their vector sum — a term
 that is reported large but enters at a small weight shows up here as what it is),
-the batch effective ranks, the signed H0 death-time residual, the student's own
-H1 diagram and the whole gradient's norm. Each epoch's record also carries
+the batch effective ranks, the signed H0 death-time residual and the whole
+gradient's norm. Each epoch's record also carries
 `grad_norm_mean` and how many steps GradScaler skipped on non-finite gradients.
 
 `--probe_every N` runs the structural audit ladder inside training, on a fixed

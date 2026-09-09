@@ -12,9 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from src.criterions.h0_topological_loss import chunk_count, h0_death_times
-from src.criterions.h1_topological_loss import MIN_BATCH as H1_MIN_BATCH
-from src.criterions.h1_topological_loss import h1_diagram
+from src.criterions.h0_topological_loss import h0_death_times
 from src.criterions.structural_losses import structural_target
 
 
@@ -75,11 +73,7 @@ class DualTokenizerCollateWithTeacher:
         batch's rows are known at collate time, so a DataLoader worker can build them
         in parallel with the previous step rather than the GPU building them on the
         critical path. It also replaces a ``[B, d_T]`` host-to-device copy per step
-        with a ``[B - 1]`` one (plus a ``[K, 2]`` one when H1 is on).
-    ``need_h1``
-        Whether that also covers the H1 diagram. H1 builds the full 2-skeleton of the
-        batch -- ``O(B^3)`` simplices -- so it is the one part of the collate whose
-        cost is worth keeping off unless the run actually asked for it.
+        with a ``[B - 1]`` one.
     ``topo_batch_size``
         The size of the cloud those diagrams describe, when it is not the batch: the
         batch is cut into ``B // b`` chunks of ``b`` rows and the H0 side becomes one
@@ -103,7 +97,6 @@ class DualTokenizerCollateWithTeacher:
         need_second_text: bool = True,
         need_special_tokens_mask: bool = False,
         topo_metric: str | None = None,
-        need_h1: bool = False,
         topo_batch_size: int = 0,
         structural_loss: str = "h0",
         structural_knn_k: int = 1,
@@ -115,7 +108,6 @@ class DualTokenizerCollateWithTeacher:
         self.need_second_text = bool(need_second_text)
         self.need_special_tokens_mask = bool(need_special_tokens_mask)
         self.topo_metric = topo_metric
-        self.need_h1 = bool(need_h1)
         self.topo_batch_size = int(topo_batch_size or 0)
         self.structural_loss = structural_loss
         self.structural_knn_k = int(structural_knn_k)
@@ -168,15 +160,6 @@ class DualTokenizerCollateWithTeacher:
                 sort=True,
                 chunk_size=self.topo_batch_size,
             )
-            if not self.need_h1:
-                return
-            if chunk_count(topo.shape[0], self.topo_batch_size) > 1:
-                # One H1 diagram per chunk, and they have different numbers of cycles:
-                # ragged tensors the batch dict cannot carry. The chunked H1 teacher is
-                # therefore built in the step, from the raw cache passed along here.
-                out["teacher_topo"] = topo
-            elif topo.shape[0] >= H1_MIN_BATCH:
-                out["teacher_h1"] = h1_diagram(topo, metric=self.topo_metric)
 
     def __call__(self, batch):
         columns = list(zip(*batch))

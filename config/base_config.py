@@ -100,8 +100,8 @@ class BaseConfig:
     # same trajectory with all of them on as with all of them off.
     #
     # Stride of the expensive per-step diagnostics: the criterion's per-term
-    # gradient norms, the batch's effective ranks, the signed H0 death-time residual
-    # and the student's own H1 diagram, plus the one device->host read of the
+    # gradient norms, the batch's effective ranks and the signed H0 death-time
+    # residual, plus the one device->host read of the
     # gradient norm. The cheap ones (weighted per-term contributions, batch spread,
     # alignment/uniformity, batch Gram agreement, the term-defined flags) are on
     # every step regardless. 0 disables the stride. CLI: --diag_every.

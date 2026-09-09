@@ -392,7 +392,6 @@ class KnowledgeDistiller:
             endpoint_loss=getattr(cfg, "endpoint_loss", "cosine"),
             lambda_gram=float(getattr(cfg, "lambda_gram", 0.0) or 0.0),
             lambda_topo=float(getattr(cfg, "lambda_topo", 0.0) or 0.0),
-            lambda_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0),
             topo_metric=getattr(cfg, "topo_metric", "chord"),
             topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
             structural_loss=getattr(cfg, "structural_loss", "h0"),
@@ -419,7 +418,6 @@ class KnowledgeDistiller:
             f"endpoint_loss={getattr(cfg, 'endpoint_loss', 'cosine')}, "
             f"lambda_gram={float(getattr(cfg, 'lambda_gram', 0.0) or 0.0)}, "
             f"lambda_topo={float(getattr(cfg, 'lambda_topo', 0.0) or 0.0)}, "
-            f"lambda_h1={float(getattr(cfg, 'lambda_h1', 0.0) or 0.0)}, "
             f"structural_loss={getattr(cfg, 'structural_loss', 'h0')} "
             f"({getattr(cfg, 'topo_metric', 'chord')}, "
             f"topo_batch_size={int(getattr(cfg, 'topo_batch_size', 0) or 0)} "
@@ -1008,7 +1006,6 @@ class KnowledgeDistiller:
                 if teacher_topo_list is not None and lambda_topo > 0.0
                 else None
             ),
-            need_h1=float(getattr(cfg, "lambda_h1", 0.0) or 0.0) > 0.0,
             topo_batch_size=int(getattr(cfg, "topo_batch_size", 0) or 0),
             structural_loss=getattr(cfg, "structural_loss", "h0"),
             structural_knn_k=int(getattr(cfg, "structural_knn_k", 1)),
@@ -1963,7 +1960,6 @@ class KnowledgeDistiller:
                 "teacher_topo",
                 "teacher_gram",
                 "teacher_deaths",
-                "teacher_h1",
                 "teacher_structural_values",
                 "teacher_structural_edges",
             ),
@@ -2002,7 +1998,6 @@ class KnowledgeDistiller:
                 teacher_topo=batch_s.get("teacher_topo"),
                 teacher_gram=batch_s.get("teacher_gram"),
                 teacher_deaths=batch_s.get("teacher_deaths"),
-                teacher_h1=batch_s.get("teacher_h1"),
                 teacher_structural_values=batch_s.get("teacher_structural_values"),
                 teacher_structural_edges=batch_s.get("teacher_structural_edges"),
             )

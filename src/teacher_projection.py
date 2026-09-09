@@ -410,7 +410,14 @@ def fit_gauge_alignment(
     }
 
 
-GAUGE_ROTATIONS = ("procrustes", "random", "interpolate", "rank_one")
+GAUGE_ROTATIONS = (
+    "procrustes",
+    "random",
+    "shuffled",
+    "unrelated",
+    "interpolate",
+    "rank_one",
+)
 
 
 def interpolate_rotation(
@@ -487,6 +494,21 @@ def fit_gauge_rotation(
     Procrustes solution, theta = 1 the random one); ``rank_one`` the Householder map
     that aligns only the two mean directions.
 
+    ``shuffled`` and ``unrelated`` are the two controls that ask what the fit is
+    actually reading. Both run the *same* Procrustes solve, and differ only in what
+    they solve against:
+
+    * ``shuffled`` permutes the student's rows, so the per-sentence correspondence
+      between a target and its student embedding is destroyed while the student's
+      marginal distribution -- its mean direction, its anisotropy, its spectrum -- is
+      untouched. A gauge that survives this was never reading the correspondence; on
+      a student whose cross-covariance is near rank-one it is only rotating one mean
+      vector onto another, which ``participation_ratio`` predicts in advance.
+    * ``unrelated`` solves against an isotropic random cloud of the same shape: the
+      same procedure with no student information in it at all. It differs from
+      ``random`` in provenance rather than in distribution, and it is the arm that
+      says whether "fitted" means anything once the signal is gone.
+
     The Procrustes fit is solved either way, even when another rotation is the one
     returned: it costs one ``d_S x d_S`` SVD and it puts the number every control
     exists to be compared against (``cos_procrustes``) in the same log line and the
@@ -506,6 +528,19 @@ def fit_gauge_rotation(
     Z = F.normalize(student.detach().to(torch.float32), dim=-1)
     if mode == "random":
         rotation = random_orthogonal(targets.shape[1], seed=seed)
+        stats["rotation_seed"] = int(seed)
+    elif mode in ("shuffled", "unrelated"):
+        # Private CPU generator, as random_orthogonal uses: the draw depends on the
+        # seed alone, never on what the global RNG has done before this call.
+        generator = torch.Generator(device="cpu").manual_seed(int(seed))
+        signal = (
+            Z[torch.randperm(Z.shape[0], generator=generator)]
+            if mode == "shuffled"
+            else F.normalize(
+                torch.randn(Z.shape, generator=generator, dtype=torch.float32), dim=-1
+            )
+        )
+        rotation, _ = fit_gauge_alignment(T, signal)
         stats["rotation_seed"] = int(seed)
     elif mode == "interpolate":
         if theta is None:

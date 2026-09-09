@@ -124,18 +124,8 @@ def parse_args():
         type=float,
         default=None,
         help="GATE-KD: weight of the structural term chosen by --structural_loss. "
-        "The default is L_H0 + lambda_h1 * L_H1 against the unprojected teacher; "
+        "The default is L_H0 against the unprojected teacher; "
         "0 is the recipe and positive values enable the reviewer-control arm",
-    )
-    parser.add_argument(
-        "--lambda_h1",
-        type=float,
-        default=None,
-        help="GATE-KD: weight lambda_1 of the H1 half of L_topo -- W_2^2 between "
-        "the teacher's and the student's 1-dimensional persistence diagrams, "
-        "low-persistence cycles matched to the diagonal. 0 leaves L_topo the pure "
-        "H0 term. Requires the optional 'gudhi' package and costs O(B^3) simplices "
-        "per batch on both sides",
     )
     parser.add_argument(
         "--structural_loss",
@@ -248,12 +238,22 @@ def parse_args():
     )
     parser.add_argument(
         "--gauge_rotation",
-        choices=["procrustes", "random", "interpolate", "rank_one"],
+        choices=[
+            "procrustes",
+            "random",
+            "shuffled",
+            "unrelated",
+            "interpolate",
+            "rank_one",
+        ],
         default=None,
         help='GATE-KD: which rotation --gauge_align applies. "procrustes" is the '
         'informative gauge fitted to the student init; "random" is a '
         "Haar-random rotation of identical cost, the control that separates "
-        '"the right orientation" from "an orientation"; "interpolate" is the '
+        '"the right orientation" from "an orientation"; "shuffled" and '
+        '"unrelated" run the same Procrustes solve against the student with its '
+        "rows permuted, and against an isotropic random cloud, so they say whether "
+        'the fit reads the per-sentence correspondence; "interpolate" is the '
         "geodesic point --gauge_theta of the way from the Procrustes gauge to the "
         'random one; "rank_one" is the Householder map aligning only the two '
         "mean directions",
@@ -424,8 +424,8 @@ def parse_args():
         default=None,
         help="Stride of the expensive training diagnostics: per-term gradient norms "
         "(weighted, so they say which term is actually driving the student), batch "
-        "effective ranks, the signed H0 death-time residual and the student's own H1 "
-        "diagram. 0 disables them; the cheap per-step diagnostics stay on either way. "
+        "effective ranks and the signed H0 death-time residual. "
+        "0 disables them; the cheap per-step diagnostics stay on either way. "
         "Nothing it computes is differentiated through, so a seeded run is unchanged",
     )
     parser.add_argument(
@@ -537,7 +537,6 @@ METHOD_FLAGS = (
             "endpoint_loss",
             "lambda_gram",
             "lambda_topo",
-            "lambda_h1",
             "structural_loss",
             "structural_knn_k",
             "topo_batch_size",
@@ -618,13 +617,6 @@ def get_config(method: str, args):
 
     for names, supported in METHOD_FLAGS:
         apply_method_flags(config, args, names, supported)
-
-    if (
-        getattr(config, "distill_method", None) == "geoode"
-        and getattr(config, "structural_loss", "h0") != "h0"
-        and float(getattr(config, "lambda_h1", 0.0) or 0.0) > 0.0
-    ):
-        raise ValueError("--lambda_h1 is only defined with --structural_loss h0")
 
     # The two eval flags describe one protocol, so each implies the other when only
     # one is given: a run either touches the validation split or it does not.

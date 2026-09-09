@@ -204,7 +204,6 @@ def build_command(
         "--lambda_end", "1.0",
         "--lambda_ctr", "0.0",
         "--lambda_topo", str(spec["lambda_topo"]),
-        "--lambda_h1", "0.0",
         # Keep the H0 point cloud identical to the optimizer batch in every arm.
         "--topo_batch_size", str(spec["batch_size"]),
         "--topo_teacher_source", "original",

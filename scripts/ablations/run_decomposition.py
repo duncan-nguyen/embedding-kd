@@ -214,8 +214,6 @@ def build_command(
         "0.0",
         "--lambda_topo",
         str(args.lambda_topo if arm["uses_h0"] else 0.0),
-        "--lambda_h1",
-        "0.0",
         "--topo_batch_size",
         str(args.h0_batch_size),
         "--topo_metric",

@@ -116,11 +116,6 @@ def test_geoode_reports_the_selected_structural_term(kind):
     assert float(total.detach()) == pytest.approx(0.5 * metrics[key])
 
 
-def test_h1_cannot_be_combined_with_a_non_h0_control():
-    with pytest.raises(ValueError, match="only defined"):
-        GeoODEKD(structural_loss="teacher_mst", lambda_h1=0.1)
-
-
 @pytest.mark.parametrize("kind", KINDS)
 def test_collate_precomputes_the_selected_teacher_structural_target(kind):
     generator = torch.Generator().manual_seed(6)

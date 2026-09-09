@@ -32,7 +32,7 @@ class GeoODEConfig(BaseConfig):
     # "+ Gram" row of the recipe ablation, expected to be redundant with L_end once
     # the interface is a fixed orthonormal map. CLI: --lambda_gram.
     lambda_gram = 0.0
-    # Weight of the topological term L_topo = L_H0 + lambda_h1 * L_H1. It constrains
+    # Weight of the topological term L_topo = L_H0. It constrains
     # the *shape* of the cloud, not the position of any point, and is read off the
     # teacher's own d_T-dimensional cache rather than the projected target, so it is
     # the one term that does not depend on P_T. 0 is the recipe; > 0 is the "+ topo"
@@ -47,17 +47,6 @@ class GeoODEConfig(BaseConfig):
     # distances at k=1. CLI: --structural_loss / --structural_knn_k.
     structural_loss = "h0"
     structural_knn_k = 1
-    # Weight lambda_1 of the H1 half of L_topo: W_2^2 between the teacher's and the
-    # student's 1-dimensional persistence diagrams, i.e. the cycles of the batch
-    # rather than its merge tree, with low-persistence cycles matched to the diagonal.
-    # 0 leaves L_topo the pure H0 term. Needs the optional `gudhi` package, and builds
-    # the batch's full 2-skeleton (O(B^3) simplices) on both sides of the loss, so it
-    # is the expensive row of the ablation and its cost is set by batch_size, not by
-    # d: ~7 ms/step at batch_size=32, ~430 ms at 128, ~6 s at 256. W_2^2 is a *sum*
-    # over matched cycles while L_H0 is a mean over B - 1 death times, so this weight
-    # carries the scale ratio as well: start an order of magnitude below lambda_topo.
-    # CLI: --lambda_h1.
-    lambda_h1 = 0.0
     # Size of the point cloud the topological terms read, in rows. 0 -- the default
     # -- makes that cloud the training batch, one diagram per step, which is what it
     # always was. Any b >= 2 splits the batch into B // b disjoint clouds of b rows,
@@ -65,10 +54,9 @@ class GeoODEConfig(BaseConfig):
     # two sizes answer different questions -- batch_size sets the variance of the
     # gradient, this sets the scale at which the filtration reads the geometry, since
     # L_H0 compares exactly b - 1 death times -- so this is the knob for sweeping the
-    # topological scale with the optimizer held fixed. It also makes L_H1 cheaper by
-    # (B/b)^2, the 2-skeleton being O(b^3) per chunk. CLI: --topo_batch_size.
+    # topological scale with the optimizer held fixed. CLI: --topo_batch_size.
     topo_batch_size = 0
-    # Ground metric of both persistence diagrams on the unit sphere: "chord" is the
+    # Ground metric of the persistence diagrams on the unit sphere: "chord" is the
     # Euclidean distance sqrt(2 - 2cos), "angular" the geodesic acos(cos), "cosine"
     # the (non-metric) 1 - cos. CLI: --topo_metric.
     topo_metric = "chord"
@@ -128,7 +116,11 @@ class GeoODEConfig(BaseConfig):
     # Which rotation gauge_align applies: "procrustes" is the informative one,
     # "random" a Haar-random rotation of the same cost. PCA alone is already an
     # arbitrary gauge, so "random" is the control that says whether Procrustes wins
-    # by *being the right* orientation rather than by rotating at all.
+    # by *being the right* orientation rather than by rotating at all. "shuffled"
+    # and "unrelated" ask a sharper version of the same question: they run the same
+    # Procrustes solve against the student with its rows permuted, and against an
+    # isotropic random cloud, so they say whether the fit reads the per-sentence
+    # correspondence or merely the student's marginal shape.
     gauge_rotation = "procrustes"
     gauge_random_seed = 0
     # Position on the geodesic between the Procrustes gauge (0) and the random one

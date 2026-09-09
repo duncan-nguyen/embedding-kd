@@ -7,7 +7,7 @@
 # the same trajectory with both on -- so both are safe to leave on inside an
 # ablation.
 #   --diag_every   per-term gradient norms, batch effective ranks, the signed H0
-#                  death-time residual and the student's own H1 diagram.
+#                  death-time residual.
 #   --probe_every  the structural ladder on a fixed probe of corpus sentences,
 #                  into probe_metrics.jsonl. 0 turns it off.
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"

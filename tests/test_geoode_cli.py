@@ -82,16 +82,6 @@ def test_structural_control_flags_are_forwarded():
     assert config.structural_loss == "knn_distribution"
     assert config.structural_knn_k == 3
 
-    with pytest.raises(ValueError, match="lambda_h1"):
-        _config(
-            "--method",
-            "geoode",
-            "--structural_loss",
-            "teacher_mst",
-            "--lambda_h1",
-            "0.1",
-        )
-
 
 def test_learned_projector_lr_scale_flag_overrides_the_config():
     # The learned arms are baselines, so their one knob has to be sweepable from

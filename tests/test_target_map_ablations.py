@@ -181,9 +181,16 @@ def test_fit_teacher_projection_dispatches_every_arm():
         assert mean.shape == (32,)
 
     # The Matryoshka prefix is the leading coordinates: orthonormal, data-blind.
-    prefix, _ = fit_teacher_projection(embeddings, out_dim=8, projection_type="mrl_prefix")
+    prefix, _ = fit_teacher_projection(
+        embeddings, out_dim=8, projection_type="mrl_prefix"
+    )
     assert torch.equal(prefix, torch.eye(32)[:, :8])
-    assert torch.equal(prefix, fit_teacher_projection(torch.randn(5, 32), out_dim=8, projection_type="mrl_prefix")[0])
+    assert torch.equal(
+        prefix,
+        fit_teacher_projection(
+            torch.randn(5, 32), out_dim=8, projection_type="mrl_prefix"
+        )[0],
+    )
 
     expected, _ = fit_pca_projection(embeddings, out_dim=8, center=False)
     dispatched, _ = fit_teacher_projection(
@@ -201,9 +208,7 @@ def test_retained_energy_agrees_with_the_direct_ratio_for_isometries():
     embeddings = _spectral_data()
     projection, _ = fit_pca_projection(embeddings, out_dim=6)
 
-    direct = float(
-        (embeddings @ projection).pow(2).sum() / embeddings.pow(2).sum()
-    )
+    direct = float((embeddings @ projection).pow(2).sum() / embeddings.pow(2).sum())
     assert retained_energy(embeddings, projection) == pytest.approx(direct, abs=1e-5)
 
 
@@ -226,7 +231,9 @@ def test_random_gauge_rotates_without_aligning():
     """The control's whole content: it moves the coordinates exactly as much as
     Procrustes does, and gains none of the alignment."""
     generator = torch.Generator().manual_seed(13)
-    targets = torch.nn.functional.normalize(torch.randn(400, 16, generator=generator), dim=-1)
+    targets = torch.nn.functional.normalize(
+        torch.randn(400, 16, generator=generator), dim=-1
+    )
     student = torch.nn.functional.normalize(
         targets + 0.9 * torch.randn(400, 16, generator=generator), dim=-1
     )
@@ -243,8 +250,12 @@ def test_random_gauge_rotates_without_aligning():
 
 def test_random_gauge_reports_the_procrustes_number_it_is_compared_against():
     generator = torch.Generator().manual_seed(15)
-    targets = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
-    student = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
+    targets = torch.nn.functional.normalize(
+        torch.randn(300, 12, generator=generator), dim=-1
+    )
+    student = torch.nn.functional.normalize(
+        torch.randn(300, 12, generator=generator), dim=-1
+    )
 
     _, reference = fit_gauge_alignment(targets, student)
     _, stats = fit_gauge_rotation(targets, student, mode="random", seed=16)
@@ -255,14 +266,62 @@ def test_random_gauge_reports_the_procrustes_number_it_is_compared_against():
 
 def test_procrustes_mode_is_the_unrotated_default():
     generator = torch.Generator().manual_seed(17)
-    targets = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
-    student = torch.nn.functional.normalize(torch.randn(300, 12, generator=generator), dim=-1)
+    targets = torch.nn.functional.normalize(
+        torch.randn(300, 12, generator=generator), dim=-1
+    )
+    student = torch.nn.functional.normalize(
+        torch.randn(300, 12, generator=generator), dim=-1
+    )
 
     expected, _ = fit_gauge_alignment(targets, student)
     rotation, stats = fit_gauge_rotation(targets, student, mode="procrustes")
 
     assert torch.equal(rotation, expected)
     assert "cos_procrustes" not in stats
+
+
+@pytest.mark.parametrize("mode", ["shuffled", "unrelated"])
+def test_the_correspondence_controls_solve_the_same_problem_on_a_broken_signal(mode):
+    """Both run the Procrustes solve; neither may read the pairing it is fitted on.
+
+    The rotation still has to be orthogonal (it is the same closed form), the stats
+    still have to report the cosine the *true* student reaches under it, and the
+    Procrustes number it is measured against has to be in the same record."""
+    generator = torch.Generator().manual_seed(11)
+    targets = torch.nn.functional.normalize(
+        torch.randn(400, 12, generator=generator), dim=-1
+    )
+    student = torch.nn.functional.normalize(
+        targets @ torch.linalg.qr(torch.randn(12, 12, generator=generator))[0]
+        + 0.3 * torch.randn(400, 12, generator=generator),
+        dim=-1,
+    )
+
+    rotation, stats = fit_gauge_rotation(targets, student, mode=mode, seed=3)
+
+    assert torch.allclose(rotation.T @ rotation, torch.eye(12), atol=1e-5)
+    assert stats["rotation"] == mode
+    assert stats["rotation_seed"] == 3
+    # cos_after is what the real student gets under the rotation that was applied,
+    # cos_procrustes what the informative fit would have reached on the same rows.
+    assert stats["cos_after"] == pytest.approx(
+        float(((targets @ rotation) * student).sum(dim=-1).mean()), abs=1e-5
+    )
+    assert stats["cos_after"] < stats["cos_procrustes"]
+
+
+def test_the_correspondence_controls_are_deterministic_in_their_seed():
+    """A control whose draw moved with the global RNG would not be reproducible."""
+    targets = torch.nn.functional.normalize(torch.randn(200, 8), dim=-1)
+    student = torch.nn.functional.normalize(torch.randn(200, 8), dim=-1)
+
+    first, _ = fit_gauge_rotation(targets, student, mode="shuffled", seed=5)
+    torch.randn(1000)
+    second, _ = fit_gauge_rotation(targets, student, mode="shuffled", seed=5)
+    other, _ = fit_gauge_rotation(targets, student, mode="shuffled", seed=6)
+
+    assert torch.equal(first, second)
+    assert not torch.equal(first, other)
 
 
 def test_unknown_gauge_rotation_is_rejected():
@@ -274,8 +333,12 @@ def test_participation_ratio_detects_a_rank_one_cross_covariance():
     """PR is the diagnostic that predicts a null gauge ablation in advance: at PR ~ 1
     the rotation can only map one mean vector onto another."""
     generator = torch.Generator().manual_seed(18)
-    direction_t = torch.nn.functional.normalize(torch.randn(16, generator=generator), dim=0)
-    direction_z = torch.nn.functional.normalize(torch.randn(16, generator=generator), dim=0)
+    direction_t = torch.nn.functional.normalize(
+        torch.randn(16, generator=generator), dim=0
+    )
+    direction_z = torch.nn.functional.normalize(
+        torch.randn(16, generator=generator), dim=0
+    )
     # Both clouds sit almost on top of one direction: the cross-covariance is rank one.
     targets = torch.nn.functional.normalize(
         direction_t + 0.02 * torch.randn(600, 16, generator=generator), dim=-1
@@ -286,8 +349,12 @@ def test_participation_ratio_detects_a_rank_one_cross_covariance():
 
     _, degenerate = fit_gauge_alignment(targets, student)
     _, isotropic = fit_gauge_alignment(
-        torch.nn.functional.normalize(torch.randn(600, 16, generator=generator), dim=-1),
-        torch.nn.functional.normalize(torch.randn(600, 16, generator=generator), dim=-1),
+        torch.nn.functional.normalize(
+            torch.randn(600, 16, generator=generator), dim=-1
+        ),
+        torch.nn.functional.normalize(
+            torch.randn(600, 16, generator=generator), dim=-1
+        ),
     )
 
     assert degenerate["participation_ratio"] < 1.2
@@ -366,9 +433,7 @@ def test_the_random_projection_seed_changes_the_targets():
 
 
 def test_projection_rank_changes_only_the_active_target_subspace(tmp_path):
-    targets = _targets_for(
-        save_dir=str(tmp_path), projection_rank=3, gauge_align=False
-    )
+    targets = _targets_for(save_dir=str(tmp_path), projection_rank=3, gauge_align=False)
     saved = torch.load(tmp_path / "teacher_projection.pt", map_location="cpu")
 
     assert targets.shape == (64, 8)
@@ -413,12 +478,18 @@ def test_the_interpolated_gauge_walks_from_procrustes_to_the_random_one(tmp_path
     procrustes = _targets_for(gauge_rotation="procrustes")
     random_gauge = _targets_for(gauge_rotation="random", gauge_random_seed=0)
 
-    at_zero = _targets_for(gauge_rotation="interpolate", gauge_theta=0.0, gauge_random_seed=0)
+    at_zero = _targets_for(
+        gauge_rotation="interpolate", gauge_theta=0.0, gauge_random_seed=0
+    )
     at_one = _targets_for(
         save_dir=str(tmp_path),
-        gauge_rotation="interpolate", gauge_theta=1.0, gauge_random_seed=0,
+        gauge_rotation="interpolate",
+        gauge_theta=1.0,
+        gauge_random_seed=0,
     )
-    halfway = _targets_for(gauge_rotation="interpolate", gauge_theta=0.5, gauge_random_seed=0)
+    halfway = _targets_for(
+        gauge_rotation="interpolate", gauge_theta=0.5, gauge_random_seed=0
+    )
 
     assert torch.allclose(at_zero, procrustes, atol=1e-4)
 
@@ -448,6 +519,7 @@ def test_the_geodesic_cannot_leave_the_component_of_o_d_it_starts_in():
     reports that it walked to the reflected image of the endpoint instead. When both
     lie in the same component nothing is touched and theta = 1 is exact.
     """
+
     def _draw(seed: int, positive: bool) -> torch.Tensor:
         """An independent Haar draw forced into the requested component of O(6)."""
         matrix = random_orthogonal(6, seed=seed).clone()
@@ -684,7 +756,11 @@ def test_collect_reports_finished_and_missing_cells(tmp_path, capsys):
             "explained_energy": 0.918,
             "gauge_align": True,
             "gauge_rotation": "procrustes",
-            "gauge_stats": {"cos_before": 0.1, "cos_after": 0.55, "participation_ratio": 1.05},
+            "gauge_stats": {
+                "cos_before": 0.1,
+                "cos_after": 0.55,
+                "participation_ratio": 1.05,
+            },
         },
         save_dir / "teacher_projection.pt",
     )
@@ -710,7 +786,8 @@ def test_an_unfinished_cell_is_not_reported_as_done(tmp_path):
     save_dir.mkdir(parents=True)
     # Only per-epoch records: the run died before the final test evaluation.
     (save_dir / "metrics.jsonl").write_text(
-        json.dumps({"train": {"epoch": 1}, "test": {"summary": {"avg_all": 0.5}}}) + "\n",
+        json.dumps({"train": {"epoch": 1}, "test": {"summary": {"avg_all": 0.5}}})
+        + "\n",
         encoding="utf-8",
     )
 
@@ -756,7 +833,9 @@ def _run_notebook_setup(tmp_path, **overrides):
             "OUTPUT_BASE": tmp_path,
             "RUN_ROOT": tmp_path / namespace["RUN_NAME"],
             "IN_COLAB": False,
-            "TRAIN_DATA_BY_DATASET": {key: REPO_ROOT / spec["path"] for key, spec in datasets.items()},
+            "TRAIN_DATA_BY_DATASET": {
+                key: REPO_ROOT / spec["path"] for key, spec in datasets.items()
+            },
             "TRAIN_DATA": REPO_ROOT / datasets[namespace["DATASET"]]["path"],
         }
     )
@@ -807,9 +886,14 @@ def test_the_notebook_builds_the_arms_it_names(tmp_path, capsys):
         assert "--weights_dir" in command
 
 
-def test_the_notebook_covers_the_protocol_arms_and_multiplies_only_the_random_ones(tmp_path, capsys):
+def test_the_notebook_covers_the_protocol_arms_and_multiplies_only_the_random_ones(
+    tmp_path, capsys
+):
     namespace = _run_notebook_setup(
-        tmp_path, DRAWS=3, SEEDS=[1, 2], GROUPS={"E1": True, "E2": True, "G": True, "A5": True}
+        tmp_path,
+        DRAWS=3,
+        SEEDS=[1, 2],
+        GROUPS={"E1": True, "E2": True, "G": True, "A5": True},
     )
     capsys.readouterr()
     names = [arm["name"] for arm in namespace["ARM_PLAN"]]
@@ -819,12 +903,30 @@ def test_the_notebook_covers_the_protocol_arms_and_multiplies_only_the_random_on
     assert all(name.endswith(("__s1", "__s2")) for name in names)
     # One arm per interface family (E1), one row per design choice (E2), the gauge
     # controls (G) and the sanity variants (A5).
-    for expected in ("pca__procrustes", "random__none__d2", "learned_t2s__lr1", "learned_t2s__lr5",
-                     "learned_s2t__lr1", "learned_s2t__lr5", "procrustes_per_batch",
-                     "ours__mse", "ours__no_ctr", "ours__gram_w1", "ours__gram_w10", "pca__none", "ours__refit",
-                     "ours__no_teacher",
-                     "pca__random__d2", "gauge_theta0.25", "gauge_theta0.5", "gauge_theta0.75", "gauge_rank_one",
-                     "random_gaussian__none__d0", "pca_full__procrustes", "svd__procrustes"):
+    for expected in (
+        "pca__procrustes",
+        "random__none__d2",
+        "learned_t2s__lr1",
+        "learned_t2s__lr5",
+        "learned_s2t__lr1",
+        "learned_s2t__lr5",
+        "procrustes_per_batch",
+        "ours__mse",
+        "ours__no_ctr",
+        "ours__gram_w1",
+        "ours__gram_w10",
+        "pca__none",
+        "ours__refit",
+        "ours__no_teacher",
+        "pca__random__d2",
+        "gauge_theta0.25",
+        "gauge_theta0.5",
+        "gauge_theta0.75",
+        "gauge_rank_one",
+        "random_gaussian__none__d0",
+        "pca_full__procrustes",
+        "svd__procrustes",
+    ):
         assert expected in bases, expected
     assert sum(base.startswith("pca__random__d") for base in bases) == 3
     assert sum(base.startswith("random__none__d") for base in bases) == 3
@@ -836,7 +938,9 @@ def test_the_notebook_covers_the_protocol_arms_and_multiplies_only_the_random_on
     assert not any(arm["group"] == "A5" for arm in default["ARM_PLAN"])
 
 
-def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path, capsys):
+def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(
+    tmp_path, capsys
+):
     """Every arm has the same teacher and corpus, so the teacher is encoded once for
     the whole plan, out of a directory that outlives the run; and the matched-HP
     protocol means one lr / batch / epoch count / lambda for every arm."""
@@ -861,7 +965,11 @@ def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path
     assert namespace["RUN_ROOT"] not in cache.parents and cache != namespace["RUN_ROOT"]
     # The recipe ablation changes one thing per row and leaves the rest of the recipe alone.
     mse = _config_for(namespace["ARM_COMMANDS"]["ours__mse"])
-    assert mse.endpoint_loss == "mse" and mse.lambda_ctr == hp["lambda_ctr"] and mse.gauge_align is True
+    assert (
+        mse.endpoint_loss == "mse"
+        and mse.lambda_ctr == hp["lambda_ctr"]
+        and mse.gauge_align is True
+    )
     no_ctr = _config_for(namespace["ARM_COMMANDS"]["ours__no_ctr"])
     assert no_ctr.lambda_ctr == 0.0 and no_ctr.endpoint_loss == "cosine"
     gram = _config_for(namespace["ARM_COMMANDS"]["ours__gram_w10"])
@@ -870,7 +978,10 @@ def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path
     assert per_batch.endpoint_loss == "procrustes" and per_batch.gauge_align is False
     theta = _config_for(namespace["ARM_COMMANDS"]["gauge_theta0.5"])
     assert theta.gauge_rotation == "interpolate" and theta.gauge_theta == 0.5
-    assert _config_for(namespace["ARM_COMMANDS"]["gauge_rank_one"]).gauge_rotation == "rank_one"
+    assert (
+        _config_for(namespace["ARM_COMMANDS"]["gauge_rank_one"]).gauge_rotation
+        == "rank_one"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -880,15 +991,21 @@ def test_the_notebook_shares_the_teacher_cache_and_holds_the_matched_hp(tmp_path
 
 def _hidden(batch=6, tokens=5, dim=8, layers=4, seed=500):
     generator = torch.Generator().manual_seed(seed)
-    return [torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)]
+    return [
+        torch.randn(batch, tokens, dim, generator=generator) for _ in range(layers + 1)
+    ]
 
 
 @pytest.mark.parametrize(
     ("direction", "weight_shape", "comparison_dim"),
     [("t2s", (8, 32), 8), ("s2t", (32, 8), 32)],
 )
-def test_the_learned_map_is_a_bare_linear_layer(direction, weight_shape, comparison_dim):
-    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction=direction)
+def test_the_learned_map_is_a_bare_linear_layer(
+    direction, weight_shape, comparison_dim
+):
+    projector = LearnedTargetProjector(
+        teacher_dim=32, student_dim=8, direction=direction
+    )
 
     assert projector.linear.weight.shape == weight_shape
     # No bias: a shift would move the targets off the sphere every downstream metric
@@ -899,7 +1016,9 @@ def test_the_learned_map_is_a_bare_linear_layer(direction, weight_shape, compari
 
 def test_the_learned_map_brings_both_sides_into_one_space():
     projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="s2t")
-    states = [torch.nn.functional.normalize(torch.randn(6, 8), dim=-1) for _ in range(4)]
+    states = [
+        torch.nn.functional.normalize(torch.randn(6, 8), dim=-1) for _ in range(4)
+    ]
     teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
 
     aligned, target = projector.align(states, teacher)
@@ -915,7 +1034,9 @@ def test_the_learned_map_brings_both_sides_into_one_space():
 
 def test_the_t2s_map_leaves_the_student_untouched():
     projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="t2s")
-    states = [torch.nn.functional.normalize(torch.randn(6, 8), dim=-1) for _ in range(3)]
+    states = [
+        torch.nn.functional.normalize(torch.randn(6, 8), dim=-1) for _ in range(3)
+    ]
     teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
 
     aligned, target = projector.align(states, teacher)
@@ -933,7 +1054,9 @@ def test_an_unknown_direction_is_rejected():
 @pytest.mark.parametrize("direction", ["t2s", "s2t"])
 def test_the_objective_trains_the_learned_map(direction):
     """The whole point of the baseline: the map adapts to lower the loss."""
-    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction=direction)
+    projector = LearnedTargetProjector(
+        teacher_dim=32, student_dim=8, direction=direction
+    )
     criterion = GeoODEKD(target_projector=projector)
     teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
 
@@ -961,11 +1084,54 @@ def test_the_learned_map_does_not_touch_the_contrastive_term(direction):
     _, frozen = GeoODEKD()(
         hidden_states=hidden, teacher=frozen_teacher, second_view=second_view
     )
-    _, learned = GeoODEKD(
-        target_projector=LearnedTargetProjector(32, 8, direction)
-    )(hidden_states=hidden, teacher=learned_teacher, second_view=second_view)
+    _, learned = GeoODEKD(target_projector=LearnedTargetProjector(32, 8, direction))(
+        hidden_states=hidden, teacher=learned_teacher, second_view=second_view
+    )
 
     assert learned["loss_ctr"] == pytest.approx(frozen["loss_ctr"], abs=1e-6)
+
+
+@pytest.mark.parametrize("direction", ["t2s", "s2t"])
+def test_the_learned_map_does_not_touch_the_structural_terms(direction):
+    """L_H0 and the Gram control describe the shape of the student's own cloud, and
+    their teacher side is read from the native d_T cache, so neither passes through an
+    interface. Under ``s2t`` the aligned state is the student *after* the learned map:
+    letting the structural terms read that would let the map satisfy the shape
+    constraint on the student's behalf, so the arm would differ from the frozen ones in
+    two things at once and the constraint would stop binding the deployed embedding."""
+    hidden = _hidden()
+    frozen_teacher = torch.nn.functional.normalize(torch.randn(6, 8), dim=-1)
+    learned_teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+    # The native teacher cloud both arms are measured against: the same object, in the
+    # teacher's own width, exactly as topo_teacher_source="original" supplies it.
+    native = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+    settings = dict(lambda_end=1.0, lambda_ctr=0.0, lambda_topo=0.5, lambda_gram=0.5)
+
+    _, frozen = GeoODEKD(**settings)(
+        hidden_states=hidden, teacher=frozen_teacher, teacher_topo=native
+    )
+    _, learned = GeoODEKD(
+        target_projector=LearnedTargetProjector(32, 8, direction), **settings
+    )(hidden_states=hidden, teacher=learned_teacher, teacher_topo=native)
+
+    assert learned["loss_h0"] == pytest.approx(frozen["loss_h0"], abs=1e-6)
+    assert learned["loss_gram"] == pytest.approx(frozen["loss_gram"], abs=1e-6)
+
+
+def test_the_structural_terms_send_no_gradient_into_the_learned_map():
+    """The corollary: with the endpoint term switched off, an s2t map that only ever
+    saw the structural terms has nothing to learn from them."""
+    projector = LearnedTargetProjector(teacher_dim=32, student_dim=8, direction="s2t")
+    criterion = GeoODEKD(
+        target_projector=projector, lambda_end=0.0, lambda_ctr=0.0, lambda_topo=0.5
+    )
+    teacher = torch.nn.functional.normalize(torch.randn(6, 32), dim=-1)
+
+    loss, _ = criterion(hidden_states=_hidden(), teacher=teacher, teacher_topo=teacher)
+    loss.backward()
+
+    gradient = projector.linear.weight.grad
+    assert gradient is None or float(gradient.abs().max()) == 0.0
 
 
 def test_the_criterions_parameters_are_exactly_the_learned_map():
@@ -981,7 +1147,9 @@ def test_the_criterions_parameters_are_exactly_the_learned_map():
 
 
 @pytest.mark.parametrize("arm", ["learned_t2s", "learned_s2t"])
-def test_a_learned_arm_fits_no_map_and_leaves_the_targets_in_teacher_space(arm, tmp_path):
+def test_a_learned_arm_fits_no_map_and_leaves_the_targets_in_teacher_space(
+    arm, tmp_path
+):
     targets = _targets_for(save_dir=str(tmp_path), projection_type=arm)
 
     # 32-dimensional: the cache is handed to the criterion unmapped, because the map
@@ -1029,10 +1197,10 @@ def test_the_requested_grid_is_ours_against_the_four_controls():
     _, plan = _plan("--grid", "requested", "--seeds", "42")
 
     assert [cell["name"] for cell in plan] == [
-        "pca__procrustes",   # ours
-        "pca__none",         # PCA only
-        "pca__random",       # PCA + random orthogonal rotation
-        "random__none",      # random projection
+        "pca__procrustes",  # ours
+        "pca__none",  # PCA only
+        "pca__random",  # PCA + random orthogonal rotation
+        "random__none",  # random projection
         "learned_t2s__none",
         "learned_s2t__none",
     ]

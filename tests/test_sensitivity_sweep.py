@@ -43,7 +43,6 @@ def test_generated_commands_preserve_the_main_gate_protocol():
         assert value("--gauge_refit_every") == "1"
         assert value("--lambda_end") == "1.0"
         assert value("--lambda_ctr") == "0.0"
-        assert value("--lambda_h1") == "0.0"
         assert "--no_eval_retrieval" in command
         assert "--no_wandb" in command
 

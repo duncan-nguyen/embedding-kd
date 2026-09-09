@@ -56,7 +56,6 @@ def test_forward_combines_the_two_weighted_terms():
         "loss_gram",
         "loss_topo",
         "loss_h0",
-        "loss_h1",
         "cos_first",
         "cos_final",
         "w_end",
@@ -64,7 +63,6 @@ def test_forward_combines_the_two_weighted_terms():
         "w_gram",
         "w_topo",
         "topo_active",
-        "h1_active",
         "spread_student",
         "spread_teacher",
         "gram_rmse_batch",
@@ -610,14 +608,12 @@ def test_active_flags_separate_a_disabled_term_from_a_satisfied_one():
     off = _criterion(lambda_topo=0.0)
     _, metrics = off(hidden_states=hidden_states, teacher=teacher)
     assert metrics["topo_active"] == 0.0
-    assert metrics["h1_active"] == 0.0
 
     on = _criterion(lambda_topo=1.0)
     _, metrics = on(
         hidden_states=hidden_states, teacher=teacher, teacher_topo=torch.randn(6, 32)
     )
     assert metrics["topo_active"] == 1.0
-    assert metrics["h1_active"] == 0.0
 
     # A batch of one has no minimum spanning tree, so the term is not defined even
     # though the weight is on.
