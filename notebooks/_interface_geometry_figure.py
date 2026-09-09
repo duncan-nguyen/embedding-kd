@@ -122,8 +122,8 @@ def _heading(ax, title: str, meta: str, accent: str) -> None:
     ax.set_title(
         title,
         loc="left",
-        fontsize=8.4,
-        fontweight="semibold",
+        fontsize=8.0,
+        fontweight="normal",
         color=INK,
         pad=4,
     )
@@ -135,7 +135,7 @@ def _heading(ax, title: str, meta: str, accent: str) -> None:
         ha="right",
         va="bottom",
         fontsize=5.7,
-        fontweight="semibold",
+        fontweight="bold",
         color=accent,
     )
 
@@ -226,7 +226,7 @@ def render_interface_geometry(
     with plt.rc_context(
         {
             "font.family": "serif",
-            "font.serif": ["Nimbus Roman", "Times New Roman", "DejaVu Serif"],
+            "font.serif": ["Tinos", "DejaVu Serif"],
             "mathtext.fontset": "stix",
             "font.size": 7.0,
             "figure.dpi": 170,
@@ -347,11 +347,11 @@ def render_interface_geometry(
         )
         ax_selected.scatter(
             *student.T,
-            s=6.0,
+            s=5.2,
             marker="x",
             c=STUDENT,
-            alpha=0.34,
-            linewidths=0.42,
+            alpha=0.30,
+            linewidths=0.38,
             rasterized=True,
             zorder=2,
         )
