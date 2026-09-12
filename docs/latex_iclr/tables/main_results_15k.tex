@@ -1,13 +1,10 @@
-\begin{table}[!t]
-    \caption{Nine-task results (mean $\pm$ sample standard deviation, three
-    seeds). Full GATE-KD uses $\lambda_{\mathrm{topo}}=0.5$; $\dagger$ is the
-    compact endpoint-only aggregate (excluded from task-cell ranking).}
+\begin{table}[t]
+    \caption{Nine-task results on the 15K distillation corpus. Distilled
+    students report mean $\pm$ sample standard deviation over three seeds;
+    best and second-best results are bold and underlined. GATE-KD uses
+    $\lambda_{H_0}=0.5$.}
     \label{tab:main-results}
-    \centering
-    \scriptsize
-    \newcommand{\resultcell}[2]{#1{\tiny $\pm$ #2}}
-    \setlength{\tabcolsep}{1.2pt}
-    \resizebox{\textwidth}{!}{%
+    \widetablebody
     \begin{tabular}{@{}lcccccccccccc@{}}
         \toprule
         & \multicolumn{3}{c}{Classification (F1)}
@@ -23,143 +20,138 @@
         Teacher
         & 93.26 & 71.04 & 69.08 & 84.80 & 91.77 & 66.79
         & 83.43 & 82.55 & 86.87 & 74.25 & 84.48 & 81.07 \\
-        Student base
+        Student (pre-KD)
         & 84.33 & 67.08 & 47.79 & 77.36 & 67.74 & 59.22
         & 42.43 & 21.54 & 20.29 & 42.43 & 60.08 & 54.20 \\
         \midrule
         RKD
-        & \resultcell{89.76}{0.11} & \resultcell{70.90}{0.31} & \resultcell{59.98}{0.05}
-        & \resultcell{81.94}{0.26} & \resultcell{75.59}{0.13} & \resultcell{69.02}{0.18}
-        & \resultcell{72.93}{0.07} & \resultcell{67.84}{0.18} & \resultcell{73.72}{0.08}
-        & \resultcell{67.57}{0.05} & \resultcell{76.49}{0.07} & \resultcell{73.52}{0.06} \\
+        & \meanstdstacked{89.76}{0.11} & \meanstdstacked{70.90}{0.31} & \meanstdstacked{59.98}{0.05}
+        & \meanstdstacked{81.94}{0.26} & \meanstdstacked{75.59}{0.13} & \meanstdstacked{69.02}{0.18}
+        & \meanstdstacked{72.93}{0.07} & \meanstdstacked{67.84}{0.18} & \meanstdstacked{73.72}{0.08}
+        & \meanstdstacked{67.57}{0.05} & \meanstdstacked{76.49}{0.07} & \meanstdstacked{73.52}{0.06} \\
         Stella
-        & \resultcell{88.48}{0.30} & \resultcell{68.94}{0.17} & \resultcell{53.69}{0.50}
-        & \resultcell{83.95}{0.10} & \resultcell{75.39}{0.54} & \resultcell{\textbf{71.93}}{0.09}
-        & \resultcell{69.87}{0.64} & \resultcell{64.39}{0.21} & \resultcell{70.86}{0.36}
-        & \resultcell{65.49}{0.17} & \resultcell{75.17}{0.13} & \resultcell{71.95}{0.06} \\
+        & \meanstdstacked{88.48}{0.30} & \meanstdstacked{68.94}{0.17} & \meanstdstacked{53.69}{0.50}
+        & \meanstdstacked{83.95}{0.10} & \meanstdstacked{75.39}{0.54} & \meanstdstacked{\tablebest{71.93}}{0.09}
+        & \meanstdstacked{69.87}{0.64} & \meanstdstacked{64.39}{0.21} & \meanstdstacked{70.86}{0.36}
+        & \meanstdstacked{65.49}{0.17} & \meanstdstacked{75.17}{0.13} & \meanstdstacked{71.95}{0.06} \\
         CDM
-        & \resultcell{88.13}{0.23} & \resultcell{69.03}{0.20} & \resultcell{52.83}{0.50}
-        & \resultcell{83.00}{0.06} & \resultcell{77.10}{0.27} & \resultcell{71.84}{0.09}
-        & \resultcell{67.89}{0.37} & \resultcell{61.06}{0.37} & \resultcell{69.19}{0.42}
-        & \resultcell{64.62}{0.28} & \resultcell{74.37}{0.12} & \resultcell{71.12}{0.18} \\
+        & \meanstdstacked{88.13}{0.23} & \meanstdstacked{69.03}{0.20} & \meanstdstacked{52.83}{0.50}
+        & \meanstdstacked{83.00}{0.06} & \meanstdstacked{77.10}{0.27} & \meanstdstacked{71.84}{0.09}
+        & \meanstdstacked{67.89}{0.37} & \meanstdstacked{61.06}{0.37} & \meanstdstacked{69.19}{0.42}
+        & \meanstdstacked{64.62}{0.28} & \meanstdstacked{74.37}{0.12} & \meanstdstacked{71.12}{0.18} \\
         DSKD
-        & \resultcell{87.97}{0.16} & \resultcell{68.90}{0.28} & \resultcell{53.07}{0.31}
-        & \resultcell{83.03}{0.15} & \resultcell{76.98}{0.59} & \resultcell{\underline{71.86}}{0.08}
-        & \resultcell{67.77}{0.66} & \resultcell{61.11}{0.26} & \resultcell{69.55}{0.12}
-        & \resultcell{64.83}{0.12} & \resultcell{74.29}{0.14} & \resultcell{71.14}{0.10} \\
+        & \meanstdstacked{87.97}{0.16} & \meanstdstacked{68.90}{0.28} & \meanstdstacked{53.07}{0.31}
+        & \meanstdstacked{83.03}{0.15} & \meanstdstacked{76.98}{0.59} & \meanstdstacked{\tablesecond{71.86}}{0.08}
+        & \meanstdstacked{67.77}{0.66} & \meanstdstacked{61.11}{0.26} & \meanstdstacked{69.55}{0.12}
+        & \meanstdstacked{64.83}{0.12} & \meanstdstacked{74.29}{0.14} & \meanstdstacked{71.14}{0.10} \\
         EMO
-        & \resultcell{86.89}{0.07} & \resultcell{68.99}{0.11} & \resultcell{52.02}{1.09}
-        & \resultcell{79.74}{0.12} & \resultcell{76.37}{0.35} & \resultcell{69.62}{0.16}
-        & \resultcell{67.89}{0.09} & \resultcell{56.46}{0.47} & \resultcell{64.54}{0.50}
-        & \resultcell{62.06}{0.49} & \resultcell{72.72}{0.15} & \resultcell{69.17}{0.24} \\
+        & \meanstdstacked{86.89}{0.07} & \meanstdstacked{68.99}{0.11} & \meanstdstacked{52.02}{1.09}
+        & \meanstdstacked{79.74}{0.12} & \meanstdstacked{76.37}{0.35} & \meanstdstacked{69.62}{0.16}
+        & \meanstdstacked{67.89}{0.09} & \meanstdstacked{56.46}{0.47} & \meanstdstacked{64.54}{0.50}
+        & \meanstdstacked{62.06}{0.49} & \meanstdstacked{72.72}{0.15} & \meanstdstacked{69.17}{0.24} \\
         TALAS
-        & \resultcell{\underline{90.53}}{0.09} & \resultcell{\underline{73.77}}{0.21} & \resultcell{\underline{68.47}}{0.34}
-        & \resultcell{\textbf{85.38}}{0.05} & \resultcell{\textbf{81.83}}{0.21} & \resultcell{69.59}{0.14}
-        & \resultcell{\underline{76.79}}{0.06} & \resultcell{\underline{70.79}}{0.19} & \resultcell{\textbf{78.50}}{0.08}
-        & \resultcell{\textbf{72.19}}{0.07} & \resultcell{\underline{79.85}}{0.07} & \resultcell{\underline{77.29}}{0.04} \\
+        & \meanstdstacked{\tablesecond{90.53}}{0.09} & \meanstdstacked{\tablesecond{73.77}}{0.21} & \meanstdstacked{\tablesecond{68.47}}{0.34}
+        & \meanstdstacked{\tablebest{85.38}}{0.05} & \meanstdstacked{\tablebest{81.83}}{0.21} & \meanstdstacked{69.59}{0.14}
+        & \meanstdstacked{\tablesecond{76.79}}{0.06} & \meanstdstacked{\tablesecond{70.79}}{0.19} & \meanstdstacked{\tablebest{78.50}}{0.08}
+        & \meanstdstacked{\tablebest{72.19}}{0.07} & \meanstdstacked{\tablesecond{79.85}}{0.07} & \meanstdstacked{\tablesecond{77.29}}{0.04} \\
         \midrule
-        \textbf{GATE-KD}
-        & \resultcell{\textbf{90.60}}{0.21} & \resultcell{\textbf{73.86}}{0.10} & \resultcell{\textbf{69.48}}{0.22}
-        & \resultcell{\underline{85.31}}{0.11} & \resultcell{\underline{80.23}}{0.13} & \resultcell{68.19}{0.12}
-        & \resultcell{\textbf{77.80}}{0.14} & \resultcell{\textbf{75.15}}{0.07} & \resultcell{\underline{78.44}}{0.16}
-        & \resultcell{\underline{72.04}}{0.08} & \resultcell{\textbf{80.49}}{0.03} & \resultcell{\textbf{77.67}}{0.03} \\
+        \tablebest{GATE-KD}
+        & \meanstdstacked{\tablebest{90.60}}{0.21} & \meanstdstacked{\tablebest{73.86}}{0.10} & \meanstdstacked{\tablebest{69.48}}{0.22}
+        & \meanstdstacked{\tablesecond{85.31}}{0.11} & \meanstdstacked{\tablesecond{80.23}}{0.13} & \meanstdstacked{68.19}{0.12}
+        & \meanstdstacked{\tablebest{77.80}}{0.14} & \meanstdstacked{\tablebest{75.15}}{0.07} & \meanstdstacked{\tablesecond{78.44}}{0.16}
+        & \meanstdstacked{\tablesecond{72.04}}{0.08} & \meanstdstacked{\tablebest{80.49}}{0.03} & \meanstdstacked{\tablebest{77.67}}{0.03} \\
         \midrule
         \multicolumn{13}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
         \midrule
         Teacher
         & 93.49 & 73.75 & 69.03 & 85.80 & 91.87 & 61.46
         & 79.18 & 78.74 & 84.86 & 71.78 & 83.81 & 79.80 \\
-        Student base
+        Student (pre-KD)
         & 81.18 & 71.30 & 48.85 & 79.66 & 65.06 & 60.89
         & 49.46 & 26.76 & 24.12 & 44.62 & 62.24 & 56.36 \\
         \midrule
         RKD
-        & \resultcell{89.14}{0.09} & \resultcell{73.29}{0.09} & \resultcell{\underline{62.23}}{0.27}
-        & \resultcell{84.35}{0.06} & \resultcell{78.74}{0.11} & \resultcell{65.02}{0.10}
-        & \resultcell{73.20}{0.19} & \resultcell{65.02}{0.29} & \resultcell{71.97}{0.38}
-        & \resultcell{66.41}{0.07} & \resultcell{77.29}{0.06} & \resultcell{73.66}{0.04} \\
+        & \meanstdstacked{89.14}{0.09} & \meanstdstacked{73.29}{0.09} & \meanstdstacked{\tablesecond{62.23}}{0.27}
+        & \meanstdstacked{84.35}{0.06} & \meanstdstacked{78.74}{0.11} & \meanstdstacked{65.02}{0.10}
+        & \meanstdstacked{73.20}{0.19} & \meanstdstacked{65.02}{0.29} & \meanstdstacked{71.97}{0.38}
+        & \meanstdstacked{66.41}{0.07} & \meanstdstacked{77.29}{0.06} & \meanstdstacked{73.66}{0.04} \\
         Stella
-        & \resultcell{86.82}{0.28} & \resultcell{70.06}{0.12} & \resultcell{56.61}{0.74}
-        & \resultcell{83.02}{0.12} & \resultcell{74.63}{0.12} & \resultcell{\textbf{69.72}}{0.05}
-        & \resultcell{69.08}{0.20} & \resultcell{63.14}{0.28} & \resultcell{67.10}{0.10}
-        & \resultcell{64.47}{0.27} & \resultcell{74.46}{0.05} & \resultcell{71.13}{0.11} \\
+        & \meanstdstacked{86.82}{0.28} & \meanstdstacked{70.06}{0.12} & \meanstdstacked{56.61}{0.74}
+        & \meanstdstacked{83.02}{0.12} & \meanstdstacked{74.63}{0.12} & \meanstdstacked{\tablebest{69.72}}{0.05}
+        & \meanstdstacked{69.08}{0.20} & \meanstdstacked{63.14}{0.28} & \meanstdstacked{67.10}{0.10}
+        & \meanstdstacked{64.47}{0.27} & \meanstdstacked{74.46}{0.05} & \meanstdstacked{71.13}{0.11} \\
         CDM
-        & \resultcell{87.82}{0.19} & \resultcell{69.99}{0.09} & \resultcell{58.32}{0.51}
-        & \resultcell{83.44}{0.07} & \resultcell{75.56}{0.40} & \resultcell{\underline{69.70}}{0.02}
-        & \resultcell{65.93}{0.16} & \resultcell{60.84}{0.34} & \resultcell{65.31}{0.15}
-        & \resultcell{64.45}{0.13} & \resultcell{73.93}{0.06} & \resultcell{70.77}{0.02} \\
+        & \meanstdstacked{87.82}{0.19} & \meanstdstacked{69.99}{0.09} & \meanstdstacked{58.32}{0.51}
+        & \meanstdstacked{83.44}{0.07} & \meanstdstacked{75.56}{0.40} & \meanstdstacked{\tablesecond{69.70}}{0.02}
+        & \meanstdstacked{65.93}{0.16} & \meanstdstacked{60.84}{0.34} & \meanstdstacked{65.31}{0.15}
+        & \meanstdstacked{64.45}{0.13} & \meanstdstacked{73.93}{0.06} & \meanstdstacked{70.77}{0.02} \\
         DSKD
-        & \resultcell{87.70}{0.16} & \resultcell{70.35}{0.32} & \resultcell{59.71}{0.61}
-        & \resultcell{82.99}{0.18} & \resultcell{75.58}{0.12} & \resultcell{69.59}{0.04}
-        & \resultcell{65.36}{0.37} & \resultcell{61.21}{0.31} & \resultcell{65.02}{0.18}
-        & \resultcell{64.77}{0.27} & \resultcell{73.87}{0.10} & \resultcell{70.83}{0.11} \\
+        & \meanstdstacked{87.70}{0.16} & \meanstdstacked{70.35}{0.32} & \meanstdstacked{59.71}{0.61}
+        & \meanstdstacked{82.99}{0.18} & \meanstdstacked{75.58}{0.12} & \meanstdstacked{69.59}{0.04}
+        & \meanstdstacked{65.36}{0.37} & \meanstdstacked{61.21}{0.31} & \meanstdstacked{65.02}{0.18}
+        & \meanstdstacked{64.77}{0.27} & \meanstdstacked{73.87}{0.10} & \meanstdstacked{70.83}{0.11} \\
         EMO
-        & \resultcell{87.54}{0.18} & \resultcell{71.03}{0.14} & \resultcell{58.52}{0.30}
-        & \resultcell{82.46}{0.18} & \resultcell{74.73}{0.58} & \resultcell{69.20}{0.22}
-        & \resultcell{64.71}{0.55} & \resultcell{56.89}{0.27} & \resultcell{61.25}{0.03}
-        & \resultcell{62.99}{0.19} & \resultcell{72.89}{0.10} & \resultcell{69.59}{0.12} \\
+        & \meanstdstacked{87.54}{0.18} & \meanstdstacked{71.03}{0.14} & \meanstdstacked{58.52}{0.30}
+        & \meanstdstacked{82.46}{0.18} & \meanstdstacked{74.73}{0.58} & \meanstdstacked{69.20}{0.22}
+        & \meanstdstacked{64.71}{0.55} & \meanstdstacked{56.89}{0.27} & \meanstdstacked{61.25}{0.03}
+        & \meanstdstacked{62.99}{0.19} & \meanstdstacked{72.89}{0.10} & \meanstdstacked{69.59}{0.12} \\
         TALAS
-        & \resultcell{\underline{89.83}}{0.09} & \resultcell{\textbf{74.70}}{0.09} & \resultcell{61.65}{0.23}
-        & \resultcell{\textbf{86.62}}{0.05} & \resultcell{\underline{80.85}}{0.22} & \resultcell{66.72}{0.07}
-        & \resultcell{\underline{75.40}}{0.10} & \resultcell{\underline{67.08}}{0.31} & \resultcell{\underline{77.08}}{0.01}
-        & \resultcell{\underline{68.48}}{0.07} & \resultcell{\underline{79.08}}{0.08} & \resultcell{\underline{75.55}}{0.06} \\
+        & \meanstdstacked{\tablesecond{89.83}}{0.09} & \meanstdstacked{\tablebest{74.70}}{0.09} & \meanstdstacked{61.65}{0.23}
+        & \meanstdstacked{\tablebest{86.62}}{0.05} & \meanstdstacked{\tablesecond{80.85}}{0.22} & \meanstdstacked{66.72}{0.07}
+        & \meanstdstacked{\tablesecond{75.40}}{0.10} & \meanstdstacked{\tablesecond{67.08}}{0.31} & \meanstdstacked{\tablesecond{77.08}}{0.01}
+        & \meanstdstacked{\tablesecond{68.48}}{0.07} & \meanstdstacked{\tablesecond{79.08}}{0.08} & \meanstdstacked{\tablesecond{75.55}}{0.06} \\
         \midrule
-        \textbf{GATE-KD}
-        & \resultcell{\textbf{90.17}}{0.05} & \resultcell{\underline{73.74}}{0.24} & \resultcell{\textbf{64.83}}{0.72}
-        & \resultcell{\underline{86.42}}{0.09} & \resultcell{\textbf{80.97}}{0.08} & \resultcell{65.47}{0.09}
-        & \resultcell{\textbf{76.77}}{0.03} & \resultcell{\textbf{68.27}}{0.04} & \resultcell{\textbf{77.63}}{0.12}
-        & \resultcell{\textbf{69.31}}{0.21} & \resultcell{\textbf{79.39}}{0.06} & \resultcell{\textbf{76.03}}{0.11} \\
+        \tablebest{GATE-KD}
+        & \meanstdstacked{\tablebest{90.17}}{0.05} & \meanstdstacked{\tablesecond{73.74}}{0.24} & \meanstdstacked{\tablebest{64.83}}{0.72}
+        & \meanstdstacked{\tablesecond{86.42}}{0.09} & \meanstdstacked{\tablebest{80.97}}{0.08} & \meanstdstacked{65.47}{0.09}
+        & \meanstdstacked{\tablebest{76.77}}{0.03} & \meanstdstacked{\tablebest{68.27}}{0.04} & \meanstdstacked{\tablebest{77.63}}{0.12}
+        & \meanstdstacked{\tablebest{69.31}}{0.21} & \meanstdstacked{\tablebest{79.39}}{0.06} & \meanstdstacked{\tablebest{76.03}}{0.11} \\
         \midrule
         \multicolumn{13}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
         Teacher
         & 92.51 & 71.28 & 65.80 & 83.38 & 90.09 & 66.84
         & 80.65 & 77.11 & 84.59 & 72.41 & 82.50 & 79.14 \\
-        Student base
+        Student (pre-KD)
         & 67.03 & 69.45 & 42.90 & 78.39 & 64.55 & 59.58
         & 47.60 & 21.96 & 22.08 & 41.52 & 58.16 & 52.62 \\
         \midrule
         RKD
-        & \resultcell{\underline{86.76}}{0.07} & \resultcell{69.87}{0.21} & \resultcell{56.31}{0.35}
-        & \resultcell{81.70}{0.03} & \resultcell{76.03}{0.20} & \resultcell{\underline{68.56}}{0.22}
-        & \resultcell{69.21}{0.18} & \resultcell{64.26}{0.19} & \resultcell{70.25}{0.21}
-        & \resultcell{65.04}{0.20} & \resultcell{74.64}{0.09} & \resultcell{71.44}{0.10} \\
+        & \meanstdstacked{\tablesecond{86.76}}{0.07} & \meanstdstacked{69.87}{0.21} & \meanstdstacked{56.31}{0.35}
+        & \meanstdstacked{81.70}{0.03} & \meanstdstacked{76.03}{0.20} & \meanstdstacked{\tablesecond{68.56}}{0.22}
+        & \meanstdstacked{69.21}{0.18} & \meanstdstacked{64.26}{0.19} & \meanstdstacked{70.25}{0.21}
+        & \meanstdstacked{65.04}{0.20} & \meanstdstacked{74.64}{0.09} & \meanstdstacked{71.44}{0.10} \\
         Stella
-        & \resultcell{84.04}{0.04} & \resultcell{68.73}{0.44} & \resultcell{52.41}{0.28}
-        & \resultcell{81.50}{0.12} & \resultcell{72.26}{0.32} & \resultcell{\textbf{68.65}}{0.16}
-        & \resultcell{64.64}{0.19} & \resultcell{60.59}{0.12} & \resultcell{64.27}{0.20}
-        & \resultcell{61.78}{0.13} & \resultcell{71.96}{0.13} & \resultcell{68.57}{0.10} \\
+        & \meanstdstacked{84.04}{0.04} & \meanstdstacked{68.73}{0.44} & \meanstdstacked{52.41}{0.28}
+        & \meanstdstacked{81.50}{0.12} & \meanstdstacked{72.26}{0.32} & \meanstdstacked{\tablebest{68.65}}{0.16}
+        & \meanstdstacked{64.64}{0.19} & \meanstdstacked{60.59}{0.12} & \meanstdstacked{64.27}{0.20}
+        & \meanstdstacked{61.78}{0.13} & \meanstdstacked{71.96}{0.13} & \meanstdstacked{68.57}{0.10} \\
         CDM
-        & \resultcell{84.74}{0.21} & \resultcell{69.52}{0.20} & \resultcell{53.76}{0.95}
-        & \resultcell{81.15}{0.14} & \resultcell{72.86}{0.30} & \resultcell{68.29}{0.11}
-        & \resultcell{63.98}{0.36} & \resultcell{60.43}{0.22} & \resultcell{63.52}{0.24}
-        & \resultcell{61.86}{0.43} & \resultcell{72.11}{0.19} & \resultcell{68.69}{0.27} \\
+        & \meanstdstacked{84.74}{0.21} & \meanstdstacked{69.52}{0.20} & \meanstdstacked{53.76}{0.95}
+        & \meanstdstacked{81.15}{0.14} & \meanstdstacked{72.86}{0.30} & \meanstdstacked{68.29}{0.11}
+        & \meanstdstacked{63.98}{0.36} & \meanstdstacked{60.43}{0.22} & \meanstdstacked{63.52}{0.24}
+        & \meanstdstacked{61.86}{0.43} & \meanstdstacked{72.11}{0.19} & \meanstdstacked{68.69}{0.27} \\
         DSKD
-        & \resultcell{84.76}{0.10} & \resultcell{69.56}{0.20} & \resultcell{53.14}{0.29}
-        & \resultcell{81.15}{0.01} & \resultcell{72.81}{0.09} & \resultcell{68.33}{0.04}
-        & \resultcell{63.78}{0.06} & \resultcell{60.24}{0.19} & \resultcell{63.53}{0.18}
-        & \resultcell{61.67}{0.03} & \resultcell{72.05}{0.06} & \resultcell{68.59}{0.04} \\
+        & \meanstdstacked{84.76}{0.10} & \meanstdstacked{69.56}{0.20} & \meanstdstacked{53.14}{0.29}
+        & \meanstdstacked{81.15}{0.01} & \meanstdstacked{72.81}{0.09} & \meanstdstacked{68.33}{0.04}
+        & \meanstdstacked{63.78}{0.06} & \meanstdstacked{60.24}{0.19} & \meanstdstacked{63.53}{0.18}
+        & \meanstdstacked{61.67}{0.03} & \meanstdstacked{72.05}{0.06} & \meanstdstacked{68.59}{0.04} \\
         EMO
-        & \resultcell{83.54}{0.31} & \resultcell{69.31}{0.06} & \resultcell{54.48}{0.27}
-        & \resultcell{80.87}{0.13} & \resultcell{72.00}{0.16} & \resultcell{67.89}{0.09}
-        & \resultcell{62.19}{0.16} & \resultcell{57.04}{0.17} & \resultcell{61.24}{0.23}
-        & \resultcell{61.20}{0.09} & \resultcell{70.82}{0.07} & \resultcell{67.62}{0.02} \\
+        & \meanstdstacked{83.54}{0.31} & \meanstdstacked{69.31}{0.06} & \meanstdstacked{54.48}{0.27}
+        & \meanstdstacked{80.87}{0.13} & \meanstdstacked{72.00}{0.16} & \meanstdstacked{67.89}{0.09}
+        & \meanstdstacked{62.19}{0.16} & \meanstdstacked{57.04}{0.17} & \meanstdstacked{61.24}{0.23}
+        & \meanstdstacked{61.20}{0.09} & \meanstdstacked{70.82}{0.07} & \meanstdstacked{67.62}{0.02} \\
         TALAS
-        & \resultcell{86.39}{0.13} & \resultcell{\underline{71.81}}{0.11} & \resultcell{\underline{58.40}}{0.30}
-        & \resultcell{\textbf{84.25}}{0.03} & \resultcell{\underline{79.29}}{0.11} & \resultcell{66.82}{0.02}
-        & \resultcell{\underline{70.42}}{0.10} & \resultcell{\underline{68.08}}{0.22} & \resultcell{\underline{73.34}}{0.10}
-        & \resultcell{\underline{66.19}}{0.11} & \resultcell{\underline{76.71}}{0.04} & \resultcell{\underline{73.20}}{0.06} \\
+        & \meanstdstacked{86.39}{0.13} & \meanstdstacked{\tablesecond{71.81}}{0.11} & \meanstdstacked{\tablesecond{58.40}}{0.30}
+        & \meanstdstacked{\tablebest{84.25}}{0.03} & \meanstdstacked{\tablesecond{79.29}}{0.11} & \meanstdstacked{66.82}{0.02}
+        & \meanstdstacked{\tablesecond{70.42}}{0.10} & \meanstdstacked{\tablesecond{68.08}}{0.22} & \meanstdstacked{\tablesecond{73.34}}{0.10}
+        & \meanstdstacked{\tablesecond{66.19}}{0.11} & \meanstdstacked{\tablesecond{76.71}}{0.04} & \meanstdstacked{\tablesecond{73.20}}{0.06} \\
         \midrule
-        \textbf{GATE-KD}
-        & \resultcell{\textbf{87.65}}{0.06} & \resultcell{\textbf{72.32}}{0.24} & \resultcell{\textbf{63.04}}{0.28}
-        & \resultcell{\underline{84.20}}{0.06} & \resultcell{\textbf{81.60}}{0.05} & \resultcell{68.07}{0.12}
-        & \resultcell{\textbf{72.48}}{0.08} & \resultcell{\textbf{68.96}}{0.18} & \resultcell{\textbf{74.76}}{0.14}
-        & \resultcell{\textbf{68.62}}{0.21} & \resultcell{\textbf{77.87}}{0.02} & \resultcell{\textbf{74.79}}{0.06} \\
-        GATE-KD endpoint only$^{\dagger}$
-        & \multicolumn{9}{c}{---}
-        & \resultcell{67.68}{0.19} & \resultcell{77.55}{0.07}
-        & \resultcell{74.26}{0.02} \\
+        \tablebest{GATE-KD}
+        & \meanstdstacked{\tablebest{87.77}}{0.07} & \meanstdstacked{\tablebest{72.30}}{0.19} & \meanstdstacked{\tablebest{63.45}}{0.43}
+        & \meanstdstacked{\tablesecond{84.19}}{0.03} & \meanstdstacked{\tablebest{81.56}}{0.16} & \meanstdstacked{68.17}{0.05}
+        & \meanstdstacked{\tablebest{72.59}}{0.03} & \meanstdstacked{\tablebest{68.91}}{0.03} & \meanstdstacked{\tablebest{74.79}}{0.05}
+        & \meanstdstacked{\tablebest{68.80}}{0.16} & \meanstdstacked{\tablebest{77.89}}{0.01} & \meanstdstacked{\tablebest{74.86}}{0.06} \\
         \bottomrule
-    \end{tabular}%
-    }
+    \end{tabular}
 \end{table}

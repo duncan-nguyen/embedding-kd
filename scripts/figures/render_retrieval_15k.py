@@ -69,7 +69,7 @@ METHODS = (
     ("dskd", "DSKD"),
     ("emo", "EMO"),
     ("talas", "TALAS"),
-    ("geoode", r"\textbf{GATE-KD}"),
+    ("geoode", r"\tablebest{GATE-KD}"),
 )
 
 
@@ -119,10 +119,10 @@ def emit_students(pair: str, students: dict) -> list[str]:
             body = f"{100 * mean:.2f}"
             best, second = ranks[benchmark]
             if method == best:
-                body = rf"\textbf{{{body}}}"
+                body = rf"\tablebest{{{body}}}"
             elif method == second:
-                body = rf"\underline{{{body}}}"
-            cells.append(rf"\retmetric{{{body}}}{{{100 * std:.2f}}}")
+                body = rf"\tablesecond{{{body}}}"
+            cells.append(rf"\meanstd{{{body}}}{{{100 * std:.2f}}}")
         lines.append(f"        {label} & " + " & ".join(cells) + r" \\")
     return lines
 
@@ -139,30 +139,12 @@ def build() -> str:
         "all_pairs_retrieval_mean_std.csv.",
         "% Teacher and student-base rows:",
         "% runs/aux_sweeps_20260904-113834/baseline/retrieval_summary.csv.",
-        r"\begin{table*}[t]",
-        r"    \caption{\textbf{Zero-shot dense retrieval after 15K distillation"
-        r" (nDCG@10).}",
-        r"    Five BEIR benchmarks span argument retrieval (ArguAna), scientific",
-        r"    claim--evidence retrieval (SciFact), citation prediction (SciDocs),",
-        r"    biomedical retrieval (NFCorpus), and financial question answering",
-        r"    (FiQA-2018); Avg.~is their unweighted mean.  Retrieval is evaluated with",
-        r"    exhaustive cosine ranking, no instruction prefix, and no task-specific",
-        r"    training.  Teacher and student-base scores are deterministic; distilled",
-        r"    scores are mean $\pm$ sample standard deviation over three seeds.  Among",
-        r"    distilled students, best and second-best results are shown in bold and",
-        r"    underlined, respectively.  Recall@10 and MRR@10 are omitted for space;",
-        r"    they agree with nDCG@10 on the top-ranked method in 17 of 18 columns (the",
-        r"    exception is NFCorpus in configuration (b), where MRR@10 places RKD"
-        r" first).",
-        r"    Retrieval is reported separately and is not",
-        r"    included in the sentence-level averages of Table~\ref{tab:main-results}.}",
+        r"\begin{table}[t]",
+        r"    \caption{Zero-shot BEIR retrieval (nDCG@10). Distilled students report mean",
+        r"    $\pm$ standard deviation over three seeds; best and second-best results are",
+        r"    bold and underlined.}",
         r"    \label{tab:retrieval-results-15k}",
-        r"    \vspace{0.5em}",
-        r"    \centering",
-        r"    \footnotesize",
-        r"    \setlength{\tabcolsep}{5pt}",
-        r"    \renewcommand{\arraystretch}{1.08}",
-        r"    \newcommand{\retmetric}[2]{#1{\tiny $\pm$ #2}}",
+        r"    \tablebody",
         r"    \begin{tabular}{@{}l" + "c" * len(BENCHMARKS) + r"@{}}",
         r"        \toprule",
         "        Method & " + " & ".join(BENCHMARK_LABELS) + r" \\",
@@ -183,7 +165,7 @@ def build() -> str:
     footer = [
         r"        \bottomrule",
         r"    \end{tabular}",
-        r"\end{table*}",
+        r"\end{table}",
     ]
 
     return "\n".join([*header, *body, *footer]) + "\n"

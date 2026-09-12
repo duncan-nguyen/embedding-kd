@@ -1,227 +1,213 @@
-\section{Method}
+\section{Methodology}
 \label{sec:method}
 
 Let $f_T:\mathcal{X}\rightarrow\mathbb{R}^{d_T}$ be a frozen teacher and
-$f_S(\cdot;\theta):\mathcal{X}\rightarrow\mathbb{R}^{d_S}$ a student with
-$d_T>d_S$. We run the teacher once over an unlabeled corpus
-$\{x_i\}_{i=1}^{N}$ and cache its normalized final embeddings
+$f_S(\cdot;\theta):\mathcal{X}\rightarrow\mathbb{R}^{d_S}$ a pretrained
+student. Given an unlabeled distillation corpus
+$\mathcal{C}=\{x_i\}_{i=1}^{N}$, we denote their normalized embeddings by
 \begin{equation}
     \mathbf{t}_i=\operatorname{norm}\!\left(f_T(x_i)\right),
     \qquad
-    \operatorname{norm}(\mathbf{x})
-    =\frac{\mathbf{x}}{\lVert\mathbf{x}\rVert_2}.
-    \label{eq:teacher-cache}
+    \mathbf{z}_i(\theta)=\operatorname{norm}\!\left(f_S(x_i;\theta)\right),
+    \label{eq:normalized-embeddings}
 \end{equation}
-The corresponding deployed student embedding is
-$\mathbf{z}_i(\theta)=\operatorname{norm}(f_S(x_i;\theta))$.
-Both are represented as row vectors.
+where $\mathbf{z}_i$ is the student embedding used directly at inference.
 
-GATE-KD first selects a fixed student-width subspace with
-$P_{\mathrm{PCA}}$, then orients it toward the student with a closed-form
-$R^{(e)}$. Neither matrix receives gradients; only $\theta$ is learned. The
-construction is summarized in Algorithm~\ref{alg:gate-kd}.
+When $d_T\neq d_S$, embedding distillation must resolve two separate choices.
+The first is \emph{dimension reduction}: which teacher representation should be
+retained at width $d_S$. The second is \emph{coordinate selection}: once that
+representation has been reduced, which coordinate realization should be
+presented to the pretrained student. GATE-KD treats these choices explicitly
+rather than learning a cross-space interface that couples them.
 
-\subsection{Student-Aligned Target Construction}
-\label{sec:method-targets}
+\subsection{Dimension Reduction Does Not Determine a Distillation Target}
+\label{sec:dimension-reduction}
 
-\paragraph{Selecting a student-width subspace.}
-Let $\mu=N^{-1}\sum_i\mathbf{t}_i$. We fit the leading $d_S$ principal
-directions of the centered teacher cache and collect them as
-$P_{\mathrm{PCA}}\in\mathbb{R}^{d_T\times d_S}$, where
-$P_{\mathrm{PCA}}^\top P_{\mathrm{PCA}}=I_{d_S}$. We then construct
-student-width targets
+We first construct a fixed teacher representation at the student width. In our
+implementation, when $d_T>d_S$, we fit the leading $d_S$ PCA directions
+$P\in\mathbb{R}^{d_T\times d_S}$ on the centered teacher cache and define
 \begin{equation}
-    \mathbf{y}_i
-    =\operatorname{norm}\!\left(\mathbf{t}_iP_{\mathrm{PCA}}\right)
-    \in\mathbb{S}^{d_S-1}.
-    \label{eq:pca-target}
+    \mathbf{y}_i=\operatorname{norm}\!\left(\mathbf{t}_iP\right).
+    \label{eq:reduced-target}
 \end{equation}
-Centering is used only to fit the directions; we apply neither mean subtraction
-nor whitening. PCA is a deterministic default, not a requirement: the next
-step applies to any fixed student-width target matrix
-(Appendix~\ref{app:pca-controls}).
+Centering is used only to estimate the PCA directions: the mean is not
+subtracted from $\mathbf{t}_iP$, and the retained components are not whitened.
+PCA is only our default dimension-reduction operator. GATE-KD applies to any
+fixed procedure that produces a student-width teacher matrix
+$Y\in\mathbb{R}^{N\times d_S}$.
 
-\paragraph{Choosing a student-relative orientation.}
-Dimensional reduction determines which teacher variation is retained but not
-how the resulting coordinates should be oriented. If $Y\in
-\mathbb{R}^{N\times d_S}$ collects the rows $\mathbf y_i$, then
+Crucially, constructing $Y$ does not finish target construction. For every
+orthogonal matrix $R\in O(d_S)$,
+\begin{equation}
+    (YR)(YR)^\top=YY^\top.
+    \label{eq:gram-invariance}
+\end{equation}
+Thus,
 \begin{equation}
     [Y]_{O(d_S)}=\{YR:R\in O(d_S)\}
     \label{eq:target-orbit}
 \end{equation}
-contains equally valid orientations of the reduced targets. Every member
-preserves the same pairwise geometry because
-$(YR)(YR)^\top=YY^\top$, yet a pointwise endpoint loss assigns different
-gradients to different members. GATE-KD therefore selects one orientation
-relative to the student rather than learning an additional map.
+contains an entire family of reduced teacher representations with identical
+pairwise inner products and Euclidean distances. Dimension reduction determines
+the relational geometry to retain, but not the concrete coordinates in which
+that geometry is presented to the student.
 
-Let $\mathcal C$ be a fixed gauge-fit set, equal to the complete distillation
-corpus in our experiments. At the start of epoch $e$, we encode $\mathcal C$
-with the student in evaluation mode and collect the embeddings in
-$Z_{\mathcal C}^{(e)}$. For the matching rows
-$Y_{\mathcal C}$, we solve the orthogonal Procrustes problem
-\citep{schonemann1966procrustes}:
+This remaining choice matters whenever distillation directly supervises the
+student endpoint. For a fixed student matrix
+$Z\in\mathbb{R}^{N\times d_S}$, consider the mean cosine loss toward $YR$,
 \begin{equation}
     \begin{aligned}
-    U\Sigma V^\top
-      &=\operatorname{svd}\!\left(
-        Y_{\mathcal C}^{\top}Z_{\mathcal C}^{(e)}\right),\\
-    R^{(e)}&=UV^\top
-      \in\underset{R\in O(d_S)}{\arg\min}\,
-      \left\lVert Y_{\mathcal C}R-Z_{\mathcal C}^{(e)}
-      \right\rVert_F^2 .
+        \mathcal{L}_{Z}(R)
+        &=\frac{1}{N}\sum_{i=1}^{N}
+          \left(1-\langle\mathbf{z}_i,\mathbf{y}_iR\rangle\right) \\
+        &=1-\frac{1}{N}\operatorname{tr}\!\left(R^\top Y^\top Z\right).
     \end{aligned}
-    \label{eq:gauge-alignment}
+    \label{eq:orientation-loss}
 \end{equation}
-The target for sentence $x_i$ during epoch $e$ is
+Although every $YR$ has the same relational geometry, its loss against the
+pretrained student depends on $R$. In particular,
 \begin{equation}
-    \boldsymbol{\tau}_i^{(e)}=\mathbf y_iR^{(e)}.
-    \label{eq:target}
+    \min_{R\in O(d_S)}\mathcal{L}_{Z}(R)
+    =1-\frac{\lVert Y^\top Z\rVert_*}{N},
+    \label{eq:orientation-optimum}
 \end{equation}
-All minibatches in epoch $e$ share this target, and $R^{(e)}$ is constant during
-student updates. It acts only on cached teacher targets and is absent from the
-deployed student. In particular, $R^{(0)}$ is an interface for one pretrained
-student checkpoint, not a transferable teacher coordinate frame.
+where $\lVert\cdot\rVert_*$ denotes the nuclear norm. Hence geometric
+equivalence after dimension reduction does not imply equivalence as an
+optimization target. The remaining problem is to choose a coordinate
+realization of $Y$ relative to the student that will actually be optimized.
 
-A corpus-global construction is more restrictive than minimizing over
-orientation independently within each minibatch. For a \emph{fixed} pair of
-representations $(Y,Z)$, this distinction in attainable objective values can be
-stated exactly.
-\begin{proposition}[Batchwise Procrustes relaxation]
-\label{prop:local-global-gap}
-For any partition $\{\mathcal B_k\}_{k=1}^{K}$ of the corpus, let
-$C_k=Y_{\mathcal B_k}^{\top}Z_{\mathcal B_k}$. The locally and globally
-rotation-minimized mean cosine losses satisfy
+\subsection{Student-Conditioned Coordinate Selection}
+\label{sec:coordinate-selection}
+
+GATE-KD makes coordinate selection an explicit second stage. Given the reduced
+teacher representation $Y$ and the current student state $Z$, we choose
 \begin{equation}
-    \mathcal L_{\mathrm{local}}
-    =1-\frac{1}{N}\sum_k\lVert C_k\rVert_*
-    \;\leq\;
-    1-\frac{1}{N}\left\lVert\sum_k C_k\right\rVert_*
-    =\mathcal L_{\mathrm{global}},
-    \label{eq:local-global-gap}
+    R^\star
+    =\underset{R\in O(d_S)}{\arg\min}\,
+      \lVert YR-Z\rVert_F^2.
+    \label{eq:procrustes-objective}
 \end{equation}
-where $\lVert\cdot\rVert_*$ is the nuclear norm. Equality holds if and only if
-one orthogonal rotation is simultaneously optimal for every minibatch.
-\end{proposition}
-\begin{proof}
-For any matrix $C$, orthogonal Procrustes gives
-$\lVert C\rVert_*=\max_{R\in O(d_S)}\operatorname{tr}(R^\top C)$.
-Maximizing the sum with one $R$ cannot exceed maximizing each term with its own
-$R_k$, which yields Equation~\ref{eq:local-global-gap}. Equality requires one
-$R$ to maximize every term, and this condition is sufficient.
-\end{proof}
-This is a statement about fixed $(Y,Z)$, not training or generalization. A local
-zero loss may use different $R_k$ across batches, preserving each within-batch
-Gram matrix while changing cross-batch similarities through $R_aR_b^\top$.
-Table~\ref{tab:gauge-mechanism} changes additional factors and is not a causal
-test of this freedom.
-
-A learned map can leave the deployed representation non-identifiable. For any
-invertible $A$, setting
-$\mathbf z_i=\operatorname{norm}(\mathbf y_iA)$ and learning $W=A^{-1}$ gives
-$\operatorname{norm}(\mathbf z_iW)=\mathbf y_i$, hence zero mapped cosine loss,
-while $ZZ^\top$ generally differs from $YY^\top$
-\citep{bhattarai2025shortcut}. GATE-KD instead restricts the target-side
-transformation to $O(d_S)$, which preserves $YY^\top$, and applies the loss
-directly to the embedding used at inference. This identifies the geometric
-freedom excluded by our interface, not a claim that projectors are generally
-ineffective.
-
-\subsection{Optional Native-Space \texorpdfstring{$H_0$}{H0} Auxiliary}
-\label{sec:method-topology}
-
-The gauge-fixed endpoint target provides the primary sample-level supervision.
-As an optional coordinate- and dimension-independent signal, we also match a
-coarse summary of connectivity scales in the original teacher and student
-spaces. For a minibatch $\mathcal B$ of size $B$, we use chord distance
+Because the rows of $Y$ and $Z$ are normalized, this objective is equivalent to
+minimizing the aggregate cosine endpoint loss in
+Equation~\ref{eq:orientation-loss}. Given
 \begin{equation}
-    d(\mathbf u,\mathbf v)
-    =\sqrt{2-2\langle\mathbf u,\mathbf v\rangle}.
-    \label{eq:chord-distance}
+    Y^\top Z=U\Sigma V^\top,
+    \label{eq:procrustes-svd}
 \end{equation}
-The $B-1$ finite death times of degree-zero Vietoris--Rips persistence equal
-the edge weights of the point cloud's minimum spanning tree
-\citep{hofer2020topologically}. Let
-$q^S_{(1)}\leq\cdots\leq q^S_{(B-1)}$ and
-$q^T_{(1)}\leq\cdots\leq q^T_{(B-1)}$ be the sorted death times computed from
-the student embeddings $\{\mathbf z_i:i\in\mathcal B\}$ and the original
-teacher embeddings $\{\mathbf t_i:i\in\mathcal B\}$. We define
+the solution is available in closed form
+\citep{schonemann1966procrustes}:
 \begin{equation}
-    \mathcal L_{H_0}
-    =\frac{1}{B-1}\sum_{j=1}^{B-1}
-      \left(q^S_{(j)}-q^T_{(j)}\right)^2.
-    \label{eq:topological-loss}
+    R^\star=UV^\top,
+    \qquad
+    \boldsymbol{\tau}_i=\mathbf{y}_iR^\star.
+    \label{eq:selected-target}
 \end{equation}
-The teacher summary uses $\mathbf t_i$, so dimensions and orientation may
-differ. MST selection and sorting are detached; gradients flow through selected
-student edges. We use $B=128$, FP32 distances, $\varepsilon=10^{-7}$, and
-SciPy's upper-triangle input order to break ties. The loss matches only the
-distribution of connectivity scales; Algorithm~\ref{alg:h0-loss} gives details.
+The transformation changes only the coordinates of the reduced representation:
+$YR^\star$ preserves exactly the same Gram matrix as $Y$. Its role is therefore
+not to retain additional teacher information, but to choose how the retained
+information is presented to this particular pretrained student. The selected
+coordinates are student-dependent rather than canonical teacher coordinates.
 
-\subsection{Student Optimization}
-\label{sec:method-objective}
-
-For the same minibatch $\mathcal B$, the endpoint loss is
+We estimate this transformation at the \emph{corpus level} rather than
+independently for each minibatch. Let
+$\mathcal{G}\subseteq\mathcal{C}$ denote a representative fit set. At refresh
+step $r$, we obtain normalized student embeddings $Z_{\mathcal{G}}^{(r)}$ in
+evaluation mode and without gradients, and compute
 \begin{equation}
-    \mathcal L_{\mathrm{end}}^{(e)}
-    =\frac{1}{B}\sum_{i\in\mathcal B}
+    Y_{\mathcal{G}}^\top Z_{\mathcal{G}}^{(r)}
+    =U\Sigma V^\top,
+    \qquad
+    R^{(r)}=UV^\top.
+    \label{eq:coordinate-refresh}
+\end{equation}
+The same $R^{(r)}$ is then used for every minibatch until the next refresh,
+\begin{equation}
+    \boldsymbol{\tau}_i^{(r)}=\mathbf{y}_iR^{(r)}.
+    \label{eq:refreshed-target}
+\end{equation}
+For a minibatch $\mathcal{B}$, the endpoint objective is
+\begin{equation}
+    \mathcal{L}_{\mathrm{end}}^{(r)}
+    =\frac{1}{\lvert\mathcal{B}\rvert}
+      \sum_{i\in\mathcal{B}}
       \left(1-\left\langle
-      \mathbf z_i,\boldsymbol{\tau}_i^{(e)}\right\rangle\right).
+      \mathbf{z}_i,\boldsymbol{\tau}_i^{(r)}
+      \right\rangle\right).
     \label{eq:endpoint-loss}
 \end{equation}
-The complete objective is
-\begin{equation}
-    \mathcal L^{(e)}
-    =\mathcal L_{\mathrm{end}}^{(e)}
-    +\lambda_{\mathrm{topo}}\mathcal L_{H_0}.
-    \label{eq:objective}
-\end{equation}
-The headline results use $\lambda_{\mathrm{topo}}=0.5$; the endpoint-only
-control sets it to zero.
-Our main recipe refits the corpus-global orientation after each non-final
-epoch; the fixed-$R^{(0)}$ schedule is evaluated as a control. A refresh
-requires one student pass over $\mathcal C$ and an SVD of a
-$d_S\times d_S$ matrix, with no backpropagation through either operation.
-Teacher embeddings and the PCA subspace are computed once, so ordinary
-minibatch updates require no online teacher pass. At inference, GATE-KD uses
-only the student's normalized final embedding and introduces no additional
-parameters or computation.
 
-\begin{algorithm}[H]
-\caption{GATE-KD training with a non-trainable target-side interface}
-\label{alg:gate-kd}
-\begin{algorithmic}[1]
-\Require Frozen teacher $f_T$; initialized student $f_S(\cdot;\theta)$;
-corpus $\mathcal C$; epochs $E$; refresh epochs
-$\mathcal E_R\subseteq\{0,\ldots,E-1\}$ with $0\in\mathcal E_R$;
-$\lambda_{\mathrm{topo}}\geq0$.
-\State Cache $\mathbf t_i\gets\operatorname{norm}(f_T(x_i))$ for every
-$x_i\in\mathcal C$.
-\State Fit $P_{\mathrm{PCA}}$ once and construct
-$\mathbf y_i\gets\operatorname{norm}(\mathbf t_iP_{\mathrm{PCA}})$.
-\For{$e=0,\ldots,E-1$}
-    \If{$e\in\mathcal E_R$}
-        \State In evaluation mode and without gradients, encode $\mathcal C$
-        to obtain $Z_{\mathcal C}^{(e)}$.
-        \State Compute $U\Sigma V^\top\gets
-        \operatorname{svd}(Y_{\mathcal C}^\top Z_{\mathcal C}^{(e)})$ and
-        set $R^{(e)}\gets UV^\top$.
-    \Else
-        \State Set $R^{(e)}\gets R^{(e-1)}$.
-    \EndIf
-    \For{each minibatch $\mathcal B\subset\mathcal C$}
-        \State Compute $\mathbf z_i(\theta)$ and
-        $\boldsymbol\tau_i^{(e)}\gets\mathbf y_iR^{(e)}$ for
-        $i\in\mathcal B$.
-        \State Compute $\mathcal L_{\mathrm{end}}^{(e)}$ using
-        Equation~\ref{eq:endpoint-loss}; set $\mathcal L_{H_0}\gets0$ when
-        $\lambda_{\mathrm{topo}}=0$, and otherwise use
-        Equation~\ref{eq:topological-loss}.
-        \State Update only $\theta$ using
-        $\nabla_\theta(\mathcal L_{\mathrm{end}}^{(e)}+
-        \lambda_{\mathrm{topo}}\mathcal L_{H_0})$.
-    \EndFor
-\EndFor
-\State \Return $f_S(\cdot;\theta)$.
-\end{algorithmic}
-\end{algorithm}
+A single corpus-level transformation is important because independently
+choosing $R$ for different minibatches preserves geometry only within each
+minibatch; their relative transformations need not define any single
+representation of the full teacher corpus. A shared $R^{(r)}$, in contrast,
+preserves the complete teacher Gram matrix while providing one persistent
+endpoint target.
+
+The representative fitting step is outside backpropagation. No gradients pass
+through the student embeddings used to estimate $R^{(r)}$, the SVD, or the
+cached teacher targets. Our default recipe selects $R^{(0)}$ from the pretrained
+student and refreshes it after each non-final epoch. Ordinary student updates
+therefore optimize directly against a fixed target between refreshes, without
+introducing a trainable teacher-to-student projector or modifying the embedding
+used at inference.
+
+\subsection{Coordinate-Invariant Structural Support}
+\label{sec:structural-support}
+
+Coordinate selection determines the sample-specific endpoint target, but it
+does not add relational information beyond that already contained in the
+reduced teacher representation. We therefore complement the endpoint objective
+with a structural signal computed directly in the native teacher and student
+spaces. The auxiliary term is required to be invariant to orthogonal
+transformations, so that it constrains geometry without introducing a second,
+competing coordinate preference.
+
+For normalized embeddings, we use chord distance
+\begin{equation}
+    d(\mathbf{u},\mathbf{v})
+    =\sqrt{2-2\langle\mathbf{u},\mathbf{v}\rangle}.
+    \label{eq:chord-distance}
+\end{equation}
+Within each minibatch of size $B$, we independently construct minimum spanning
+trees over the native teacher embeddings $\{\mathbf{t}_i\}$ and current student
+embeddings $\{\mathbf{z}_i\}$. The $B-1$ finite $H_0$ persistence death scales
+coincide with the MST edge weights \citep{hofer2020topologically}. Let
+\begin{equation}
+    q_{(1)}^T\leq\cdots\leq q_{(B-1)}^T,
+    \qquad
+    q_{(1)}^S\leq\cdots\leq q_{(B-1)}^S
+    \label{eq:sorted-mst-weights}
+\end{equation}
+be the sorted teacher and student edge weights. We define
+\begin{equation}
+    \mathcal{L}_{H_0}
+    =\frac{1}{B-1}\sum_{j=1}^{B-1}
+      \left(q_{(j)}^S-q_{(j)}^T\right)^2.
+    \label{eq:h0-loss}
+\end{equation}
+The two trees are constructed independently in their native spaces, so this
+term requires neither equal embedding widths nor shared coordinates. Because
+orthogonal transformations preserve inner products, they also preserve chord
+distances, MSTs, and their edge weights. Consequently, $\mathcal{L}_{H_0}$ is
+invariant to the same coordinate choice resolved by the endpoint term.
+
+The two objectives therefore have separate roles.
+$\mathcal{L}_{\mathrm{end}}$ selects and supervises a concrete coordinate
+realization relative to the student, whereas $\mathcal{L}_{H_0}$ constrains
+native-space relational structure without preferring any realization. The
+complete objective is
+\begin{equation}
+    {
+        \mathcal{L}
+        =\mathcal{L}_{\mathrm{end}}
+        +\lambda_{H_0}\mathcal{L}_{H_0}
+    }
+    \label{eq:complete-objective}
+\end{equation}
+
+Teacher embeddings and the dimension-reduction operator are computed once.
+Each coordinate refresh requires only a no-gradient student pass over the fit
+set and one $d_S\times d_S$ SVD; ordinary minibatch updates require no online
+teacher forward pass. All target construction and structural computation are
+removed after training, leaving only the student encoder and its normalized
+endpoint at inference.

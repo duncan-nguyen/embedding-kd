@@ -3,18 +3,12 @@
 % runs/main_results_talas15k_h200_gpu67_20260904-082000/all_pairs_retrieval_mean_std.csv.
 % Teacher and student-base rows:
 % runs/aux_sweeps_20260904-113834/baseline/retrieval_summary.csv.
-\begin{table}[H]
-    \caption{Zero-shot retrieval on five BEIR benchmarks (nDCG@10).
-    Distilled-student scores are mean $\pm$ sample standard deviation over three
-    seeds; the best and second-best distilled-student results are bold and
-    underlined.}
+\begin{table}[t]
+    \caption{Zero-shot BEIR retrieval (nDCG@10). Distilled students report mean
+    $\pm$ standard deviation over three seeds; best and second-best results are
+    bold and underlined.}
     \label{tab:retrieval-results-15k}
-    \vspace{0.5em}
-    \centering
-    \footnotesize
-    \setlength{\tabcolsep}{5pt}
-    \renewcommand{\arraystretch}{1.08}
-    \newcommand{\retmetric}[2]{#1{\tiny $\pm$ #2}}
+    \tablebody
     \begin{tabular}{@{}lcccccc@{}}
         \toprule
         Method & ArguAna & SciFact & SciDocs & NFCorpus & FiQA-2018 & Avg. \\
@@ -22,41 +16,41 @@
         \multicolumn{7}{@{}c}{\textit{(a) Qwen3-Embedding-4B $\rightarrow$ BERT-base (109M)}} \\
         \midrule
         Teacher & 74.66 & 73.75 & 25.69 & 36.23 & 50.15 & 52.10 \\
-        Student base & 12.65 & 0.89 & 0.38 & 1.33 & 0.05 & 3.06 \\
+        Student (pre-KD) & 12.65 & 0.89 & 0.38 & 1.33 & 0.05 & 3.06 \\
         \cmidrule(lr){1-7}
-        RKD & \retmetric{39.68}{0.25} & \retmetric{9.74}{0.64} & \retmetric{1.19}{0.04} & \retmetric{4.30}{0.30} & \retmetric{2.82}{0.09} & \retmetric{11.55}{0.18} \\
-        Stella & \retmetric{39.12}{0.17} & \retmetric{14.29}{0.17} & \retmetric{\underline{3.79}}{0.26} & \retmetric{6.21}{0.14} & \retmetric{5.57}{0.04} & \retmetric{13.79}{0.03} \\
-        CDM & \retmetric{33.62}{0.27} & \retmetric{15.11}{0.20} & \retmetric{3.28}{0.14} & \retmetric{6.26}{0.09} & \retmetric{5.08}{0.22} & \retmetric{12.67}{0.04} \\
-        DSKD & \retmetric{33.70}{0.39} & \retmetric{15.75}{0.49} & \retmetric{3.35}{0.11} & \retmetric{6.21}{0.17} & \retmetric{5.34}{0.24} & \retmetric{12.87}{0.27} \\
-        EMO & \retmetric{21.90}{0.34} & \retmetric{8.84}{0.28} & \retmetric{1.87}{0.11} & \retmetric{4.87}{0.16} & \retmetric{2.04}{0.06} & \retmetric{7.91}{0.07} \\
-        TALAS & \retmetric{\textbf{48.95}}{0.17} & \retmetric{\textbf{19.94}}{0.09} & \retmetric{\textbf{5.70}}{0.12} & \retmetric{\textbf{7.94}}{0.08} & \retmetric{\textbf{8.15}}{0.02} & \retmetric{\textbf{18.14}}{0.07} \\
-        \textbf{GATE-KD} & \retmetric{\underline{45.20}}{0.32} & \retmetric{\underline{19.25}}{0.66} & \retmetric{2.81}{0.09} & \retmetric{\underline{6.79}}{0.22} & \retmetric{\underline{6.56}}{0.21} & \retmetric{\underline{16.12}}{0.26} \\
+        RKD & \meanstd{39.68}{0.25} & \meanstd{9.74}{0.64} & \meanstd{1.19}{0.04} & \meanstd{4.30}{0.30} & \meanstd{2.82}{0.09} & \meanstd{11.55}{0.18} \\
+        Stella & \meanstd{39.12}{0.17} & \meanstd{14.29}{0.17} & \meanstd{\tablesecond{3.79}}{0.26} & \meanstd{6.21}{0.14} & \meanstd{5.57}{0.04} & \meanstd{13.79}{0.03} \\
+        CDM & \meanstd{33.62}{0.27} & \meanstd{15.11}{0.20} & \meanstd{3.28}{0.14} & \meanstd{6.26}{0.09} & \meanstd{5.08}{0.22} & \meanstd{12.67}{0.04} \\
+        DSKD & \meanstd{33.70}{0.39} & \meanstd{15.75}{0.49} & \meanstd{3.35}{0.11} & \meanstd{6.21}{0.17} & \meanstd{5.34}{0.24} & \meanstd{12.87}{0.27} \\
+        EMO & \meanstd{21.90}{0.34} & \meanstd{8.84}{0.28} & \meanstd{1.87}{0.11} & \meanstd{4.87}{0.16} & \meanstd{2.04}{0.06} & \meanstd{7.91}{0.07} \\
+        TALAS & \meanstd{\tablebest{48.95}}{0.17} & \meanstd{\tablebest{19.94}}{0.09} & \meanstd{\tablebest{5.70}}{0.12} & \meanstd{\tablebest{7.94}}{0.08} & \meanstd{\tablebest{8.15}}{0.02} & \meanstd{\tablebest{18.14}}{0.07} \\
+        \tablebest{GATE-KD} & \meanstd{\tablesecond{45.20}}{0.32} & \meanstd{\tablesecond{19.25}}{0.66} & \meanstd{2.81}{0.09} & \meanstd{\tablesecond{6.79}}{0.22} & \meanstd{\tablesecond{6.56}}{0.21} & \meanstd{\tablesecond{16.12}}{0.26} \\
         \midrule
         \multicolumn{7}{@{}c}{\textit{(b) BGE-M3 $\rightarrow$ MiniLMv2-H768 (66M)}} \\
         \midrule
         Teacher & 54.01 & 64.16 & 16.37 & 31.80 & 41.12 & 41.49 \\
-        Student base & 9.32 & 1.15 & 0.44 & 1.22 & 0.08 & 2.44 \\
+        Student (pre-KD) & 9.32 & 1.15 & 0.44 & 1.22 & 0.08 & 2.44 \\
         \cmidrule(lr){1-7}
-        RKD & \retmetric{21.27}{0.23} & \retmetric{\underline{7.84}}{0.12} & \retmetric{\underline{1.96}}{0.05} & \retmetric{\underline{4.31}}{0.14} & \retmetric{2.26}{0.03} & \retmetric{7.53}{0.09} \\
-        Stella & \retmetric{18.46}{0.37} & \retmetric{3.11}{0.27} & \retmetric{1.25}{0.06} & \retmetric{2.29}{0.15} & \retmetric{1.66}{0.08} & \retmetric{5.35}{0.16} \\
-        CDM & \retmetric{15.83}{0.19} & \retmetric{3.77}{0.38} & \retmetric{0.88}{0.02} & \retmetric{2.88}{0.16} & \retmetric{1.41}{0.21} & \retmetric{4.95}{0.15} \\
-        DSKD & \retmetric{16.25}{0.15} & \retmetric{4.05}{0.10} & \retmetric{0.88}{0.03} & \retmetric{2.96}{0.11} & \retmetric{1.59}{0.07} & \retmetric{5.15}{0.07} \\
-        EMO & \retmetric{13.10}{0.27} & \retmetric{2.83}{0.17} & \retmetric{0.72}{0.04} & \retmetric{2.25}{0.07} & \retmetric{0.85}{0.09} & \retmetric{3.95}{0.08} \\
-        TALAS & \retmetric{\textbf{30.14}}{0.32} & \retmetric{6.55}{0.34} & \retmetric{1.90}{0.08} & \retmetric{2.82}{0.18} & \retmetric{\underline{2.83}}{0.09} & \retmetric{\underline{8.85}}{0.17} \\
-        \textbf{GATE-KD} & \retmetric{\underline{25.30}}{0.02} & \retmetric{\textbf{11.22}}{0.27} & \retmetric{\textbf{3.31}}{0.02} & \retmetric{\textbf{4.93}}{0.06} & \retmetric{\textbf{4.83}}{0.01} & \retmetric{\textbf{9.92}}{0.05} \\
+        RKD & \meanstd{21.27}{0.23} & \meanstd{\tablesecond{7.84}}{0.12} & \meanstd{\tablesecond{1.96}}{0.05} & \meanstd{\tablesecond{4.31}}{0.14} & \meanstd{2.26}{0.03} & \meanstd{7.53}{0.09} \\
+        Stella & \meanstd{18.46}{0.37} & \meanstd{3.11}{0.27} & \meanstd{1.25}{0.06} & \meanstd{2.29}{0.15} & \meanstd{1.66}{0.08} & \meanstd{5.35}{0.16} \\
+        CDM & \meanstd{15.83}{0.19} & \meanstd{3.77}{0.38} & \meanstd{0.88}{0.02} & \meanstd{2.88}{0.16} & \meanstd{1.41}{0.21} & \meanstd{4.95}{0.15} \\
+        DSKD & \meanstd{16.25}{0.15} & \meanstd{4.05}{0.10} & \meanstd{0.88}{0.03} & \meanstd{2.96}{0.11} & \meanstd{1.59}{0.07} & \meanstd{5.15}{0.07} \\
+        EMO & \meanstd{13.10}{0.27} & \meanstd{2.83}{0.17} & \meanstd{0.72}{0.04} & \meanstd{2.25}{0.07} & \meanstd{0.85}{0.09} & \meanstd{3.95}{0.08} \\
+        TALAS & \meanstd{\tablebest{30.14}}{0.32} & \meanstd{6.55}{0.34} & \meanstd{1.90}{0.08} & \meanstd{2.82}{0.18} & \meanstd{\tablesecond{2.83}}{0.09} & \meanstd{\tablesecond{8.85}}{0.17} \\
+        \tablebest{GATE-KD} & \meanstd{\tablesecond{25.30}}{0.02} & \meanstd{\tablebest{11.22}}{0.27} & \meanstd{\tablebest{3.31}}{0.02} & \meanstd{\tablebest{4.93}}{0.06} & \meanstd{\tablebest{4.83}}{0.01} & \meanstd{\tablebest{9.92}}{0.05} \\
         \midrule
         \multicolumn{7}{@{}c}{\textit{(c) Qwen3-Embedding-0.6B $\rightarrow$ MiniLMv2-H384 (22M)}} \\
         \midrule
         Teacher & 68.11 & 68.26 & 15.72 & 29.73 & 38.68 & 44.10 \\
-        Student base & 9.85 & 0.66 & 0.32 & 1.28 & 0.05 & 2.43 \\
+        Student (pre-KD) & 9.85 & 0.66 & 0.32 & 1.28 & 0.05 & 2.43 \\
         \cmidrule(lr){1-7}
-        RKD & \retmetric{30.12}{0.79} & \retmetric{\underline{5.57}}{0.76} & \retmetric{\underline{1.77}}{0.12} & \retmetric{\underline{3.34}}{0.07} & \retmetric{\underline{1.88}}{0.06} & \retmetric{8.54}{0.33} \\
-        Stella & \retmetric{24.49}{0.45} & \retmetric{2.65}{0.09} & \retmetric{1.09}{0.07} & \retmetric{2.62}{0.07} & \retmetric{1.01}{0.11} & \retmetric{6.37}{0.09} \\
-        CDM & \retmetric{21.09}{0.30} & \retmetric{1.66}{0.17} & \retmetric{1.13}{0.03} & \retmetric{2.57}{0.05} & \retmetric{0.89}{0.02} & \retmetric{5.47}{0.06} \\
-        DSKD & \retmetric{21.56}{0.38} & \retmetric{1.77}{0.20} & \retmetric{1.18}{0.06} & \retmetric{2.63}{0.03} & \retmetric{0.89}{0.07} & \retmetric{5.61}{0.13} \\
-        EMO & \retmetric{17.18}{0.14} & \retmetric{1.41}{0.09} & \retmetric{0.92}{0.02} & \retmetric{1.96}{0.06} & \retmetric{0.70}{0.03} & \retmetric{4.44}{0.05} \\
-        TALAS & \retmetric{\underline{35.21}}{0.52} & \retmetric{4.17}{0.09} & \retmetric{1.44}{0.04} & \retmetric{3.12}{0.10} & \retmetric{1.87}{0.07} & \retmetric{\underline{9.16}}{0.14} \\
-        \textbf{GATE-KD} & \retmetric{\textbf{36.18}}{0.09} & \retmetric{\textbf{10.26}}{0.21} & \retmetric{\textbf{3.44}}{0.06} & \retmetric{\textbf{4.30}}{0.06} & \retmetric{\textbf{3.57}}{0.03} & \retmetric{\textbf{11.55}}{0.06} \\
+        RKD & \meanstd{30.12}{0.79} & \meanstd{\tablesecond{5.57}}{0.76} & \meanstd{\tablesecond{1.77}}{0.12} & \meanstd{\tablesecond{3.34}}{0.07} & \meanstd{\tablesecond{1.88}}{0.06} & \meanstd{8.54}{0.33} \\
+        Stella & \meanstd{24.49}{0.45} & \meanstd{2.65}{0.09} & \meanstd{1.09}{0.07} & \meanstd{2.62}{0.07} & \meanstd{1.01}{0.11} & \meanstd{6.37}{0.09} \\
+        CDM & \meanstd{21.09}{0.30} & \meanstd{1.66}{0.17} & \meanstd{1.13}{0.03} & \meanstd{2.57}{0.05} & \meanstd{0.89}{0.02} & \meanstd{5.47}{0.06} \\
+        DSKD & \meanstd{21.56}{0.38} & \meanstd{1.77}{0.20} & \meanstd{1.18}{0.06} & \meanstd{2.63}{0.03} & \meanstd{0.89}{0.07} & \meanstd{5.61}{0.13} \\
+        EMO & \meanstd{17.18}{0.14} & \meanstd{1.41}{0.09} & \meanstd{0.92}{0.02} & \meanstd{1.96}{0.06} & \meanstd{0.70}{0.03} & \meanstd{4.44}{0.05} \\
+        TALAS & \meanstd{\tablesecond{35.21}}{0.52} & \meanstd{4.17}{0.09} & \meanstd{1.44}{0.04} & \meanstd{3.12}{0.10} & \meanstd{1.87}{0.07} & \meanstd{\tablesecond{9.16}}{0.14} \\
+        \tablebest{GATE-KD} & \meanstd{\tablebest{36.18}}{0.09} & \meanstd{\tablebest{10.26}}{0.21} & \meanstd{\tablebest{3.44}}{0.06} & \meanstd{\tablebest{4.30}}{0.06} & \meanstd{\tablebest{3.57}}{0.03} & \meanstd{\tablebest{11.55}}{0.06} \\
         \bottomrule
     \end{tabular}
 \end{table}

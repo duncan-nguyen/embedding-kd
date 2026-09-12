@@ -1,13 +1,10 @@
-\begin{table}[H]
+\begin{table}[t]
     \caption{Training hyperparameters of the main experiments.}
     \label{tab:training-hyperparameters}
-    \vspace{0.5em}
-    \centering
-    \scriptsize
-    \setlength{\tabcolsep}{3pt}
+    \tablebody
     \begin{tabular}{@{}lccccc@{}}
         \toprule
-        Method & Epochs & Batch & Learning rate & Optimizer & Warm-up \\
+        Method & Epochs & Batch size & Learning rate & Optimizer & Warm-up \\
         \midrule
         RKD     & 5     & 128 & $7\times10^{-5}$ & AdamW & 0.06 \\
         Stella  & $2+3$ & 128 & $5\times10^{-5}$ & AdamW & 0.06 \\

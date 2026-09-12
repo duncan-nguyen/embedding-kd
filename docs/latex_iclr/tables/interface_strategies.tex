@@ -1,0 +1,29 @@
+% Learned-map rows: runs/aux_sweeps_20260904-113834/target_map/
+% target_map_ablation.csv (preceding matched interface sweep).
+% Fixed-target rows: runs/ablations_by_cell.csv, current-code suite
+% paper_ablations_15k_h200_gpu0-5_20260909-061547.
+\begin{table}[t]
+    \caption{Teacher--student interface choices in configuration (c).
+    Learned-map rows are carried over from the matched interface sweep;
+    fixed-target rows use the current ablation suite. Results are mean $\pm$
+    sample standard deviation over three seeds; the best result is bold.}
+    \label{tab:interface-strategies}
+    \tablebody
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Interface strategy & Trainable map? & Overall $\uparrow$ \\
+        \midrule
+        Learned teacher-to-student
+        & Yes & \meanstd{61.46}{0.39} \\
+        Learned student-to-teacher
+        & Yes & \meanstd{69.33}{0.32} \\
+        \midrule
+        PCA-reduced target
+        & No & \meanstd{72.39}{0.03} \\
+        Haar-random target
+        & No & \meanstd{73.01}{0.27} \\
+        \tablebest{Student-conditioned target}
+        & No & \meanstd{\tablebest{74.86}}{0.06} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

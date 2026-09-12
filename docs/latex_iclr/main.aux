@@ -2,35 +2,54 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Methodology}{1}{section.1}\protected@file@percent }
+\newlabel{sec:method}{{1}{1}{Methodology}{section.1}{}}
+\newlabel{eq:normalized-embeddings}{{1}{1}{Methodology}{equation.1.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Dimension Reduction Does Not Determine a Distillation Target}{1}{subsection.1.1}\protected@file@percent }
+\newlabel{sec:dimension-reduction}{{1.1}{1}{Dimension Reduction Does Not Determine a Distillation Target}{subsection.1.1}{}}
+\newlabel{eq:reduced-target}{{2}{1}{Dimension Reduction Does Not Determine a Distillation Target}{equation.1.2}{}}
+\newlabel{eq:gram-invariance}{{3}{1}{Dimension Reduction Does Not Determine a Distillation Target}{equation.1.3}{}}
 \citation{schonemann1966procrustes}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Method}{1}{section.1}\protected@file@percent }
-\newlabel{sec:method}{{1}{1}{Method}{section.1}{}}
-\newlabel{eq:teacher-cache}{{1}{1}{Method}{equation.1.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Student-Aligned Target Construction}{1}{subsection.1.1}\protected@file@percent }
-\newlabel{sec:method-targets}{{1.1}{1}{Student-Aligned Target Construction}{subsection.1.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{Selecting a student-width subspace.}{1}{section*.1}\protected@file@percent }
-\newlabel{eq:pca-target}{{2}{1}{Selecting a student-width subspace}{equation.1.2}{}}
-\@writefile{toc}{\contentsline {paragraph}{Choosing a student-relative orientation.}{1}{section*.2}\protected@file@percent }
-\newlabel{eq:target-orbit}{{3}{1}{Choosing a student-relative orientation}{equation.1.3}{}}
-\newlabel{eq:gauge-alignment}{{4}{1}{Choosing a student-relative orientation}{equation.1.4}{}}
-\newlabel{eq:target}{{5}{1}{Choosing a student-relative orientation}{equation.1.5}{}}
-\citation{bhattarai2025shortcut}
+\newlabel{eq:target-orbit}{{4}{2}{Dimension Reduction Does Not Determine a Distillation Target}{equation.1.4}{}}
+\newlabel{eq:orientation-loss}{{5}{2}{Dimension Reduction Does Not Determine a Distillation Target}{equation.1.5}{}}
+\newlabel{eq:orientation-optimum}{{6}{2}{Dimension Reduction Does Not Determine a Distillation Target}{equation.1.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Student-Conditioned Coordinate Selection}{2}{subsection.1.2}\protected@file@percent }
+\newlabel{sec:coordinate-selection}{{1.2}{2}{Student-Conditioned Coordinate Selection}{subsection.1.2}{}}
+\newlabel{eq:procrustes-objective}{{7}{2}{Student-Conditioned Coordinate Selection}{equation.1.7}{}}
+\newlabel{eq:procrustes-svd}{{8}{2}{Student-Conditioned Coordinate Selection}{equation.1.8}{}}
+\newlabel{eq:selected-target}{{9}{2}{Student-Conditioned Coordinate Selection}{equation.1.9}{}}
+\newlabel{eq:coordinate-refresh}{{10}{2}{Student-Conditioned Coordinate Selection}{equation.1.10}{}}
+\newlabel{eq:refreshed-target}{{11}{2}{Student-Conditioned Coordinate Selection}{equation.1.11}{}}
+\newlabel{eq:endpoint-loss}{{12}{2}{Student-Conditioned Coordinate Selection}{equation.1.12}{}}
 \citation{hofer2020topologically}
-\newlabel{prop:local-global-gap}{{1}{2}{Batchwise Procrustes relaxation}{proposition.1}{}}
-\newlabel{eq:local-global-gap}{{6}{2}{Batchwise Procrustes relaxation}{equation.1.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Optional Native-Space $H_0$ Auxiliary}{2}{subsection.1.2}\protected@file@percent }
-\newlabel{sec:method-topology}{{1.2}{2}{Optional Native-Space \texorpdfstring {$H_0$}{H0} Auxiliary}{subsection.1.2}{}}
-\newlabel{eq:chord-distance}{{7}{2}{Optional Native-Space \texorpdfstring {$H_0$}{H0} Auxiliary}{equation.1.7}{}}
-\newlabel{eq:topological-loss}{{8}{2}{Optional Native-Space \texorpdfstring {$H_0$}{H0} Auxiliary}{equation.1.8}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Student Optimization}{2}{subsection.1.3}\protected@file@percent }
-\newlabel{sec:method-objective}{{1.3}{2}{Student Optimization}{subsection.1.3}{}}
-\newlabel{eq:endpoint-loss}{{9}{2}{Student Optimization}{equation.1.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Coordinate-Invariant Structural Support}{3}{subsection.1.3}\protected@file@percent }
+\newlabel{sec:structural-support}{{1.3}{3}{Coordinate-Invariant Structural Support}{subsection.1.3}{}}
+\newlabel{eq:chord-distance}{{13}{3}{Coordinate-Invariant Structural Support}{equation.1.13}{}}
+\newlabel{eq:sorted-mst-weights}{{14}{3}{Coordinate-Invariant Structural Support}{equation.1.14}{}}
+\newlabel{eq:h0-loss}{{15}{3}{Coordinate-Invariant Structural Support}{equation.1.15}{}}
+\newlabel{eq:complete-objective}{{16}{3}{Coordinate-Invariant Structural Support}{equation.1.16}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Teacher--student interface choices in configuration (c). Learned-map rows are carried over from the matched interface sweep; fixed-target rows use the current ablation suite. Results are mean $\pm $ sample standard deviation over three seeds; the best result is bold.}}{4}{table.1}\protected@file@percent }
+\newlabel{tab:interface-strategies}{{1}{4}{Teacher--student interface choices in configuration (c). Learned-map rows are carried over from the matched interface sweep; fixed-target rows use the current ablation suite. Results are mean $\pm $ sample standard deviation over three seeds; the best result is bold}{table.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Dimension reduction and coordinate selection in configuration (c). Results are mean $\pm $ sample standard deviation over three seeds. Random rows are independent subspace draws. The best coordinate treatment within each reduction is bold.}}{4}{table.2}\protected@file@percent }
+\newlabel{tab:dimension-coordinate}{{2}{4}{Dimension reduction and coordinate selection in configuration (c). Results are mean $\pm $ sample standard deviation over three seeds. Random rows are independent subspace draws. The best coordinate treatment within each reduction is bold}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Controls for student-conditioned coordinate selection in configuration (c). Panel (a) varies the signal used to select the coordinates; panel (b) varies how often the representative is fitted. All rows use the same rank-384 reduction (0.928 retained energy). Results are mean $\pm $ sample standard deviation over three seeds; the best value in each panel is bold.}}{4}{table.3}\protected@file@percent }
+\newlabel{tab:coordinate-selection-controls}{{3}{4}{Controls for student-conditioned coordinate selection in configuration (c). Panel (a) varies the signal used to select the coordinates; panel (b) varies how often the representative is fitted. All rows use the same rank-384 reduction (0.928 retained energy). Results are mean $\pm $ sample standard deviation over three seeds; the best value in each panel is bold}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Nine-task results on the 15K distillation corpus. Distilled students report mean $\pm $ sample standard deviation over three seeds; best and second-best results are bold and underlined. GATE-KD uses $\lambda _{H_0}=0.5$.}}{5}{table.4}\protected@file@percent }
+\newlabel{tab:main-results}{{4}{5}{Nine-task results on the 15K distillation corpus. Distilled students report mean $\pm $ sample standard deviation over three seeds; best and second-best results are bold and underlined. GATE-KD uses $\lambda _{H_0}=0.5$}{table.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Ablation of endpoint targets and structural objectives in configuration (c). Results are mean $\pm $ sample standard deviation over three seeds. $\Delta $ is measured against the student-conditioned target without a structural objective; best values are bold.}}{6}{table.5}\protected@file@percent }
+\newlabel{tab:component-ablation}{{5}{6}{Ablation of endpoint targets and structural objectives in configuration (c). Results are mean $\pm $ sample standard deviation over three seeds. $\Delta $ is measured against the student-conditioned target without a structural objective; best values are bold}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Zero-shot BEIR retrieval (nDCG@10). Distilled students report mean $\pm $ standard deviation over three seeds; best and second-best results are bold and underlined.}}{6}{table.6}\protected@file@percent }
+\newlabel{tab:retrieval-results-15k}{{6}{6}{Zero-shot BEIR retrieval (nDCG@10). Distilled students report mean $\pm $ standard deviation over three seeds; best and second-best results are bold and underlined}{table.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Optimization-loop cost on NVIDIA H200 GPUs, excluding non-training overhead. Results are mean $\pm $ standard deviation over three seeds; best and second-best values are bold and underlined.}}{7}{table.7}\protected@file@percent }
+\newlabel{tab:training-efficiency}{{7}{7}{Optimization-loop cost on NVIDIA H200 GPUs, excluding non-training overhead. Results are mean $\pm $ standard deviation over three seeds; best and second-best values are bold and underlined}{table.7}{}}
 \bibdata{references/references}
-\bibcite{bhattarai2025shortcut}{{1}{2025}{{Bhattarai et~al.}}{{Bhattarai, Amjad, Zhylko, and Alhanai}}}
-\bibcite{hofer2020topologically}{{2}{2020}{{Hofer et~al.}}{{Hofer, Graf, Rieck, Niethammer, and Kwitt}}}
-\bibcite{schonemann1966procrustes}{{3}{1966}{{Sch{\"o}nemann}}{{}}}
+\bibcite{hofer2020topologically}{{1}{2020}{{Hofer et~al.}}{{Hofer, Graf, Rieck, Niethammer, and Kwitt}}}
+\bibcite{schonemann1966procrustes}{{2}{1966}{{Sch{\"o}nemann}}{{}}}
 \bibstyle{template/iclr2027_conference}
-\newlabel{eq:objective}{{10}{3}{Student Optimization}{equation.1.10}{}}
-\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces GATE-KD training with a non-trainable target-side interface}}{3}{algorithm.1}\protected@file@percent }
-\newlabel{alg:gate-kd}{{1}{3}{Student Optimization}{algorithm.1}{}}
-\gdef \@abspage@last{3}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Sensitivity analyses for configuration (c). Panel (a) varies the structural weight; panel (b) varies the representative fit-set size. Results are mean $\pm $ sample standard deviation over three seeds; best values in each panel are bold.}}{9}{table.8}\protected@file@percent }
+\newlabel{tab:sensitivity-controls}{{8}{9}{Sensitivity analyses for configuration (c). Panel (a) varies the structural weight; panel (b) varies the representative fit-set size. Results are mean $\pm $ sample standard deviation over three seeds; best values in each panel are bold}{table.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Nine-task results with the 100K distillation corpus. Distilled students report mean $\pm $ standard deviation over three seeds; best and second-best results are bold and underlined.}}{10}{table.9}\protected@file@percent }
+\newlabel{tab:main-results-100k}{{9}{10}{Nine-task results with the 100K distillation corpus. Distilled students report mean $\pm $ standard deviation over three seeds; best and second-best results are bold and underlined}{table.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Training hyperparameters of the main experiments.}}{10}{table.10}\protected@file@percent }
+\newlabel{tab:training-hyperparameters}{{10}{10}{Training hyperparameters of the main experiments}{table.10}{}}
+\gdef \@abspage@last{10}

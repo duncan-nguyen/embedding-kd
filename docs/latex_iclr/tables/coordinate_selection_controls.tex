@@ -1,0 +1,50 @@
+% Sources: runs/table_a2_selection_signal.csv, runs/table_a3_representative.csv,
+% and runs/ablations_by_cell.csv for source/non-source aggregates.
+% Current-code ablation suite: paper_ablations_15k_h200_gpu0-5_20260909-061547.
+\begin{table}[t]
+    \caption{Controls for student-conditioned coordinate selection in
+    configuration (c). Panel (a) varies the signal used to select the
+    coordinates; panel (b) varies how often the representative is fitted.
+    All rows use the same rank-384 reduction (0.928 retained energy). Results
+    are mean $\pm$ sample standard deviation over three seeds; the best value
+    in each panel is bold.}
+    \label{tab:coordinate-selection-controls}
+    \tablebody
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Treatment & Source $\uparrow$ & Non-source $\uparrow$ & Overall $\uparrow$ \\
+        \midrule
+        \multicolumn{4}{@{}l}{\textit{(a) Selection signal}} \\
+        \midrule
+        As reduced
+        & \meanstd{65.64}{0.04} & \meanstd{75.77}{0.06} & \meanstd{72.39}{0.03} \\
+        Haar-random
+        & \meanstd{66.82}{0.44} & \meanstd{76.11}{0.18} & \meanstd{73.01}{0.27} \\
+        Shuffled correspondence
+        & \meanstd{67.57}{0.36} & \meanstd{77.23}{0.20} & \meanstd{74.01}{0.21} \\
+        Unrelated student
+        & \meanstd{67.28}{0.47} & \meanstd{76.08}{0.06} & \meanstd{73.15}{0.20} \\
+        Matched student
+        & \meanstd{\tablebest{68.80}}{0.16}
+        & \meanstd{\tablebest{77.89}}{0.01}
+        & \meanstd{\tablebest{74.86}}{0.06} \\
+        \midrule
+        \multicolumn{4}{@{}l}{\textit{(b) Representative schedule}} \\
+        \midrule
+        As reduced
+        & \meanstd{65.64}{0.04} & \meanstd{75.77}{0.06} & \meanstd{72.39}{0.03} \\
+        Haar-random
+        & \meanstd{66.82}{0.44} & \meanstd{76.11}{0.18} & \meanstd{73.01}{0.27} \\
+        Per-batch selection
+        & \meanstd{65.75}{0.20} & \meanstd{76.19}{0.09} & \meanstd{72.71}{0.07} \\
+        Initial selection only
+        & \meanstd{68.24}{0.10} & \meanstd{77.80}{0.04} & \meanstd{74.61}{0.04} \\
+        One refresh
+        & \meanstd{68.34}{0.02} & \meanstd{77.85}{0.03} & \meanstd{74.68}{0.01} \\
+        Epoch-wise selection
+        & \meanstd{\tablebest{68.80}}{0.16}
+        & \meanstd{\tablebest{77.89}}{0.01}
+        & \meanstd{\tablebest{74.86}}{0.06} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
